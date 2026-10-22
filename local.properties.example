@@ -1,0 +1,5 @@
+# এই ফাইলটির নাম বদলে local.properties রাখুন এবং নিজের key বসান।
+# sdk.dir লাইনটি Android Studio নিজেই যোগ করে দেয়।
+GEMINI_API_KEY=your_gemini_key_here
+ELEVENLABS_API_KEY=your_elevenlabs_key_here
+ELEVENLABS_VOICE_ID=your_voice_id_here

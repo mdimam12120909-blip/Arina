@@ -1,0 +1,44 @@
+name: Build Arina APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+
+      - name: Write API keys from repository secrets
+        run: |
+          {
+            echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}"
+            echo "ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }}"
+            echo "ELEVENLABS_VOICE_ID=${{ secrets.ELEVENLABS_VOICE_ID }}"
+          } > local.properties
+
+      - name: Build debug APK
+        run: gradle assembleDebug --no-daemon
+
+      - name: Publish APK as a release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk Arina.apk
+          gh release create "build-${{ github.run_number }}" Arina.apk \
+            --title "Arina build ${{ github.run_number }}" \
+            --notes "Download Arina.apk on your Android phone and install it."
