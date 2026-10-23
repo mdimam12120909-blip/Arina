@@ -21,7 +21,7 @@ private class ModelUnavailable(message: String) : IOException(message)
  * Talks to the Gemini API. Blocking calls: run on Dispatchers.IO.
  * Gemini decides which phone tool to call; we run it and feed the result back.
  */
-class GeminiClient(private val apiKey: String, private val tools: ToolRunner) {
+class GeminiClient(private val apiKeyProvider: () -> String, private val tools: ToolRunner) {
 
     companion object {
         // Tried in this order until one works for the user's key. Google retires models often.
@@ -68,7 +68,7 @@ class GeminiClient(private val apiKey: String, private val tools: ToolRunner) {
 
         val request = Request.Builder()
             .url("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
-            .header("x-goog-api-key", apiKey)
+            .header("x-goog-api-key", apiKeyProvider().trim())
             .post(body.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
@@ -128,8 +128,8 @@ class GeminiClient(private val apiKey: String, private val tools: ToolRunner) {
     }
 
     fun chat(userText: String): Reply {
-        if (apiKey.isBlank()) {
-            throw IOException("Gemini API key is missing. Add the GEMINI_API_KEY secret on GitHub and rebuild.")
+        if (apiKeyProvider().isBlank()) {
+            throw IOException("Gemini API key is missing. Paste it in the Setup tab and tap Save.")
         }
         history += JSONObject().put("role", "user")
             .put("parts", JSONArray().put(JSONObject().put("text", userText)))

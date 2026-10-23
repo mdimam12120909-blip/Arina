@@ -7,6 +7,16 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 
+/** How a listening attempt ended badly. */
+enum class SpeechProblem {
+    /** Nobody spoke: just listen again. */
+    Silence,
+    /** Temporary glitch: listen again, but give up after several in a row. */
+    Transient,
+    /** Needs the user to fix something: stop. */
+    Fatal
+}
+
 /** Bengali (bn-BD) speech recognition using Android's built-in recognizer. Call from the main thread. */
 class SpeechInput(private val ctx: Context) {
 
@@ -15,11 +25,11 @@ class SpeechInput(private val ctx: Context) {
     fun listen(
         onLevel: (Float) -> Unit,
         onFinal: (String) -> Unit,
-        onError: (String) -> Unit
+        onProblem: (SpeechProblem, String) -> Unit
     ) {
         cancel()
         if (!SpeechRecognizer.isRecognitionAvailable(ctx)) {
-            onError("Speech recognition is not available. Install or enable the Google app and try again.")
+            onProblem(SpeechProblem.Fatal, "Speech recognition is not available. Install or enable the Google app and try again.")
             return
         }
         val r = SpeechRecognizer.createSpeechRecognizer(ctx)
@@ -33,18 +43,23 @@ class SpeechInput(private val ctx: Context) {
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
             override fun onError(error: Int) {
-                onError(
-                    when (error) {
-                        SpeechRecognizer.ERROR_NO_MATCH,
-                        SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "I didn't catch that. Tap and try again."
-                        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission is missing."
-                        SpeechRecognizer.ERROR_NETWORK,
-                        SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network problem while listening."
-                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Speech service is busy. Try again in a moment."
-                        12, 13 -> "Bengali speech is not available. In the Google app open Settings > Voice > Languages and add Bengali."
-                        else -> "Listening failed (code $error)."
-                    }
-                )
+                when (error) {
+                    SpeechRecognizer.ERROR_NO_MATCH,
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
+                        onProblem(SpeechProblem.Silence, "")
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
+                        onProblem(SpeechProblem.Fatal, "Microphone permission is missing.")
+                    12, 13 ->
+                        onProblem(SpeechProblem.Fatal, "Bengali speech is not available. In the Google app open Settings > Voice > Languages and add Bengali.")
+                    SpeechRecognizer.ERROR_NETWORK,
+                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
+                        onProblem(SpeechProblem.Transient, "Network problem while listening.")
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY,
+                    SpeechRecognizer.ERROR_CLIENT ->
+                        onProblem(SpeechProblem.Transient, "Speech service is busy.")
+                    else ->
+                        onProblem(SpeechProblem.Transient, "Listening failed (code $error).")
+                }
             }
             override fun onResults(results: Bundle?) {
                 val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
@@ -58,11 +73,6 @@ class SpeechInput(private val ctx: Context) {
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "bn-BD")
             .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         r.startListening(intent)
-    }
-
-    /** Stop recording and deliver what was heard so far. */
-    fun stop() {
-        recognizer?.stopListening()
     }
 
     fun cancel() {

@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -56,6 +58,19 @@ fun FloatingAvatar(
             compact = true,
             modifier = Modifier.fillMaxSize().clickable(onClick = onTap)
         )
+
+        Row(Modifier.align(Alignment.TopStart).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(8.dp).clip(CircleShape)
+                    .background(if (engine.micOn.value) Color(0xFF3DDC97) else ArinaColors.Muted)
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                if (engine.micOn.value) "MIC ON" else "MIC OFF",
+                color = if (engine.micOn.value) Color(0xFF3DDC97) else ArinaColors.Muted,
+                fontSize = 9.sp
+            )
+        }
 
         Row(Modifier.align(Alignment.TopEnd).padding(6.dp)) {
             MiniButton(Icons.Outlined.OpenInNew, "Open Arina app", onOpenApp)

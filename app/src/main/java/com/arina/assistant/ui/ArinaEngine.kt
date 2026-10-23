@@ -9,18 +9,20 @@ import android.provider.Settings
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
-import com.arina.assistant.BuildConfig
+import com.arina.assistant.Keys
 import com.arina.assistant.ai.GeminiClient
 import com.arina.assistant.ai.ToolRunner
 import com.arina.assistant.device.ArinaAccessibilityService
 import com.arina.assistant.device.DeviceActions
 import com.arina.assistant.voice.SpeechInput
+import com.arina.assistant.voice.SpeechProblem
 import com.arina.assistant.voice.VoiceOutput
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -31,7 +33,10 @@ data class ChatMessage(val fromUser: Boolean, val text: String)
 
 /**
  * Arina's brain, shared by the app screen and the floating avatar (one instance per process).
- * Hearing -> Gemini -> phone tools -> speaking.
+ * Ears (Android Bengali recognizer) -> Gemini -> phone tools -> voice (ElevenLabs).
+ *
+ * The mic is a switch: the user turns it on and it stays on, listening again after every
+ * answer, until the user turns it off.
  */
 class ArinaEngine private constructor(private val app: Application) {
 
@@ -48,26 +53,33 @@ class ArinaEngine private constructor(private val app: Application) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     val status = mutableStateOf(Status.Idle)
+    val micOn = mutableStateOf(false)
     val level = mutableFloatStateOf(0f)
     val caption = mutableStateOf("")
     val notice = mutableStateOf<String?>(null)
     val overlayOn = mutableStateOf(false)
     val messages = mutableStateListOf(
-        ChatMessage(false, "Hi, I'm Arina. Tap the mic and give me a task.")
+        ChatMessage(false, "Hi, I'm Arina. Turn the mic on and give me a task.")
     )
 
-    // Setup state
+    // Keys (editable in the Setup tab)
+    val geminiKey = mutableStateOf(Keys.gemini(app))
+    val elevenKey = mutableStateOf(Keys.eleven(app))
+    val voiceId = mutableStateOf(Keys.voiceId(app))
+    val geminiKeySet: Boolean get() = geminiKey.value.isNotBlank()
+    val elevenKeySet: Boolean get() = elevenKey.value.isNotBlank() && voiceId.value.isNotBlank()
+
+    // Permissions
     val micGranted = mutableStateOf(false)
     val phoneGranted = mutableStateOf(false)
     val overlayGranted = mutableStateOf(false)
     val accessibilityOn = mutableStateOf(false)
-    val geminiKeySet = BuildConfig.GEMINI_API_KEY.isNotBlank()
-    val elevenKeySet = BuildConfig.ELEVENLABS_API_KEY.isNotBlank() && BuildConfig.ELEVENLABS_VOICE_ID.isNotBlank()
 
-    private val gemini = GeminiClient(BuildConfig.GEMINI_API_KEY, ToolRunner(DeviceActions(app)))
-    private val voice = VoiceOutput(app)
+    private val gemini = GeminiClient({ geminiKey.value }, ToolRunner(DeviceActions(app)))
+    private val voice = VoiceOutput(app) { elevenKey.value to voiceId.value }
     private val ears = SpeechInput(app)
     private var job: Job? = null
+    private var failStreak = 0
 
     fun refreshSetup() {
         fun granted(p: String) = app.checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED
@@ -79,47 +91,116 @@ class ArinaEngine private constructor(private val app: Application) {
     }
 
     fun notificationsGranted(): Boolean =
-        Build.VERSION.SDK_INT < 33 || app.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        Build.VERSION.SDK_INT < 33 ||
+            app.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
-    /** Avatar or mic tap: start listening, or stop whatever Arina is doing. */
-    fun onMicTap() {
-        when (status.value) {
-            Status.Idle -> startListening()
-            Status.Listening -> ears.stop()
-            Status.Thinking, Status.Speaking -> {
-                job?.cancel()
-                voice.stop()
+    fun saveKeys(gemini: String, eleven: String, voice: String) {
+        Keys.save(app, gemini, eleven, voice)
+        geminiKey.value = Keys.gemini(app)
+        elevenKey.value = Keys.eleven(app)
+        voiceId.value = Keys.voiceId(app)
+        notice.value = "Saved."
+    }
+
+    /** Speaks a short test line so the ElevenLabs key and voice can be checked. */
+    fun testVoice() {
+        if (status.value != Status.Idle) return
+        notice.value = null
+        status.value = Status.Speaking
+        job = scope.launch {
+            try {
+                voice.speak("আমি অ্যারিনা। আমার কণ্ঠ ঠিকমতো কাজ করছে।")
+                notice.value = "Voice test OK."
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                notice.value = (e.message ?: "Voice test failed.").take(260)
+            } finally {
                 status.value = Status.Idle
+                if (micOn.value) restartListening()
             }
         }
     }
 
-    private fun startListening() {
+    // ---- Mic switch -------------------------------------------------------------------------
+
+    /** Avatar or mic tap: switch the mic on, or switch everything off. */
+    fun onMicTap() {
+        if (micOn.value) turnOff() else turnOn()
+    }
+
+    private fun turnOn() {
+        micOn.value = true
         notice.value = null
+        failStreak = 0
+        startListening()
+    }
+
+    fun turnOff() {
+        micOn.value = false
+        job?.cancel()
+        ears.cancel()
+        voice.stop()
+        level.floatValue = 0f
+        status.value = Status.Idle
+    }
+
+    /** Called when the floating avatar is closed. */
+    fun stopAll() = turnOff()
+
+    private fun startListening() {
+        if (!micOn.value) return
         status.value = Status.Listening
         ears.listen(
             onLevel = { level.floatValue = it },
             onFinal = { text ->
                 level.floatValue = 0f
-                if (text.isBlank()) fail("I didn't catch that. Tap and try again.", addToChat = false)
-                else handle(text, typed = false)
+                if (text.isBlank()) restartListening()
+                else {
+                    failStreak = 0
+                    handle(text, typed = false)
+                }
             },
-            onError = { msg ->
+            onProblem = { kind, message ->
                 level.floatValue = 0f
-                fail(msg, addToChat = false)
+                when (kind) {
+                    SpeechProblem.Silence -> restartListening()
+                    SpeechProblem.Transient ->
+                        if (++failStreak <= 6) restartListening()
+                        else {
+                            notice.value = message
+                            turnOff()
+                        }
+                    SpeechProblem.Fatal -> {
+                        notice.value = message
+                        turnOff()
+                    }
+                }
             }
         )
     }
 
-    fun sendText(text: String) {
-        val t = text.trim()
-        if (t.isNotEmpty() && status.value == Status.Idle) handle(t, typed = true)
+    private fun restartListening() {
+        scope.launch {
+            delay(300)
+            if (micOn.value && (job?.isActive != true)) startListening()
+        }
     }
 
-    private fun fail(msg: String, addToChat: Boolean = true) {
+    // ---- Talking ----------------------------------------------------------------------------
+
+    fun sendText(text: String) {
+        val t = text.trim()
+        if (t.isEmpty()) return
+        if (status.value == Status.Thinking || status.value == Status.Speaking) return
+        ears.cancel()
+        handle(t, typed = true)
+    }
+
+    private fun fail(msg: String) {
         notice.value = msg
         caption.value = msg
-        if (addToChat) messages += ChatMessage(false, msg)
+        messages += ChatMessage(false, msg)
         status.value = Status.Idle
     }
 
@@ -129,32 +210,30 @@ class ArinaEngine private constructor(private val app: Application) {
         if (typed) messages += ChatMessage(true, text)
         status.value = Status.Thinking
         job = scope.launch {
-            val reply = try {
-                withContext(Dispatchers.IO) { gemini.chat(text) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                fail("Error: ${(e.message ?: e.javaClass.simpleName).take(220)}")
-                return@launch
-            }
-            if (!typed) messages += ChatMessage(true, reply.you.ifBlank { "(voice request)" })
-            messages += ChatMessage(false, reply.en)
-            caption.value = reply.en
-            status.value = Status.Speaking
             try {
-                voice.speak(reply.bn)
+                val reply = try {
+                    withContext(Dispatchers.IO) { gemini.chat(text) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    fail("Error: ${(e.message ?: e.javaClass.simpleName).take(220)}")
+                    return@launch
+                }
+                if (!typed) messages += ChatMessage(true, reply.you.ifBlank { "(voice request)" })
+                messages += ChatMessage(false, reply.en)
+                caption.value = reply.en
+                status.value = Status.Speaking
+                try {
+                    voice.speak(reply.bn)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    notice.value = (e.message ?: "Voice failed.").take(260)
+                }
             } finally {
                 status.value = Status.Idle
+                if (micOn.value) restartListening()
             }
         }
-    }
-
-    /** Called when the floating avatar is closed. */
-    fun stopAll() {
-        job?.cancel()
-        ears.cancel()
-        voice.stop()
-        level.floatValue = 0f
-        status.value = Status.Idle
     }
 }

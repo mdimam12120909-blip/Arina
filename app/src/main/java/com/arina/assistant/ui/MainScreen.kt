@@ -37,6 +37,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
@@ -68,6 +69,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -210,13 +212,14 @@ private fun VoicePanel(vm: ArinaEngine, onMicClick: () -> Unit, onPower: () -> U
                 )
             }
             Waveform(vm.status.value, vm.level.floatValue, Modifier.padding(top = 10.dp).size(width = 220.dp, height = 34.dp))
-            MicButton(vm.status.value, vm.level.floatValue, onMicClick)
+            MicButton(vm.status.value, vm.micOn.value, vm.level.floatValue, onMicClick)
             Text(
-                when (vm.status.value) {
-                    Status.Idle -> "Tap the mic and speak"
-                    Status.Listening -> "Listening… tap to send"
-                    Status.Thinking -> "Thinking… tap to cancel"
-                    Status.Speaking -> "Speaking… tap to stop"
+                if (!vm.micOn.value) "Mic is off. Tap to turn it on"
+                else when (vm.status.value) {
+                    Status.Idle -> "Mic is on. Tap to turn it off"
+                    Status.Listening -> "Listening… tap to turn the mic off"
+                    Status.Thinking -> "Thinking… tap to turn the mic off"
+                    Status.Speaking -> "Speaking… tap to turn the mic off"
                 },
                 color = ArinaColors.Muted, fontSize = 12.sp
             )
@@ -277,12 +280,12 @@ private fun Waveform(status: Status, level: Float, modifier: Modifier = Modifier
 }
 
 @Composable
-private fun MicButton(status: Status, level: Float, onClick: () -> Unit) {
+private fun MicButton(status: Status, micOn: Boolean, level: Float, onClick: () -> Unit) {
     val inf = rememberInfiniteTransition(label = "mic")
     val ring by inf.animateFloat(
         0f, 1f, infiniteRepeatable(tween(1800, easing = LinearEasing)), label = "ring"
     )
-    val active = status != Status.Idle
+    val active = micOn
     Box(Modifier.size(150.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val base = size.minDimension * 0.27f
@@ -313,9 +316,9 @@ private fun MicButton(status: Status, level: Float, onClick: () -> Unit) {
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                if (status == Status.Idle || status == Status.Listening) Icons.Filled.Mic else Icons.Filled.Stop,
+                if (micOn) Icons.Filled.Mic else Icons.Filled.MicOff,
                 contentDescription = "Microphone",
-                tint = ArinaColors.Glow,
+                tint = if (micOn) ArinaColors.Glow else ArinaColors.Muted,
                 modifier = Modifier.size(36.dp)
             )
         }
@@ -382,6 +385,10 @@ private fun ChatPanel(vm: ArinaEngine) {
 
 @Composable
 private fun SetupPanel(vm: ArinaEngine, onGrantPhone: () -> Unit, onGrantOverlay: () -> Unit, onOpenAccessibility: () -> Unit) {
+    var gemini by remember { mutableStateOf(vm.geminiKey.value) }
+    var eleven by remember { mutableStateOf(vm.elevenKey.value) }
+    var voice by remember { mutableStateOf(vm.voiceId.value) }
+
     Column(
         Modifier.fillMaxSize()
             .background(ArinaColors.Background.copy(alpha = 0.9f))
@@ -390,13 +397,68 @@ private fun SetupPanel(vm: ArinaEngine, onGrantPhone: () -> Unit, onGrantOverlay
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text("Setup", color = ArinaColors.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-        SetupRow("Gemini API key", if (vm.geminiKeySet) "Connected" else "Add the GEMINI_API_KEY secret on GitHub and rebuild", vm.geminiKeySet)
-        SetupRow("ElevenLabs voice", if (vm.elevenKeySet) "Connected" else "Add ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID secrets (phone voice is used meanwhile)", vm.elevenKeySet)
-        SetupRow("Microphone", if (vm.micGranted.value) "Allowed" else "Asked when you first tap the mic", vm.micGranted.value)
+
+        Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("API keys (stored only on this phone)", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            KeyField("Gemini API key", gemini, true) { gemini = it }
+            KeyField("ElevenLabs API key", eleven, true) { eleven = it }
+            KeyField("ElevenLabs Voice ID", voice, false) { voice = it }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PillButton("Save") { vm.saveKeys(gemini, eleven, voice) }
+                PillButton("Test voice") {
+                    vm.saveKeys(gemini, eleven, voice)
+                    vm.testVoice()
+                }
+            }
+            vm.notice.value?.let {
+                Text(it, color = Color(0xFFFFB84D), fontSize = 12.sp, lineHeight = 17.sp)
+            }
+        }
+
+        SetupRow("Gemini API key", if (vm.geminiKeySet) "Set" else "Paste it above and tap Save", vm.geminiKeySet)
+        SetupRow("ElevenLabs voice", if (vm.elevenKeySet) "Set" else "Paste the API key and Voice ID above and tap Save", vm.elevenKeySet)
+        SetupRow("Microphone", if (vm.micGranted.value) "Allowed" else "Asked when you first turn the mic on", vm.micGranted.value)
         SetupRow("Floating avatar", if (vm.overlayGranted.value) "Allowed" else "Needed to show Arina over other apps", vm.overlayGranted.value, "Allow", onGrantOverlay)
         SetupRow("Calls, contacts & SMS", if (vm.phoneGranted.value) "Allowed" else "Needed for calling and messaging", vm.phoneGranted.value, "Allow", onGrantPhone)
         SetupRow("Device Control", if (vm.accessibilityOn.value) "Enabled" else "Needed for Back, Home, screenshots and tapping on screen", vm.accessibilityOn.value, "Enable", onOpenAccessibility)
     }
+}
+
+@Composable
+private fun KeyField(label: String, value: String, secret: Boolean, onChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text(label, fontSize = 12.sp) },
+        singleLine = true,
+        visualTransformation = if (secret) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+        shape = RoundedCornerShape(14.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = ArinaColors.Text,
+            unfocusedTextColor = ArinaColors.Text,
+            focusedBorderColor = ArinaColors.Glow,
+            unfocusedBorderColor = ArinaColors.Deep,
+            focusedLabelColor = ArinaColors.Glow,
+            unfocusedLabelColor = ArinaColors.Muted,
+            cursorColor = ArinaColors.Glow
+        )
+    )
+}
+
+@Composable
+private fun PillButton(label: String, onClick: () -> Unit) {
+    Text(
+        label,
+        color = ArinaColors.Background,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(ArinaColors.Glow)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 8.dp)
+    )
 }
 
 @Composable
