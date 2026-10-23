@@ -82,6 +82,7 @@ class VoiceOutput(
                         detail.contains("voice", ignoreCase = true)
                     ) throw IOException(msg)
                 }
+                Unit
             }
         }
         throw IOException(firstError ?: "ElevenLabs returned no audio.")

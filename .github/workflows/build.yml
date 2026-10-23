@@ -32,7 +32,14 @@ jobs:
           } > local.properties
 
       - name: Build debug APK
-        run: gradle assembleDebug --no-daemon
+        run: |
+          set +e
+          gradle assembleDebug --no-daemon > build.log 2>&1
+          code=$?
+          if [ $code -ne 0 ]; then
+            grep -E "^e: |error:|Execution failed|What went wrong|Unresolved|Could not " build.log | head -25 | sed 's#/home/runner/work/[^/]*/[^/]*/##' | while IFS= read -r line; do echo "::error::${line}"; done
+          fi
+          exit $code
 
       - name: Publish APK as a release
         env:
