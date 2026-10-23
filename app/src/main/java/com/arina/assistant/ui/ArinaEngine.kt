@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -63,9 +64,9 @@ class ArinaEngine private constructor(private val app: Application) {
     )
 
     // Keys (editable in the Setup tab)
-    val geminiKey = mutableStateOf(Keys.gemini(app))
-    val elevenKey = mutableStateOf(Keys.eleven(app))
-    val voiceId = mutableStateOf(Keys.voiceId(app))
+    val geminiKey: MutableState<String> = mutableStateOf(Keys.gemini(app))
+    val elevenKey: MutableState<String> = mutableStateOf(Keys.eleven(app))
+    val voiceId: MutableState<String> = mutableStateOf(Keys.voiceId(app))
     val geminiKeySet: Boolean get() = geminiKey.value.isNotBlank()
     val elevenKeySet: Boolean get() = elevenKey.value.isNotBlank() && voiceId.value.isNotBlank()
 
@@ -75,9 +76,9 @@ class ArinaEngine private constructor(private val app: Application) {
     val overlayGranted = mutableStateOf(false)
     val accessibilityOn = mutableStateOf(false)
 
-    private val gemini = GeminiClient({ geminiKey.value }, ToolRunner(DeviceActions(app)))
-    private val voice = VoiceOutput(app) { elevenKey.value to voiceId.value }
-    private val ears = SpeechInput(app)
+    private val gemini: GeminiClient = GeminiClient({ geminiKey.value }, ToolRunner(DeviceActions(app)))
+    private val voice: VoiceOutput = VoiceOutput(app) { elevenKey.value to voiceId.value }
+    private val ears: SpeechInput = SpeechInput(app)
     private var job: Job? = null
     private var failStreak = 0
 
