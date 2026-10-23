@@ -13,14 +13,13 @@ class SpeechInput(private val ctx: Context) {
     private var recognizer: SpeechRecognizer? = null
 
     fun listen(
-        onPartial: (String) -> Unit,
         onLevel: (Float) -> Unit,
         onFinal: (String) -> Unit,
         onError: (String) -> Unit
     ) {
         cancel()
         if (!SpeechRecognizer.isRecognitionAvailable(ctx)) {
-            onError("Speech recognition is not available on this phone.")
+            onError("Speech recognition is not available. Install or enable the Google app and try again.")
             return
         }
         val r = SpeechRecognizer.createSpeechRecognizer(ctx)
@@ -37,10 +36,12 @@ class SpeechInput(private val ctx: Context) {
                 onError(
                     when (error) {
                         SpeechRecognizer.ERROR_NO_MATCH,
-                        SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "I didn't catch that. Tap the mic and try again."
+                        SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "I didn't catch that. Tap and try again."
                         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission is missing."
                         SpeechRecognizer.ERROR_NETWORK,
                         SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network problem while listening."
+                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Speech service is busy. Try again in a moment."
+                        12, 13 -> "Bengali speech is not available. In the Google app open Settings > Voice > Languages and add Bengali."
                         else -> "Listening failed (code $error)."
                     }
                 )
@@ -49,16 +50,12 @@ class SpeechInput(private val ctx: Context) {
                 val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
                 onFinal(text)
             }
-            override fun onPartialResults(partialResults: Bundle?) {
-                partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                    ?.firstOrNull()?.let(onPartial)
-            }
+            override fun onPartialResults(partialResults: Bundle?) {}
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "bn-BD")
-            .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         r.startListening(intent)
     }

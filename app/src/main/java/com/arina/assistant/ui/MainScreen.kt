@@ -37,6 +37,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.GraphicEq
@@ -94,7 +95,7 @@ private fun Modifier.glass(shape: Shape = RoundedCornerShape(18.dp), strong: Boo
             shape
         )
 
-private fun statusLabel(s: Status) = when (s) {
+internal fun statusLabel(s: Status) = when (s) {
     Status.Idle -> "Ready"
     Status.Listening -> "Listening…"
     Status.Thinking -> "Thinking…"
@@ -103,9 +104,11 @@ private fun statusLabel(s: Status) = when (s) {
 
 @Composable
 fun MainScreen(
-    vm: ArinaViewModel,
+    vm: ArinaEngine,
     onMicClick: () -> Unit,
+    onPower: () -> Unit,
     onGrantPhone: () -> Unit,
+    onGrantOverlay: () -> Unit,
     onOpenAccessibility: () -> Unit
 ) {
     var tab by rememberSaveable { mutableStateOf(Tab.Voice) }
@@ -120,9 +123,9 @@ fun MainScreen(
             TopBar(vm.status.value, Modifier.statusBarsPadding())
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (tab) {
-                    Tab.Voice -> VoicePanel(vm, onMicClick, Modifier.align(Alignment.BottomCenter))
+                    Tab.Voice -> VoicePanel(vm, onMicClick, onPower, Modifier.fillMaxSize())
                     Tab.Chat -> ChatPanel(vm)
-                    Tab.Setup -> SetupPanel(vm, onGrantPhone, onOpenAccessibility)
+                    Tab.Setup -> SetupPanel(vm, onGrantPhone, onGrantOverlay, onOpenAccessibility)
                 }
             }
             BottomNav(tab) { tab = it }
@@ -181,41 +184,62 @@ private fun LogoMark(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun VoicePanel(vm: ArinaViewModel, onMicClick: () -> Unit, modifier: Modifier = Modifier) {
-    val lastReply = vm.messages.lastOrNull { !it.fromUser }?.text.orEmpty()
-    val shown = when {
-        vm.partial.value.isNotBlank() -> vm.partial.value
-        vm.notice.value != null -> vm.notice.value.orEmpty()
-        else -> lastReply
-    }
-    val shownColor = if (vm.partial.value.isNotBlank() || vm.notice.value != null) ArinaColors.Muted else ArinaColors.Text
+private fun VoicePanel(vm: ArinaEngine, onMicClick: () -> Unit, onPower: () -> Unit, modifier: Modifier = Modifier) {
+    val isError = vm.notice.value != null
+    val shown = vm.notice.value ?: vm.caption.value
 
-    Column(modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        if (shown.isNotBlank()) {
+    Box(modifier) {
+        PowerButton(vm.overlayOn.value, onPower, Modifier.align(Alignment.TopCenter).padding(top = 4.dp))
+        Column(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            if (shown.isNotBlank()) {
+                Text(
+                    shown,
+                    color = if (isError) Color(0xFFFFB84D) else ArinaColors.Text,
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .padding(horizontal = 20.dp)
+                        .glass()
+                        .heightIn(max = 130.dp)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                )
+            }
+            Waveform(vm.status.value, vm.level.floatValue, Modifier.padding(top = 10.dp).size(width = 220.dp, height = 34.dp))
+            MicButton(vm.status.value, vm.level.floatValue, onMicClick)
             Text(
-                shown,
-                color = shownColor,
-                fontSize = 15.sp,
-                lineHeight = 22.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .padding(horizontal = 20.dp)
-                    .glass()
-                    .heightIn(max = 130.dp)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                when (vm.status.value) {
+                    Status.Idle -> "Tap the mic and speak"
+                    Status.Listening -> "Listening… tap to send"
+                    Status.Thinking -> "Thinking… tap to cancel"
+                    Status.Speaking -> "Speaking… tap to stop"
+                },
+                color = ArinaColors.Muted, fontSize = 12.sp
             )
         }
-        Waveform(vm.status.value, vm.level.floatValue, Modifier.padding(top = 10.dp).width(220.dp).size(width = 220.dp, height = 34.dp))
-        MicButton(vm.status.value, vm.level.floatValue, onMicClick)
+    }
+}
+
+@Composable
+private fun PowerButton(on: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier.glass(RoundedCornerShape(50), strong = on).clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Filled.PowerSettingsNew, "Power",
+            tint = if (on) Color(0xFF3DDC97) else ArinaColors.Glow,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(Modifier.width(8.dp))
         Text(
-            when (vm.status.value) {
-                Status.Idle -> "Tap the mic and speak"
-                Status.Listening -> "Listening… tap to send"
-                Status.Thinking -> "Thinking… tap to cancel"
-                Status.Speaking -> "Speaking… tap to stop"
-            },
-            color = ArinaColors.Muted, fontSize = 12.sp
+            if (on) "Turn off floating Arina" else "Turn on Arina",
+            color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium
         )
     }
 }
@@ -299,7 +323,7 @@ private fun MicButton(status: Status, level: Float, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ChatPanel(vm: ArinaViewModel) {
+private fun ChatPanel(vm: ArinaEngine) {
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     LaunchedEffect(vm.messages.size) {
@@ -357,7 +381,7 @@ private fun ChatPanel(vm: ArinaViewModel) {
 }
 
 @Composable
-private fun SetupPanel(vm: ArinaViewModel, onGrantPhone: () -> Unit, onOpenAccessibility: () -> Unit) {
+private fun SetupPanel(vm: ArinaEngine, onGrantPhone: () -> Unit, onGrantOverlay: () -> Unit, onOpenAccessibility: () -> Unit) {
     Column(
         Modifier.fillMaxSize()
             .background(ArinaColors.Background.copy(alpha = 0.9f))
@@ -366,9 +390,10 @@ private fun SetupPanel(vm: ArinaViewModel, onGrantPhone: () -> Unit, onOpenAcces
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text("Setup", color = ArinaColors.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-        SetupRow("Gemini API key", if (vm.geminiKeySet) "Connected" else "Add GEMINI_API_KEY to local.properties", vm.geminiKeySet)
-        SetupRow("ElevenLabs voice", if (vm.elevenKeySet) "Connected" else "Add ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID (phone voice is used meanwhile)", vm.elevenKeySet)
+        SetupRow("Gemini API key", if (vm.geminiKeySet) "Connected" else "Add the GEMINI_API_KEY secret on GitHub and rebuild", vm.geminiKeySet)
+        SetupRow("ElevenLabs voice", if (vm.elevenKeySet) "Connected" else "Add ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID secrets (phone voice is used meanwhile)", vm.elevenKeySet)
         SetupRow("Microphone", if (vm.micGranted.value) "Allowed" else "Asked when you first tap the mic", vm.micGranted.value)
+        SetupRow("Floating avatar", if (vm.overlayGranted.value) "Allowed" else "Needed to show Arina over other apps", vm.overlayGranted.value, "Allow", onGrantOverlay)
         SetupRow("Calls, contacts & SMS", if (vm.phoneGranted.value) "Allowed" else "Needed for calling and messaging", vm.phoneGranted.value, "Allow", onGrantPhone)
         SetupRow("Device Control", if (vm.accessibilityOn.value) "Enabled" else "Needed for Back, Home, screenshots and tapping on screen", vm.accessibilityOn.value, "Enable", onOpenAccessibility)
     }
