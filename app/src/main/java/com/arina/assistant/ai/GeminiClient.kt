@@ -81,7 +81,7 @@ class GeminiClient(private val apiKeyProvider: () -> String, private val tools: 
             val text = "Gemini error ${resp.code} ($model): $msg"
             val keyProblem = msg.contains("API key", ignoreCase = true)
             // Wrong/retired model or per-model quota: try the next model. A bad key will not get better.
-            if (!keyProblem && (resp.code == 404 || resp.code == 429 ||
+            if (!keyProblem && (resp.code == 404 || resp.code == 429 || resp.code >= 500 ||
                     ((resp.code == 400 || resp.code == 403) && msg.contains("model", ignoreCase = true)))
             ) throw ModelUnavailable(text)
             throw IOException(text)
@@ -89,16 +89,20 @@ class GeminiClient(private val apiKeyProvider: () -> String, private val tools: 
     }
 
     private fun callApi(): JSONObject {
-        val candidates = activeModel?.let { listOf(it) } ?: MODELS
         var last: IOException? = null
-        for (m in candidates) {
-            try {
-                val r = callModel(m)
-                activeModel = m
-                return r
-            } catch (e: ModelUnavailable) {
-                last = e
+        // Overloaded or retired model: move on to the next one. If every model is busy, wait a moment and go round once more.
+        for (round in 0..1) {
+            val order = listOfNotNull(activeModel) + MODELS.filter { it != activeModel }
+            for (m in order) {
+                try {
+                    val r = callModel(m)
+                    activeModel = m
+                    return r
+                } catch (e: ModelUnavailable) {
+                    last = e
+                }
             }
+            if (round == 0) Thread.sleep(1500)
         }
         activeModel = null
         throw last ?: IOException("No Gemini model is available for this API key.")
