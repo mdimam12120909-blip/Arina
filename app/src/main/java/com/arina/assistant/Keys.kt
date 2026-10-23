@@ -9,8 +9,18 @@ import android.content.Context
 object Keys {
     private fun prefs(c: Context) = c.getSharedPreferences("arina_keys", Context.MODE_PRIVATE)
 
-    private fun pick(c: Context, name: String, fallback: String): String =
-        prefs(c).getString(name, null)?.trim()?.takeIf { it.isNotEmpty() } ?: fallback
+    /**
+     * A key typed in the Setup tab wins over the build key, except right after a rebuild whose
+     * key changed: then the new build key replaces the old saved one (so updating a GitHub secret works).
+     */
+    private fun pick(c: Context, name: String, fallback: String): String {
+        val p = prefs(c)
+        if (fallback.isNotBlank() && p.getString("build_$name", null) != fallback) {
+            p.edit().putString("build_$name", fallback).remove(name).apply()
+            return fallback
+        }
+        return p.getString(name, null)?.trim()?.takeIf { it.isNotEmpty() } ?: fallback
+    }
 
     fun gemini(c: Context) = pick(c, "gemini", BuildConfig.GEMINI_API_KEY)
     fun eleven(c: Context) = pick(c, "eleven", BuildConfig.ELEVENLABS_API_KEY)
