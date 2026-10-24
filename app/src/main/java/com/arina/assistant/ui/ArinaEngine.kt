@@ -34,7 +34,7 @@ data class ChatMessage(val fromUser: Boolean, val text: String)
 
 /**
  * Arina's brain, shared by the app screen and the floating avatar (one instance per process).
- * Ears (Android Bengali recognizer) -> Gemini -> phone tools -> voice (ElevenLabs).
+ * Ears (Android Bengali recognizer) -> Gemini -> phone tools -> voice (Cartesia).
  *
  * The mic is a switch: the user turns it on and it stays on, listening again after every
  * answer, until the user turns it off.
@@ -65,10 +65,10 @@ class ArinaEngine private constructor(private val app: Application) {
 
     // Keys (editable in the Setup tab)
     val geminiKey: MutableState<String> = mutableStateOf(Keys.gemini(app))
-    val elevenKey: MutableState<String> = mutableStateOf(Keys.eleven(app))
+    val cartesiaKey: MutableState<String> = mutableStateOf(Keys.cartesia(app))
     val voiceId: MutableState<String> = mutableStateOf(Keys.voiceId(app))
     val geminiKeySet: Boolean get() = geminiKey.value.isNotBlank()
-    val elevenKeySet: Boolean get() = elevenKey.value.isNotBlank() && voiceId.value.isNotBlank()
+    val cartesiaKeySet: Boolean get() = cartesiaKey.value.isNotBlank() && voiceId.value.isNotBlank()
 
     // Permissions
     val micGranted = mutableStateOf(false)
@@ -77,7 +77,7 @@ class ArinaEngine private constructor(private val app: Application) {
     val accessibilityOn = mutableStateOf(false)
 
     private val gemini: GeminiClient = GeminiClient({ geminiKey.value }, ToolRunner(DeviceActions(app)))
-    private val voice: VoiceOutput = VoiceOutput(app) { elevenKey.value to voiceId.value }
+    private val voice: VoiceOutput = VoiceOutput(app) { cartesiaKey.value to voiceId.value }
     private val ears: SpeechInput = SpeechInput(app)
     private var job: Job? = null
     private var failStreak = 0
@@ -95,15 +95,15 @@ class ArinaEngine private constructor(private val app: Application) {
         Build.VERSION.SDK_INT < 33 ||
             app.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
-    fun saveKeys(gemini: String, eleven: String, voice: String) {
-        Keys.save(app, gemini, eleven, voice)
+    fun saveKeys(gemini: String, cartesia: String, voice: String) {
+        Keys.save(app, gemini, cartesia, voice)
         geminiKey.value = Keys.gemini(app)
-        elevenKey.value = Keys.eleven(app)
+        cartesiaKey.value = Keys.cartesia(app)
         voiceId.value = Keys.voiceId(app)
         notice.value = "Saved."
     }
 
-    /** Speaks a short test line so the ElevenLabs key and voice can be checked. */
+    /** Speaks a short test line so the Cartesia key and voice can be checked. */
     fun testVoice() {
         if (status.value != Status.Idle) return
         notice.value = null

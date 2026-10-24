@@ -27,8 +27,8 @@ jobs:
         run: |
           {
             echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}"
-            echo "ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }}"
-            echo "ELEVENLABS_VOICE_ID=${{ secrets.ELEVENLABS_VOICE_ID }}"
+            echo "CARTESIA_API_KEY=${{ secrets.CARTESIA_API_KEY }}"
+            echo "CARTESIA_VOICE_ID=${{ secrets.CARTESIA_VOICE_ID }}"
           } > local.properties
 
       - name: Build debug APK

@@ -23,8 +23,8 @@ android {
         versionName = "0.2"
 
         buildConfigField("String", "GEMINI_API_KEY", "\"${localProps.getProperty("GEMINI_API_KEY", "").trim()}\"")
-        buildConfigField("String", "ELEVENLABS_API_KEY", "\"${localProps.getProperty("ELEVENLABS_API_KEY", "").trim()}\"")
-        buildConfigField("String", "ELEVENLABS_VOICE_ID", "\"${localProps.getProperty("ELEVENLABS_VOICE_ID", "").trim()}\"")
+        buildConfigField("String", "CARTESIA_API_KEY", "\"${localProps.getProperty("CARTESIA_API_KEY", "").trim()}\"")
+        buildConfigField("String", "CARTESIA_VOICE_ID", "\"${localProps.getProperty("CARTESIA_VOICE_ID", "").trim()}\"")
     }
 
     buildTypes {

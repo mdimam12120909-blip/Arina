@@ -386,7 +386,7 @@ private fun ChatPanel(vm: ArinaEngine) {
 @Composable
 private fun SetupPanel(vm: ArinaEngine, onGrantPhone: () -> Unit, onGrantOverlay: () -> Unit, onOpenAccessibility: () -> Unit) {
     var gemini by remember { mutableStateOf(vm.geminiKey.value) }
-    var eleven by remember { mutableStateOf(vm.elevenKey.value) }
+    var cartesia by remember { mutableStateOf(vm.cartesiaKey.value) }
     var voice by remember { mutableStateOf(vm.voiceId.value) }
 
     Column(
@@ -401,12 +401,12 @@ private fun SetupPanel(vm: ArinaEngine, onGrantPhone: () -> Unit, onGrantOverlay
         Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("API keys (stored only on this phone)", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
             KeyField("Gemini API key", gemini, true) { gemini = it }
-            KeyField("ElevenLabs API key", eleven, true) { eleven = it }
-            KeyField("ElevenLabs Voice ID", voice, false) { voice = it }
+            KeyField("Cartesia API key", cartesia, true) { cartesia = it }
+            KeyField("Cartesia Voice ID", voice, false) { voice = it }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PillButton("Save") { vm.saveKeys(gemini, eleven, voice) }
+                PillButton("Save") { vm.saveKeys(gemini, cartesia, voice) }
                 PillButton("Test voice") {
-                    vm.saveKeys(gemini, eleven, voice)
+                    vm.saveKeys(gemini, cartesia, voice)
                     vm.testVoice()
                 }
             }
@@ -416,7 +416,7 @@ private fun SetupPanel(vm: ArinaEngine, onGrantPhone: () -> Unit, onGrantOverlay
         }
 
         SetupRow("Gemini API key", if (vm.geminiKeySet) "Set" else "Paste it above and tap Save", vm.geminiKeySet)
-        SetupRow("ElevenLabs voice", if (vm.elevenKeySet) "Set" else "Paste the API key and Voice ID above and tap Save", vm.elevenKeySet)
+        SetupRow("Cartesia voice", if (vm.cartesiaKeySet) "Set" else "Paste the API key and Voice ID above and tap Save", vm.cartesiaKeySet)
         SetupRow("Microphone", if (vm.micGranted.value) "Allowed" else "Asked when you first turn the mic on", vm.micGranted.value)
         SetupRow("Floating avatar", if (vm.overlayGranted.value) "Allowed" else "Needed to show Arina over other apps", vm.overlayGranted.value, "Allow", onGrantOverlay)
         SetupRow("Calls, contacts & SMS", if (vm.phoneGranted.value) "Allowed" else "Needed for calling and messaging", vm.phoneGranted.value, "Allow", onGrantPhone)

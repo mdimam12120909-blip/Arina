@@ -23,14 +23,14 @@ object Keys {
     }
 
     fun gemini(c: Context) = pick(c, "gemini", BuildConfig.GEMINI_API_KEY)
-    fun eleven(c: Context) = pick(c, "eleven", BuildConfig.ELEVENLABS_API_KEY)
-    fun voiceId(c: Context) = pick(c, "voice", BuildConfig.ELEVENLABS_VOICE_ID)
+    fun cartesia(c: Context) = pick(c, "cartesia", BuildConfig.CARTESIA_API_KEY)
+    fun voiceId(c: Context) = pick(c, "cartesia_voice", BuildConfig.CARTESIA_VOICE_ID)
 
-    fun save(c: Context, gemini: String, eleven: String, voiceId: String) {
+    fun save(c: Context, gemini: String, cartesia: String, voiceId: String) {
         prefs(c).edit()
             .putString("gemini", gemini.trim())
-            .putString("eleven", eleven.trim())
-            .putString("voice", voiceId.trim())
+            .putString("cartesia", cartesia.trim())
+            .putString("cartesia_voice", voiceId.trim())
             .apply()
     }
 }

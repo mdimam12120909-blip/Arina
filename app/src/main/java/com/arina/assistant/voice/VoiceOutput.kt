@@ -17,13 +17,20 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 
 /**
- * Arina's voice: ElevenLabs only. There is deliberately no phone-voice fallback.
- * If ElevenLabs fails, [speak] throws an IOException whose message is shown on screen.
+ * Arina's voice: Cartesia only (model sonic-3.6, which supports Bengali). There is deliberately
+ * no phone-voice fallback. If Cartesia fails, [speak] throws an IOException whose message is shown on screen.
  */
 class VoiceOutput(
     private val ctx: Context,
     private val credentials: () -> Pair<String, String> // API key, Voice ID
 ) {
+    private companion object {
+        const val URL = "https://api.cartesia.ai/tts/bytes"
+        const val API_VERSION = "2026-08-14"
+        const val MODEL = "sonic-3.6"
+        const val LANGUAGE = "bn"
+    }
+
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
@@ -34,58 +41,53 @@ class VoiceOutput(
     suspend fun speak(text: String) {
         val (key, voiceId) = credentials()
         if (key.isBlank() || voiceId.isBlank()) {
-            throw IOException("ElevenLabs API key or Voice ID is missing. Paste them in the Setup tab and tap Save.")
+            throw IOException("Cartesia API key or Voice ID is missing. Paste them in the Setup tab and tap Save.")
         }
         val file = withContext(Dispatchers.IO) { fetch(text, key.trim(), voiceId.trim()) }
         playFile(file)
     }
 
     private fun fetch(text: String, key: String, voiceId: String): File {
-        var firstError: String? = null
-        // eleven_v3 supports Bengali. multilingual_v2 is only a backup if v3 is not available on the account.
-        for (model in listOf("eleven_v3", "eleven_multilingual_v2")) {
-            val body = JSONObject().put("text", text).put("model_id", model).toString()
-                .toRequestBody("application/json".toMediaType())
-            val request = Request.Builder()
-                .url("https://api.elevenlabs.io/v1/text-to-speech/$voiceId?output_format=mp3_44100_64")
-                .header("xi-api-key", key)
-                .header("Accept", "audio/mpeg")
-                .post(body)
-                .build()
-            val response = try {
-                http.newCall(request).execute()
-            } catch (e: IOException) {
-                throw IOException("ElevenLabs request failed: ${e.message ?: "no internet?"}")
-            }
-            response.use { resp ->
-                if (resp.isSuccessful) {
-                    val bytes = resp.body?.bytes()
-                    if (bytes != null && bytes.isNotEmpty()) {
-                        val f = File(ctx.cacheDir, "arina_voice.mp3")
-                        f.writeBytes(bytes)
-                        return f
-                    }
-                    if (firstError == null) firstError = "ElevenLabs returned empty audio."
-                } else {
-                    val raw = resp.body?.string().orEmpty()
-                    val detail = runCatching { JSONObject(raw).getJSONObject("detail").getString("message") }
-                        .getOrElse { raw.take(160) }
-                    var msg = "ElevenLabs error ${resp.code}: $detail"
-                    if (resp.code == 402 || detail.contains("library", ignoreCase = true) ||
-                        detail.contains("paid", ignoreCase = true)
-                    ) {
-                        msg += " (Free plans cannot use Voice Library voices through the API. Use a voice from My Voices.)"
-                    }
-                    if (firstError == null) firstError = msg
-                    // A wrong key, no credits or a wrong voice will not be fixed by another model.
-                    if (resp.code == 401 || resp.code == 402 || resp.code == 429 ||
-                        detail.contains("voice", ignoreCase = true)
-                    ) throw IOException(msg)
-                }
-                Unit
-            }
+        val body = JSONObject()
+            .put("model_id", MODEL)
+            .put("transcript", text)
+            .put("voice", JSONObject().put("id", voiceId))
+            .put("language", LANGUAGE)
+            .put(
+                "output_format",
+                JSONObject().put("container", "mp3").put("sample_rate", 44100).put("bit_rate", 128000)
+            )
+            .toString()
+            .toRequestBody("application/json".toMediaType())
+
+        val request = Request.Builder()
+            .url(URL)
+            .header("Authorization", "Bearer $key")
+            .header("Cartesia-Version", API_VERSION)
+            .post(body)
+            .build()
+
+        val response = try {
+            http.newCall(request).execute()
+        } catch (e: IOException) {
+            throw IOException("Cartesia request failed: ${e.message ?: "no internet?"}")
         }
-        throw IOException(firstError ?: "ElevenLabs returned no audio.")
+        response.use { resp ->
+            if (resp.isSuccessful) {
+                val bytes = resp.body?.bytes()
+                if (bytes == null || bytes.isEmpty()) throw IOException("Cartesia returned empty audio.")
+                val f = File(ctx.cacheDir, "arina_voice.mp3")
+                f.writeBytes(bytes)
+                return f
+            }
+            // The exact error JSON shape is not documented, so show what the server actually said.
+            val raw = resp.body?.string().orEmpty()
+            val detail = runCatching {
+                val j = JSONObject(raw)
+                j.optString("message").ifBlank { j.optString("error") }.ifBlank { raw }
+            }.getOrElse { raw }.take(220)
+            throw IOException("Cartesia error ${resp.code}: $detail")
+        }
     }
 
     private suspend fun playFile(file: File) = suspendCancellableCoroutine<Unit> { cont ->
