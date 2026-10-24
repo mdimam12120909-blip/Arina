@@ -41,7 +41,9 @@ import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.GraphicEq
+import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -79,6 +81,7 @@ import kotlin.math.sin
 private enum class Tab(val label: String, val icon: ImageVector) {
     Voice("Voice", Icons.Outlined.GraphicEq),
     Chat("Chat", Icons.Outlined.ChatBubbleOutline),
+    Memory("Memory", Icons.Outlined.Psychology),
     Setup("Setup", Icons.Outlined.Settings)
 }
 
@@ -127,6 +130,7 @@ fun MainScreen(
                 when (tab) {
                     Tab.Voice -> VoicePanel(vm, onMicClick, onPower, Modifier.fillMaxSize())
                     Tab.Chat -> ChatPanel(vm)
+                    Tab.Memory -> MemoryPanel(vm)
                     Tab.Setup -> SetupPanel(vm, onGrantPhone, onGrantOverlay, onOpenAccessibility)
                 }
             }
@@ -210,6 +214,9 @@ private fun VoicePanel(vm: ArinaEngine, onMicClick: () -> Unit, onPower: () -> U
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                 )
+            }
+            if (vm.researchActive.value) {
+                Text("Researching in the background…", color = ArinaColors.Glow, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
             }
             Waveform(vm.status.value, vm.level.floatValue, Modifier.padding(top = 10.dp).size(width = 220.dp, height = 34.dp))
             MicButton(vm.status.value, vm.micOn.value, vm.level.floatValue, onMicClick)
@@ -384,10 +391,91 @@ private fun ChatPanel(vm: ArinaEngine) {
 }
 
 @Composable
+private fun MemoryPanel(vm: ArinaEngine) {
+    var profile by remember { mutableStateOf(vm.profile.value) }
+    var newFact by remember { mutableStateOf("") }
+
+    Column(
+        Modifier.fillMaxSize()
+            .background(ArinaColors.Background.copy(alpha = 0.9f))
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text("Memory", color = ArinaColors.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+        Text(
+            "Everything here stays on this phone. Arina reads it before every answer.",
+            color = ArinaColors.Muted, fontSize = 12.sp
+        )
+
+        Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Profile", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            OutlinedTextField(
+                value = profile,
+                onValueChange = { profile = it },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp),
+                placeholder = { Text("Paste who you are, your projects, goals and how Arina should treat you", color = ArinaColors.Muted, fontSize = 13.sp) },
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = ArinaColors.Text,
+                    unfocusedTextColor = ArinaColors.Text,
+                    focusedBorderColor = ArinaColors.Glow,
+                    unfocusedBorderColor = ArinaColors.Deep,
+                    cursorColor = ArinaColors.Glow
+                )
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                PillButton("Save profile") { vm.saveProfile(profile) }
+                Text("${profile.length} / 6000", color = ArinaColors.Muted, fontSize = 12.sp)
+            }
+            vm.notice.value?.let { Text(it, color = Color(0xFFFFB84D), fontSize = 12.sp) }
+        }
+
+        Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Things Arina remembers (${vm.facts.size})", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            if (vm.facts.isEmpty()) {
+                Text("Nothing yet. Tell Arina to remember something, or add it below.", color = ArinaColors.Muted, fontSize = 12.sp)
+            }
+            vm.facts.reversed().forEach { f ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(f.text, color = ArinaColors.Text, fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.weight(1f))
+                    IconButton(onClick = { vm.deleteFact(f.id) }) {
+                        Icon(Icons.Outlined.Close, "Delete", tint = ArinaColors.Muted)
+                    }
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = newFact,
+                    onValueChange = { newFact = it },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Add a fact", color = ArinaColors.Muted, fontSize = 13.sp) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(24.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = ArinaColors.Text,
+                        unfocusedTextColor = ArinaColors.Text,
+                        focusedBorderColor = ArinaColors.Glow,
+                        unfocusedBorderColor = ArinaColors.Deep,
+                        cursorColor = ArinaColors.Glow
+                    )
+                )
+                Spacer(Modifier.width(8.dp))
+                PillButton("Add") {
+                    vm.addFact(newFact)
+                    newFact = ""
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun SetupPanel(vm: ArinaEngine, onGrantPhone: () -> Unit, onGrantOverlay: () -> Unit, onOpenAccessibility: () -> Unit) {
     var gemini by remember { mutableStateOf(vm.geminiKey.value) }
     var cartesia by remember { mutableStateOf(vm.cartesiaKey.value) }
     var voice by remember { mutableStateOf(vm.voiceId.value) }
+    var tavily by remember { mutableStateOf(vm.tavilyKey.value) }
 
     Column(
         Modifier.fillMaxSize()
@@ -403,10 +491,11 @@ private fun SetupPanel(vm: ArinaEngine, onGrantPhone: () -> Unit, onGrantOverlay
             KeyField("Gemini API key", gemini, true) { gemini = it }
             KeyField("Cartesia API key", cartesia, true) { cartesia = it }
             KeyField("Cartesia Voice ID", voice, false) { voice = it }
+            KeyField("Tavily search key (free, for web research)", tavily, true) { tavily = it }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PillButton("Save") { vm.saveKeys(gemini, cartesia, voice) }
+                PillButton("Save") { vm.saveKeys(gemini, cartesia, voice, tavily) }
                 PillButton("Test voice") {
-                    vm.saveKeys(gemini, cartesia, voice)
+                    vm.saveKeys(gemini, cartesia, voice, tavily)
                     vm.testVoice()
                 }
             }
@@ -417,6 +506,7 @@ private fun SetupPanel(vm: ArinaEngine, onGrantPhone: () -> Unit, onGrantOverlay
 
         SetupRow("Gemini API key", if (vm.geminiKeySet) "Set" else "Paste it above and tap Save", vm.geminiKeySet)
         SetupRow("Cartesia voice", if (vm.cartesiaKeySet) "Set" else "Paste the API key and Voice ID above and tap Save", vm.cartesiaKeySet)
+        SetupRow("Web research", if (vm.tavilyKeySet) "Set" else "Paste a free Tavily key above and tap Save", vm.tavilyKeySet)
         SetupRow("Microphone", if (vm.micGranted.value) "Allowed" else "Asked when you first turn the mic on", vm.micGranted.value)
         SetupRow("Floating avatar", if (vm.overlayGranted.value) "Allowed" else "Needed to show Arina over other apps", vm.overlayGranted.value, "Allow", onGrantOverlay)
         SetupRow("Calls, contacts & SMS", if (vm.phoneGranted.value) "Allowed" else "Needed for calling and messaging", vm.phoneGranted.value, "Allow", onGrantPhone)

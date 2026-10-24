@@ -22,7 +22,11 @@ private class ModelUnavailable(message: String) : IOException(message)
  * Talks to the Gemini API. Blocking calls: run on Dispatchers.IO.
  * Gemini decides which phone tool to call; we run it and feed the result back.
  */
-class GeminiClient(private val apiKeyProvider: () -> String, private val tools: ToolRunner) {
+class GeminiClient(
+    private val apiKeyProvider: () -> String,
+    private val tools: ToolRunner,
+    private val memoryBlock: () -> String
+) {
 
     companion object {
         // Tried in this order until one works for the user's key. Google retires models often.
@@ -37,6 +41,17 @@ class GeminiClient(private val apiKeyProvider: () -> String, private val tools: 
         private const val TOTAL_MILLIS = 45_000L
         private const val MAX_HISTORY = 30
 
+        private val SUMMARY_PROMPT = """
+            You are Arina, a warm female voice assistant. The user asked a question and a web search was done for it.
+            Using ONLY the search material provided, write the answer to be spoken aloud: 2 to 4 short natural Bengali sentences with the key facts and numbers.
+            If sources disagree or the material is thin, say so briefly. Never invent facts.
+
+            FINAL ANSWER FORMAT (always exactly these three lines, nothing else, no markdown, no emojis):
+            YOU: <very short English paraphrase of the question>
+            BN: <the answer in natural spoken Bengali, Bangla script>
+            EN: <short English version of the answer, it is the only text shown on screen>
+        """.trimIndent()
+
         private val SYSTEM_PROMPT = """
             You are Arina, a warm, friendly female AI voice assistant living on the user's Android phone.
             The user is Habib Hossan Shahadat; call him Habib.
@@ -47,6 +62,9 @@ class GeminiClient(private val apiKeyProvider: () -> String, private val tools: 
             Only say an action worked if the tool result starts with OK. If it starts with ERROR, explain simply what went wrong.
             If no tool is needed, just answer helpfully.
             Be quick and natural, like a person in conversation: keep BN to about 12 words unless the user asks for detail.
+            For anything that needs fresh or researched facts (news, prices, scores, "latest", comparisons, things you are unsure about) call research instead of guessing.
+            research runs in the background and the answer is announced later. After calling it, tell him in one short Bengali sentence that you are looking it up and he can do other things meanwhile. Do not wait for it and do not make up the answer.
+            Use web_search only when he wants to see the results in the browser himself.
 
             FINAL ANSWER FORMAT (always exactly these three lines, nothing else, no markdown, no emojis):
             YOU: <very short English paraphrase of what the user asked>
@@ -69,26 +87,26 @@ class GeminiClient(private val apiKeyProvider: () -> String, private val tools: 
 
     private class BadThinkingConfig : IOException("thinking config rejected")
 
-    private fun callModel(model: String): JSONObject {
-        if (model in noThinkingConfig) return send(model, withThinking = false)
+    private fun callModel(model: String, system: String, contents: JSONArray, withTools: Boolean): JSONObject {
+        if (model in noThinkingConfig) return send(model, false, system, contents, withTools)
         return try {
-            send(model, withThinking = true)
+            send(model, true, system, contents, withTools)
         } catch (e: BadThinkingConfig) {
             noThinkingConfig += model
-            send(model, withThinking = false)
+            send(model, false, system, contents, withTools)
         }
     }
 
-    private fun send(model: String, withThinking: Boolean): JSONObject {
+    private fun send(model: String, withThinking: Boolean, system: String, contents: JSONArray, withTools: Boolean): JSONObject {
         val generation = JSONObject().put("temperature", 0.7)
         // Lower thinking = faster answers. "low" is the lowest level documented for every current Flash model.
         if (withThinking) generation.put("thinkingConfig", JSONObject().put("thinkingLevel", "low"))
 
         val body = JSONObject()
-            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", SYSTEM_PROMPT))))
-            .put("contents", JSONArray(history))
-            .put("tools", JSONArray().put(JSONObject().put("functionDeclarations", tools.declarations())))
+            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
+            .put("contents", contents)
             .put("generationConfig", generation)
+        if (withTools) body.put("tools", JSONArray().put(JSONObject().put("functionDeclarations", tools.declarations())))
 
         val request = Request.Builder()
             .url("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
@@ -118,14 +136,14 @@ class GeminiClient(private val apiKeyProvider: () -> String, private val tools: 
         throw IOException(text)
     }
 
-    private fun callApi(): JSONObject {
+    private fun callApi(system: String, contents: JSONArray, withTools: Boolean): JSONObject {
         var last: IOException? = null
         val deadline = System.currentTimeMillis() + TOTAL_MILLIS
         val order = listOfNotNull(activeModel) + MODELS.filter { it != activeModel }
         for (m in order) {
             if (System.currentTimeMillis() > deadline) break
             try {
-                val r = callModel(m)
+                val r = callModel(m, system, contents, withTools)
                 activeModel = m
                 return r
             } catch (e: ModelUnavailable) {
@@ -159,6 +177,7 @@ class GeminiClient(private val apiKeyProvider: () -> String, private val tools: 
         else Reply("", text, "Done.")
     }
 
+    @Synchronized
     fun chat(userText: String): Reply {
         if (apiKeyProvider().isBlank()) {
             throw IOException("Gemini API key is missing. Paste it in the Setup tab and tap Save.")
@@ -167,7 +186,7 @@ class GeminiClient(private val apiKeyProvider: () -> String, private val tools: 
             .put("parts", JSONArray().put(JSONObject().put("text", userText)))
 
         repeat(6) {
-            val resp = callApi()
+            val resp = callApi(SYSTEM_PROMPT + memoryBlock(), JSONArray(history), withTools = true)
             val content = resp.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")
                 ?: throw IOException("Gemini returned an empty answer. Try rephrasing.")
             val parts = content.optJSONArray("parts") ?: JSONArray()
@@ -199,5 +218,36 @@ class GeminiClient(private val apiKeyProvider: () -> String, private val tools: 
         }
         trimHistory()
         throw IOException("I could not finish that task. Please try again.")
+    }
+
+    /** Turns raw web-search material into a spoken Bengali answer. No tools, own conversation. */
+    fun summarize(question: String, material: String): Reply {
+        if (apiKeyProvider().isBlank()) throw IOException("Gemini API key is missing.")
+        val contents = JSONArray().put(
+            JSONObject().put("role", "user").put(
+                "parts",
+                JSONArray().put(JSONObject().put("text", "QUESTION: $question\n\nSEARCH MATERIAL:\n$material"))
+            )
+        )
+        val resp = callApi(SUMMARY_PROMPT + memoryBlock(), contents, withTools = false)
+        val parts = resp.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
+            ?: throw IOException("Gemini returned an empty answer for the research.")
+        val text = (0 until parts.length()).map { parts.getJSONObject(it) }
+            .filter { !it.optBoolean("thought") }
+            .joinToString("\n") { it.optString("text") }
+            .trim()
+        return parse(text)
+    }
+
+    /** Lets the normal conversation know a background research finished, so follow-up questions work. */
+    @Synchronized
+    fun noteResearch(question: String, reply: Reply) {
+        history += JSONObject().put("role", "user").put(
+            "parts", JSONArray().put(JSONObject().put("text", "[Background research finished for: $question]"))
+        )
+        history += JSONObject().put("role", "model").put(
+            "parts", JSONArray().put(JSONObject().put("text", "YOU: ${reply.you}\nBN: ${reply.bn}\nEN: ${reply.en}"))
+        )
+        trimHistory()
     }
 }

@@ -19,11 +19,12 @@ android {
         applicationId = "com.arina.assistant"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.2"
+        versionCode = 3
+        versionName = "0.3"
 
         buildConfigField("String", "GEMINI_API_KEY", "\"${localProps.getProperty("GEMINI_API_KEY", "").trim()}\"")
         buildConfigField("String", "CARTESIA_API_KEY", "\"${localProps.getProperty("CARTESIA_API_KEY", "").trim()}\"")
+        buildConfigField("String", "TAVILY_API_KEY", "\"${localProps.getProperty("TAVILY_API_KEY", "").trim()}\"")
         buildConfigField("String", "CARTESIA_VOICE_ID", "\"${localProps.getProperty("CARTESIA_VOICE_ID", "").trim()}\"")
     }
 

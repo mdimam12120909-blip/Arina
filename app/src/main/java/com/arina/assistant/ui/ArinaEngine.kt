@@ -12,9 +12,13 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import com.arina.assistant.Keys
 import com.arina.assistant.ai.GeminiClient
+import com.arina.assistant.ai.Memory
+import com.arina.assistant.ai.Reply
+import com.arina.assistant.ai.TavilySearch
 import com.arina.assistant.ai.ToolRunner
 import com.arina.assistant.device.ArinaAccessibilityService
 import com.arina.assistant.device.DeviceActions
+import com.arina.assistant.voice.SoundLoop
 import com.arina.assistant.voice.SpeechInput
 import com.arina.assistant.voice.SpeechProblem
 import com.arina.assistant.voice.VoiceOutput
@@ -67,6 +71,8 @@ class ArinaEngine private constructor(private val app: Application) {
     val geminiKey: MutableState<String> = mutableStateOf(Keys.gemini(app))
     val cartesiaKey: MutableState<String> = mutableStateOf(Keys.cartesia(app))
     val voiceId: MutableState<String> = mutableStateOf(Keys.voiceId(app))
+    val tavilyKey: MutableState<String> = mutableStateOf(Keys.tavily(app))
+    val tavilyKeySet: Boolean get() = tavilyKey.value.isNotBlank()
     val geminiKeySet: Boolean get() = geminiKey.value.isNotBlank()
     val cartesiaKeySet: Boolean get() = cartesiaKey.value.isNotBlank() && voiceId.value.isNotBlank()
 
@@ -76,7 +82,19 @@ class ArinaEngine private constructor(private val app: Application) {
     val overlayGranted = mutableStateOf(false)
     val accessibilityOn = mutableStateOf(false)
 
-    private val gemini: GeminiClient = GeminiClient({ geminiKey.value }, ToolRunner(DeviceActions(app)))
+    // Memory (stored only on this phone)
+    private val memory = Memory(app)
+    val profile: MutableState<String> = mutableStateOf(memory.profile())
+    val facts = mutableStateListOf<Memory.Fact>().also { it.addAll(memory.facts()) }
+    val researchActive = mutableStateOf(false)
+
+    private val gemini: GeminiClient = GeminiClient(
+        { geminiKey.value },
+        ToolRunner(DeviceActions(app), memory, { scope.launch { reloadFacts() } }, { q -> startResearch(q) }),
+        { memory.promptBlock() }
+    )
+    private val sound = SoundLoop()
+    private val researchJobs = mutableListOf<Job>()
     private val voice: VoiceOutput = VoiceOutput(app) { cartesiaKey.value to voiceId.value }
     private val ears: SpeechInput = SpeechInput(app)
     private var job: Job? = null
@@ -95,8 +113,30 @@ class ArinaEngine private constructor(private val app: Application) {
         Build.VERSION.SDK_INT < 33 ||
             app.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
-    fun saveKeys(gemini: String, cartesia: String, voice: String) {
-        Keys.save(app, gemini, cartesia, voice)
+    private fun reloadFacts() {
+        facts.clear()
+        facts.addAll(memory.facts())
+    }
+
+    fun saveProfile(text: String) {
+        memory.setProfile(text)
+        profile.value = memory.profile()
+        notice.value = "Profile saved on this phone."
+    }
+
+    fun addFact(text: String) {
+        memory.add(text)
+        reloadFacts()
+    }
+
+    fun deleteFact(id: Long) {
+        memory.remove(id)
+        reloadFacts()
+    }
+
+    fun saveKeys(gemini: String, cartesia: String, voice: String, tavily: String) {
+        Keys.save(app, gemini, cartesia, voice, tavily)
+        tavilyKey.value = Keys.tavily(app)
         geminiKey.value = Keys.gemini(app)
         cartesiaKey.value = Keys.cartesia(app)
         voiceId.value = Keys.voiceId(app)
@@ -147,7 +187,13 @@ class ArinaEngine private constructor(private val app: Application) {
     }
 
     /** Called when the floating avatar is closed. */
-    fun stopAll() = turnOff()
+    fun stopAll() {
+        turnOff()
+        researchJobs.toList().forEach { it.cancel() }
+        researchJobs.clear()
+        sound.stop()
+        researchActive.value = false
+    }
 
     private fun startListening() {
         if (!micOn.value) return
@@ -184,7 +230,9 @@ class ArinaEngine private constructor(private val app: Application) {
     private fun restartListening() {
         scope.launch {
             delay(300)
-            if (micOn.value && (job?.isActive != true)) startListening()
+            if (micOn.value && (job?.isActive != true) &&
+                status.value != Status.Speaking && status.value != Status.Thinking
+            ) startListening()
         }
     }
 
@@ -203,6 +251,77 @@ class ArinaEngine private constructor(private val app: Application) {
         caption.value = msg
         messages += ChatMessage(false, msg)
         status.value = Status.Idle
+    }
+
+    // ---- Background research ------------------------------------------------------------------
+
+    /**
+     * Called by Gemini's research tool. Returns at once; the work continues in the background while the
+     * mic stays usable. A soft hum plays meanwhile, and the answer is announced when it is ready.
+     */
+    private fun startResearch(question: String): String {
+        val q = question.trim()
+        if (q.isEmpty()) return "ERROR: no question given."
+        val key = tavilyKey.value
+        if (key.isBlank()) {
+            return "ERROR: the web search key is missing. Tell the user to paste a free Tavily key in the Setup tab."
+        }
+        scope.launch {
+            val me = coroutineContext[Job]!!
+            researchJobs += me
+            researchActive.value = true
+            val hum = launch {
+                while (true) {
+                    if (status.value == Status.Speaking) sound.stop() else sound.start()
+                    delay(250)
+                }
+            }
+            try {
+                val reply = withContext(Dispatchers.IO) {
+                    val material = TavilySearch.search(key, q)
+                    gemini.summarize(q, material)
+                }
+                hum.cancel()
+                sound.stop()
+                withContext(Dispatchers.IO) { gemini.noteResearch(q, reply) }
+                announce(reply)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                hum.cancel()
+                sound.stop()
+                notice.value = "Research failed: ${(e.message ?: e.javaClass.simpleName).take(200)}"
+                messages += ChatMessage(false, "I couldn't finish the research: ${(e.message ?: "unknown error").take(160)}")
+            } finally {
+                hum.cancel()
+                researchJobs.remove(me)
+                if (researchJobs.isEmpty()) {
+                    sound.stop()
+                    researchActive.value = false
+                }
+            }
+        }
+        return "OK: research started in the background; the answer will be announced automatically. Now tell the user briefly that you are looking it up and he can do other things."
+    }
+
+    /** Speaks a finished research result once nothing else is being said. */
+    private suspend fun announce(r: Reply) {
+        while (status.value == Status.Thinking || status.value == Status.Speaking) delay(400)
+        ears.cancel()
+        level.floatValue = 0f
+        messages += ChatMessage(false, r.en)
+        caption.value = r.en
+        status.value = Status.Speaking
+        try {
+            voice.speak(r.bn)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            notice.value = (e.message ?: "Voice failed.").take(260)
+        } finally {
+            status.value = Status.Idle
+            if (micOn.value) restartListening()
+        }
     }
 
     private fun handle(text: String, typed: Boolean) {
