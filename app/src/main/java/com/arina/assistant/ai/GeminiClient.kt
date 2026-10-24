@@ -7,6 +7,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.io.InterruptedIOException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -26,12 +27,14 @@ class GeminiClient(private val apiKeyProvider: () -> String, private val tools: 
     companion object {
         // Tried in this order until one works for the user's key. Google retires models often.
         private val MODELS = listOf(
-            "gemini-flash-latest",
-            "gemini-3.8-flash",
+            "gemini-3.5-flash-lite", // documented as thinking "minimal" by default: the fastest
             "gemini-3.6-flash",
-            "gemini-3.5-flash-lite",
+            "gemini-3.8-flash",
+            "gemini-flash-latest",
             "gemini-2.5-flash"
         )
+        private const val ATTEMPT_SECONDS = 15L
+        private const val TOTAL_MILLIS = 45_000L
         private const val MAX_HISTORY = 30
 
         private val SYSTEM_PROMPT = """
@@ -43,6 +46,7 @@ class GeminiClient(private val apiKeyProvider: () -> String, private val tools: 
             Before send_sms make sure you know both the recipient and the message text; if either is missing, ask.
             Only say an action worked if the tool result starts with OK. If it starts with ERROR, explain simply what went wrong.
             If no tool is needed, just answer helpfully.
+            Be quick and natural, like a person in conversation: keep BN to about 12 words unless the user asks for detail.
 
             FINAL ANSWER FORMAT (always exactly these three lines, nothing else, no markdown, no emojis):
             YOU: <very short English paraphrase of what the user asked>
@@ -52,19 +56,39 @@ class GeminiClient(private val apiKeyProvider: () -> String, private val tools: 
     }
 
     private val http = OkHttpClient.Builder()
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(ATTEMPT_SECONDS, TimeUnit.SECONDS)
+        .callTimeout(ATTEMPT_SECONDS, TimeUnit.SECONDS)
         .build()
 
     private val history = mutableListOf<JSONObject>()
     private var activeModel: String? = null
 
+    // Models that rejected the "low thinking" setting; they are called without it.
+    private val noThinkingConfig = mutableSetOf<String>()
+
+    private class BadThinkingConfig : IOException("thinking config rejected")
+
     private fun callModel(model: String): JSONObject {
+        if (model in noThinkingConfig) return send(model, withThinking = false)
+        return try {
+            send(model, withThinking = true)
+        } catch (e: BadThinkingConfig) {
+            noThinkingConfig += model
+            send(model, withThinking = false)
+        }
+    }
+
+    private fun send(model: String, withThinking: Boolean): JSONObject {
+        val generation = JSONObject().put("temperature", 0.7)
+        // Lower thinking = faster answers. "low" is the lowest level documented for every current Flash model.
+        if (withThinking) generation.put("thinkingConfig", JSONObject().put("thinkingLevel", "low"))
+
         val body = JSONObject()
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", SYSTEM_PROMPT))))
             .put("contents", JSONArray(history))
             .put("tools", JSONArray().put(JSONObject().put("functionDeclarations", tools.declarations())))
-            .put("generationConfig", JSONObject().put("temperature", 0.7))
+            .put("generationConfig", generation)
 
         val request = Request.Builder()
             .url("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
@@ -72,40 +96,44 @@ class GeminiClient(private val apiKeyProvider: () -> String, private val tools: 
             .post(body.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
-        http.newCall(request).execute().use { resp ->
-            val raw = resp.body?.string().orEmpty()
-            if (resp.isSuccessful) return JSONObject(raw)
-
-            val msg = runCatching { JSONObject(raw).getJSONObject("error").getString("message") }
-                .getOrDefault(raw).take(180)
-            val text = "Gemini error ${resp.code} ($model): $msg"
-            val keyProblem = msg.contains("API key", ignoreCase = true)
-            // Wrong/retired model or per-model quota: try the next model. A bad key will not get better.
-            if (!keyProblem && (resp.code == 404 || resp.code == 429 || resp.code >= 500 ||
-                    ((resp.code == 400 || resp.code == 403) && msg.contains("model", ignoreCase = true)))
-            ) throw ModelUnavailable(text)
-            throw IOException(text)
+        val (code, raw) = try {
+            http.newCall(request).execute().use { it.code to it.body?.string().orEmpty() }
+        } catch (e: InterruptedIOException) {
+            throw ModelUnavailable("Gemini ($model) was too slow and was skipped.")
+        } catch (e: IOException) {
+            throw IOException("Network problem reaching Gemini: ${e.message ?: "no internet?"}")
         }
+        if (code in 200..299) return JSONObject(raw)
+
+        val msg = runCatching { JSONObject(raw).getJSONObject("error").getString("message") }
+            .getOrDefault(raw).take(180)
+        if (withThinking && code == 400 && msg.contains("thinking", ignoreCase = true)) throw BadThinkingConfig()
+
+        val text = "Gemini error $code ($model): $msg"
+        val keyProblem = msg.contains("API key", ignoreCase = true)
+        // Wrong/retired model, overloaded or per-model quota: try the next model. A bad key will not get better.
+        if (!keyProblem && (code == 404 || code == 429 || code >= 500 ||
+                ((code == 400 || code == 403) && msg.contains("model", ignoreCase = true)))
+        ) throw ModelUnavailable(text)
+        throw IOException(text)
     }
 
     private fun callApi(): JSONObject {
         var last: IOException? = null
-        // Overloaded or retired model: move on to the next one. If every model is busy, wait a moment and go round once more.
-        for (round in 0..1) {
-            val order = listOfNotNull(activeModel) + MODELS.filter { it != activeModel }
-            for (m in order) {
-                try {
-                    val r = callModel(m)
-                    activeModel = m
-                    return r
-                } catch (e: ModelUnavailable) {
-                    last = e
-                }
+        val deadline = System.currentTimeMillis() + TOTAL_MILLIS
+        val order = listOfNotNull(activeModel) + MODELS.filter { it != activeModel }
+        for (m in order) {
+            if (System.currentTimeMillis() > deadline) break
+            try {
+                val r = callModel(m)
+                activeModel = m
+                return r
+            } catch (e: ModelUnavailable) {
+                last = e
             }
-            if (round == 0) Thread.sleep(1500)
         }
         activeModel = null
-        throw last ?: IOException("No Gemini model is available for this API key.")
+        throw last ?: IOException("No Gemini model answered in time.")
     }
 
     private fun trimHistory() {
