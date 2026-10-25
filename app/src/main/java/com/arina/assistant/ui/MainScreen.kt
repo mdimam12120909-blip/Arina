@@ -119,13 +119,17 @@ fun MainScreen(
     var tab by rememberSaveable { mutableStateOf(Tab.Voice) }
 
     Box(Modifier.fillMaxSize().background(ArinaColors.Background)) {
-        AvatarView(
-            status = vm.status.value,
-            level = vm.level.floatValue,
-            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.82f).align(Alignment.TopCenter)
-        )
+        // The 3D avatar shows here, unless the floating window is on (only one place can show it).
+        if (!vm.overlayOn.value) {
+            AvatarWebView(
+                engine = vm,
+                view = "upper",
+                modifier = Modifier.fillMaxWidth().fillMaxHeight(0.82f).align(Alignment.TopCenter)
+            )
+        }
         Column(Modifier.fillMaxSize().imePadding()) {
-            TopBar(vm.status.value, Modifier.statusBarsPadding())
+            TopBar(vm.status.value, vm.persona.value.displayName, Modifier.statusBarsPadding())
+            PersonaSwitch(vm.persona.value, vm::switchPersona)
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (tab) {
                     Tab.Voice -> VoicePanel(vm, onMicClick, onPower, Modifier.fillMaxSize())
@@ -140,7 +144,7 @@ fun MainScreen(
 }
 
 @Composable
-private fun TopBar(status: Status, modifier: Modifier = Modifier) {
+private fun TopBar(status: Status, name: String, modifier: Modifier = Modifier) {
     Row(
         modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -148,7 +152,7 @@ private fun TopBar(status: Status, modifier: Modifier = Modifier) {
         LogoMark(Modifier.size(38.dp))
         Spacer(Modifier.width(10.dp))
         Column {
-            Text("ARINA", color = ArinaColors.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = 5.sp)
+            Text(name.uppercase(), color = ArinaColors.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = 5.sp)
             Text("Your AI Companion", color = ArinaColors.Muted, fontSize = 11.sp)
         }
         Spacer(Modifier.weight(1f))
@@ -162,6 +166,31 @@ private fun TopBar(status: Status, modifier: Modifier = Modifier) {
             )
             Spacer(Modifier.width(8.dp))
             Text(statusLabel(status), color = ArinaColors.Text, fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+private fun PersonaSwitch(selected: Persona, onSelect: (Persona) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Row(Modifier.glass(RoundedCornerShape(50)).padding(4.dp)) {
+            Persona.entries.forEach { p ->
+                val on = p == selected
+                Text(
+                    p.displayName,
+                    color = if (on) ArinaColors.Background else ArinaColors.Text,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(if (on) ArinaColors.Glow else Color.Transparent)
+                        .clickable { onSelect(p) }
+                        .padding(horizontal = 22.dp, vertical = 7.dp)
+                )
+            }
         }
     }
 }
@@ -191,8 +220,9 @@ private fun LogoMark(modifier: Modifier = Modifier) {
 
 @Composable
 private fun VoicePanel(vm: ArinaEngine, onMicClick: () -> Unit, onPower: () -> Unit, modifier: Modifier = Modifier) {
-    val isError = vm.notice.value != null
-    val shown = vm.notice.value ?: vm.caption.value
+    val avatarProblem = vm.avatar.problem.value?.let { "Avatar: $it" }
+    val isError = vm.notice.value != null || avatarProblem != null
+    val shown = vm.notice.value ?: avatarProblem ?: vm.caption.value
 
     Box(modifier) {
         PowerButton(vm.overlayOn.value, onPower, Modifier.align(Alignment.TopCenter).padding(top = 4.dp))
@@ -476,6 +506,7 @@ private fun SetupPanel(vm: ArinaEngine, onGrantPhone: () -> Unit, onGrantOverlay
     var cartesia by remember { mutableStateOf(vm.cartesiaKey.value) }
     var voice by remember { mutableStateOf(vm.voiceId.value) }
     var tavily by remember { mutableStateOf(vm.tavilyKey.value) }
+    var aurionVoice by remember { mutableStateOf(vm.voiceIdAurion.value) }
 
     Column(
         Modifier.fillMaxSize()
@@ -490,12 +521,13 @@ private fun SetupPanel(vm: ArinaEngine, onGrantPhone: () -> Unit, onGrantOverlay
             Text("API keys (stored only on this phone)", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
             KeyField("Gemini API key", gemini, true) { gemini = it }
             KeyField("Cartesia API key", cartesia, true) { cartesia = it }
-            KeyField("Cartesia Voice ID", voice, false) { voice = it }
+            KeyField("Arina voice ID (Cartesia)", voice, false) { voice = it }
+            KeyField("Aurion voice ID (Cartesia)", aurionVoice, false) { aurionVoice = it }
             KeyField("Tavily search key (free, for web research)", tavily, true) { tavily = it }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PillButton("Save") { vm.saveKeys(gemini, cartesia, voice, tavily) }
+                PillButton("Save") { vm.saveKeys(gemini, cartesia, voice, tavily, aurionVoice) }
                 PillButton("Test voice") {
-                    vm.saveKeys(gemini, cartesia, voice, tavily)
+                    vm.saveKeys(gemini, cartesia, voice, tavily, aurionVoice)
                     vm.testVoice()
                 }
             }
@@ -506,6 +538,7 @@ private fun SetupPanel(vm: ArinaEngine, onGrantPhone: () -> Unit, onGrantOverlay
 
         SetupRow("Gemini API key", if (vm.geminiKeySet) "Set" else "Paste it above and tap Save", vm.geminiKeySet)
         SetupRow("Cartesia voice", if (vm.cartesiaKeySet) "Set" else "Paste the API key and Voice ID above and tap Save", vm.cartesiaKeySet)
+        SetupRow("Aurion voice", if (vm.voiceIdAurion.value.isNotBlank()) "Set" else "Paste his Cartesia Voice ID above and tap Save", vm.voiceIdAurion.value.isNotBlank())
         SetupRow("Web research", if (vm.tavilyKeySet) "Set" else "Paste a free Tavily key above and tap Save", vm.tavilyKeySet)
         SetupRow("Microphone", if (vm.micGranted.value) "Allowed" else "Asked when you first turn the mic on", vm.micGranted.value)
         SetupRow("Floating avatar", if (vm.overlayGranted.value) "Allowed" else "Needed to show Arina over other apps", vm.overlayGranted.value, "Allow", onGrantOverlay)

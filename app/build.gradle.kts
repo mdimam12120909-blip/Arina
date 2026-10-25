@@ -19,8 +19,8 @@ android {
         applicationId = "com.arina.assistant"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "0.3"
+        versionCode = 4
+        versionName = "0.4"
 
         buildConfigField("String", "GEMINI_API_KEY", "\"${localProps.getProperty("GEMINI_API_KEY", "").trim()}\"")
         buildConfigField("String", "CARTESIA_API_KEY", "\"${localProps.getProperty("CARTESIA_API_KEY", "").trim()}\"")
@@ -56,5 +56,6 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("androidx.webkit:webkit:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 }

@@ -52,12 +52,9 @@ fun FloatingAvatar(
             .background(ArinaColors.Background)
             .border(2.dp, Brush.sweepGradient(listOf(ArinaColors.Glow, ArinaColors.Deep, ArinaColors.Glow)), shape)
     ) {
-        AvatarView(
-            status = status,
-            level = engine.level.floatValue,
-            compact = true,
-            modifier = Modifier.fillMaxSize().clickable(onClick = onTap)
-        )
+        AvatarWebView(engine = engine, view = "head", modifier = Modifier.fillMaxSize())
+        // Transparent layer on top so a tap reaches us instead of the web page.
+        Box(Modifier.fillMaxSize().clickable(onClick = onTap))
 
         Row(Modifier.align(Alignment.TopStart).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(

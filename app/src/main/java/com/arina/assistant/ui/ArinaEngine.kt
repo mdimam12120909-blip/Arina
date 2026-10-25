@@ -72,6 +72,7 @@ class ArinaEngine private constructor(private val app: Application) {
     val cartesiaKey: MutableState<String> = mutableStateOf(Keys.cartesia(app))
     val voiceId: MutableState<String> = mutableStateOf(Keys.voiceId(app))
     val tavilyKey: MutableState<String> = mutableStateOf(Keys.tavily(app))
+    val voiceIdAurion: MutableState<String> = mutableStateOf(Keys.voiceIdAurion(app))
     val tavilyKeySet: Boolean get() = tavilyKey.value.isNotBlank()
     val geminiKeySet: Boolean get() = geminiKey.value.isNotBlank()
     val cartesiaKeySet: Boolean get() = cartesiaKey.value.isNotBlank() && voiceId.value.isNotBlank()
@@ -84,6 +85,13 @@ class ArinaEngine private constructor(private val app: Application) {
 
     // Memory (stored only on this phone)
     private val memory = Memory(app)
+
+    // Which assistant is active (remembered between launches)
+    private val uiPrefs = app.getSharedPreferences("arina_ui", Context.MODE_PRIVATE)
+    val persona = mutableStateOf(
+        runCatching { Persona.valueOf(uiPrefs.getString("persona", "Arina").orEmpty()) }.getOrDefault(Persona.Arina)
+    )
+    val avatar = AvatarHost(app)
     val profile: MutableState<String> = mutableStateOf(memory.profile())
     val facts = mutableStateListOf<Memory.Fact>().also { it.addAll(memory.facts()) }
     val researchActive = mutableStateOf(false)
@@ -91,14 +99,37 @@ class ArinaEngine private constructor(private val app: Application) {
     private val gemini: GeminiClient = GeminiClient(
         { geminiKey.value },
         ToolRunner(DeviceActions(app), memory, { scope.launch { reloadFacts() } }, { q -> startResearch(q) }),
-        { memory.promptBlock() }
+        { memory.promptBlock() },
+        { persona.value.intro }
     )
     private val sound = SoundLoop()
     private val researchJobs = mutableListOf<Job>()
-    private val voice: VoiceOutput = VoiceOutput(app) { cartesiaKey.value to voiceId.value }
+    private val voice: VoiceOutput = VoiceOutput(app, avatar) { cartesiaKey.value to currentVoiceId() }
     private val ears: SpeechInput = SpeechInput(app)
     private var job: Job? = null
     private var failStreak = 0
+
+    private fun currentVoiceId(): String =
+        if (persona.value == Persona.Aurion) voiceIdAurion.value else voiceId.value
+
+    /** Switches between Arina (female) and Aurion (male): voice, avatar and personality change together. */
+    fun switchPersona(p: Persona) {
+        if (p == persona.value) return
+        job?.cancel()
+        ears.cancel()
+        voice.stop()
+        level.floatValue = 0f
+        status.value = Status.Idle
+        gemini.reset()
+        persona.value = p
+        uiPrefs.edit().putString("persona", p.name).apply()
+        avatar.setAvatar(p.avatarKey)
+        caption.value = ""
+        notice.value = if (p == Persona.Aurion && voiceIdAurion.value.isBlank())
+            "Aurion has no voice yet. Paste his Cartesia Voice ID in Setup and tap Save." else null
+        messages += ChatMessage(false, "Hi, I'm ${p.displayName}.")
+        if (micOn.value) restartListening()
+    }
 
     fun refreshSetup() {
         fun granted(p: String) = app.checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED
@@ -134,8 +165,9 @@ class ArinaEngine private constructor(private val app: Application) {
         reloadFacts()
     }
 
-    fun saveKeys(gemini: String, cartesia: String, voice: String, tavily: String) {
-        Keys.save(app, gemini, cartesia, voice, tavily)
+    fun saveKeys(gemini: String, cartesia: String, voice: String, tavily: String, aurionVoice: String) {
+        Keys.save(app, gemini, cartesia, voice, tavily, aurionVoice)
+        voiceIdAurion.value = Keys.voiceIdAurion(app)
         tavilyKey.value = Keys.tavily(app)
         geminiKey.value = Keys.gemini(app)
         cartesiaKey.value = Keys.cartesia(app)

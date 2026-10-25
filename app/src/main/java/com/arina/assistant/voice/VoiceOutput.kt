@@ -3,6 +3,7 @@ package com.arina.assistant.voice
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import com.arina.assistant.ui.AvatarHost
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -22,6 +23,7 @@ import kotlin.coroutines.resume
  */
 class VoiceOutput(
     private val ctx: Context,
+    private val avatar: AvatarHost,
     private val credentials: () -> Pair<String, String> // API key, Voice ID
 ) {
     private companion object {
@@ -44,7 +46,8 @@ class VoiceOutput(
             throw IOException("Cartesia API key or Voice ID is missing. Paste them in the Setup tab and tap Save.")
         }
         val file = withContext(Dispatchers.IO) { fetch(text, key.trim(), voiceId.trim()) }
-        playFile(file)
+        // Through the 3D avatar when it is running (so the mouth moves), otherwise straight to the speaker.
+        if (avatar.canSpeak()) avatar.play(file.readBytes()) else playFile(file)
     }
 
     private fun fetch(text: String, key: String, voiceId: String): File {
@@ -120,6 +123,7 @@ class VoiceOutput(
     }
 
     fun stop() {
+        avatar.stop()
         runCatching { player?.release() }
         player = null
     }

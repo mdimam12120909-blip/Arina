@@ -26,13 +26,15 @@ object Keys {
     fun cartesia(c: Context) = pick(c, "cartesia", BuildConfig.CARTESIA_API_KEY)
     fun voiceId(c: Context) = pick(c, "cartesia_voice", BuildConfig.CARTESIA_VOICE_ID)
     fun tavily(c: Context) = pick(c, "tavily", BuildConfig.TAVILY_API_KEY)
+    fun voiceIdAurion(c: Context) = pick(c, "cartesia_voice_aurion", "")
 
-    fun save(c: Context, gemini: String, cartesia: String, voiceId: String, tavily: String) {
+    fun save(c: Context, gemini: String, cartesia: String, voiceId: String, tavily: String, voiceIdAurion: String) {
         prefs(c).edit()
             .putString("gemini", gemini.trim())
             .putString("cartesia", cartesia.trim())
             .putString("cartesia_voice", voiceId.trim())
             .putString("tavily", tavily.trim())
+            .putString("cartesia_voice_aurion", voiceIdAurion.trim())
             .apply()
     }
 }

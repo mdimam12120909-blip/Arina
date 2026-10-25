@@ -1,0 +1,109 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html, body { margin: 0; height: 100%; background: #020817; overflow: hidden; }
+  #avatar { position: fixed; left: 0; top: 0; right: 0; bottom: 0; }
+</style>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js/+esm",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/",
+    "talkinghead": "./modules/talkinghead.mjs"
+} }
+</script>
+</head>
+<body>
+<div id="avatar"></div>
+<script type="module">
+import { TalkingHead } from "talkinghead";
+import { HeadAudio } from "./headaudio.min.mjs";
+import { site } from "./siteconfig.js";
+
+// Messages to the Android app (the bridge object exists only inside the app).
+const post = (fn, ...args) => {
+  try { if (window.AndroidBridge && window.AndroidBridge[fn]) window.AndroidBridge[fn](...args); } catch (e) {}
+};
+
+let head, headaudio, source = null, wantedView = "upper";
+
+async function boot() {
+  head = new TalkingHead(document.getElementById("avatar"), {
+    ttsEndpoint: "N/A",
+    lipsyncModules: [],
+    cameraView: wantedView,
+    mixerGainSpeech: 2,
+    cameraRotateEnable: false
+  });
+
+  // Audio-driven lip-sync: works from the sound alone, so any language and any voice.
+  await head.audioCtx.audioWorklet.addModule("./headworklet.min.mjs");
+  headaudio = new HeadAudio(head.audioCtx, {
+    parameterData: { vadMode: 1, vadGateActiveDb: -40, vadGateInactiveDb: -60, silMode: 0 }
+  });
+  await headaudio.loadModel("./model-en-mixed.bin");
+  head.audioSpeechGainNode.connect(headaudio);
+  const delay = new DelayNode(head.audioCtx, { delayTime: 0.1 });
+  head.audioSpeechGainNode.disconnect(head.audioReverbNode);
+  head.audioSpeechGainNode.connect(delay);
+  delay.connect(head.audioReverbNode);
+  headaudio.onvalue = (key, value) => {
+    const t = head.mtAvatar && head.mtAvatar[key];
+    if (t) Object.assign(t, { newvalue: value, needsUpdate: true });
+  };
+  head.opt.update = headaudio.update.bind(headaudio);
+}
+
+const booted = boot().catch((e) => { post("error", "Avatar engine failed: " + (e && e.message ? e.message : e)); throw e; });
+
+window.Arina = {
+  // key is "MPFB" (Arina) or "AvatarSDK" (Aurion)
+  async load(key) {
+    await booted;
+    const cfg = Object.assign({}, site.avatars[key]);
+    cfg.url = key === "MPFB" ? "./avatars/mpfb.glb" : "./avatars/avatarsdk.glb";
+    try {
+      await head.showAvatar(cfg);
+      head.setView(wantedView);
+      head.start();
+      post("avatarReady", key);
+    } catch (e) {
+      post("error", "Could not load the avatar: " + (e && e.message ? e.message : e));
+    }
+  },
+  async view(v) {
+    wantedView = v;
+    await booted;
+    try { head.setView(v); } catch (e) {}
+  },
+  async play(b64) {
+    await booted;
+    try {
+      await head.audioCtx.resume();
+      const bin = atob(b64);
+      const u8 = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      const buf = await head.audioCtx.decodeAudioData(u8.buffer);
+      if (source) { try { source.stop(); } catch (e) {} }
+      source = head.audioCtx.createBufferSource();
+      source.buffer = buf;
+      source.connect(head.audioSpeechGainNode);
+      const mine = source;
+      source.onended = () => { if (source === mine) source = null; post("speechEnded"); };
+      source.start(0);
+    } catch (e) {
+      post("error", "Could not play the voice in the avatar: " + (e && e.message ? e.message : e));
+      post("speechEnded");
+    }
+  },
+  stop() {
+    if (source) { const s = source; source = null; try { s.onended = null; s.stop(); } catch (e) {} }
+  }
+};
+
+booted.then(() => post("ready"));
+</script>
+</body>
+</html>

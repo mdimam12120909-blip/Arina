@@ -25,7 +25,8 @@ private class ModelUnavailable(message: String) : IOException(message)
 class GeminiClient(
     private val apiKeyProvider: () -> String,
     private val tools: ToolRunner,
-    private val memoryBlock: () -> String
+    private val memoryBlock: () -> String,
+    private val personaIntro: () -> String
 ) {
 
     companion object {
@@ -53,7 +54,7 @@ class GeminiClient(
         """.trimIndent()
 
         private val SYSTEM_PROMPT = """
-            You are Arina, a warm, friendly female AI voice assistant living on the user's Android phone.
+            {INTRO}
             The user is Habib Hossan Shahadat; call him Habib.
             When the user asks you to do something on the phone, call the matching tool, then confirm.
             Pass app names to open_app in English exactly as they appear on the phone (WhatsApp, YouTube, Camera, Chrome, Settings...).
@@ -178,6 +179,11 @@ class GeminiClient(
     }
 
     @Synchronized
+    fun reset() {
+        history.clear()
+    }
+
+    @Synchronized
     fun chat(userText: String): Reply {
         if (apiKeyProvider().isBlank()) {
             throw IOException("Gemini API key is missing. Paste it in the Setup tab and tap Save.")
@@ -186,7 +192,7 @@ class GeminiClient(
             .put("parts", JSONArray().put(JSONObject().put("text", userText)))
 
         repeat(6) {
-            val resp = callApi(SYSTEM_PROMPT + memoryBlock(), JSONArray(history), withTools = true)
+            val resp = callApi(SYSTEM_PROMPT.replace("{INTRO}", personaIntro()) + memoryBlock(), JSONArray(history), withTools = true)
             val content = resp.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")
                 ?: throw IOException("Gemini returned an empty answer. Try rephrasing.")
             val parts = content.optJSONArray("parts") ?: JSONArray()
@@ -229,7 +235,7 @@ class GeminiClient(
                 JSONArray().put(JSONObject().put("text", "QUESTION: $question\n\nSEARCH MATERIAL:\n$material"))
             )
         )
-        val resp = callApi(SUMMARY_PROMPT + memoryBlock(), contents, withTools = false)
+        val resp = callApi(SUMMARY_PROMPT.replace("You are Arina, a warm female voice assistant.", personaIntro()) + memoryBlock(), contents, withTools = false)
         val parts = resp.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
             ?: throw IOException("Gemini returned an empty answer for the research.")
         val text = (0 until parts.length()).map { parts.getJSONObject(it) }
