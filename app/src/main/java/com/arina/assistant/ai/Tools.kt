@@ -1,5 +1,6 @@
 package com.arina.assistant.ai
 
+import com.arina.assistant.device.ArinaNotificationListener
 import com.arina.assistant.device.DeviceActions
 import org.json.JSONArray
 import org.json.JSONObject
@@ -54,6 +55,7 @@ class ToolRunner(
             Triple("minute", "INTEGER", "Minute 0-59."),
             Triple("label", "STRING", "Optional alarm name.")
         ), required = listOf("hour", "minute")))
+        put(decl("read_notifications", "Read the latest notifications on the phone (needs Notification access)."))
         put(decl("get_status", "Get the current date, time and battery level."))
     }
 
@@ -81,6 +83,8 @@ class ToolRunner(
             "web_search" -> device.webSearch(args.optString("query"))
             "open_url" -> device.openUrl(args.optString("url"))
             "set_alarm" -> device.setAlarm(args.optInt("hour"), args.optInt("minute"), args.optString("label", "Arina"))
+            "read_notifications" -> ArinaNotificationListener.instance?.summary()
+                ?: "ERROR: Notification access is off. Ask the user to turn it on in the Settings tab."
             "get_status" -> device.status()
             else -> "ERROR: unknown tool $name"
         }

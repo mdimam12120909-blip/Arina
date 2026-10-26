@@ -52,9 +52,12 @@ fun FloatingAvatar(
             .background(ArinaColors.Background)
             .border(2.dp, Brush.sweepGradient(listOf(ArinaColors.Glow, ArinaColors.Deep, ArinaColors.Glow)), shape)
     ) {
-        AvatarWebView(engine = engine, view = "head", modifier = Modifier.fillMaxSize())
-        // Transparent layer on top so a tap reaches us instead of the web page.
-        Box(Modifier.fillMaxSize().clickable(onClick = onTap))
+        OrbView(
+            persona = engine.persona.value,
+            mood = moodOf(status, engine.researchActive.value, engine.notice.value != null),
+            level = engine.level.floatValue,
+            modifier = Modifier.fillMaxSize().clickable(onClick = onTap)
+        )
 
         Row(Modifier.align(Alignment.TopStart).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
@@ -80,7 +83,7 @@ fun FloatingAvatar(
                 .background(Brush.verticalGradient(listOf(Color.Transparent, ArinaColors.Background.copy(alpha = 0.92f))))
                 .padding(horizontal = 8.dp, vertical = 6.dp)
         ) {
-            Text(statusLabel(status), color = ArinaColors.Glow, fontSize = 10.sp)
+            Text(engine.persona.value.displayName.uppercase() + "  " + moodOf(status, engine.researchActive.value, engine.notice.value != null).label, color = ArinaColors.Glow, fontSize = 10.sp, letterSpacing = 1.sp)
             if (line.isNotBlank()) {
                 Text(line, color = ArinaColors.Text, fontSize = 11.sp, lineHeight = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }

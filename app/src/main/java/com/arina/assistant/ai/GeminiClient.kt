@@ -4,6 +4,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -62,6 +63,7 @@ class GeminiClient(
             Before send_sms make sure you know both the recipient and the message text; if either is missing, ask.
             Only say an action worked if the tool result starts with OK. If it starts with ERROR, explain simply what went wrong.
             If no tool is needed, just answer helpfully.
+            When the user's message is audio, understand the speech (Bengali or English) and answer; put what he said, paraphrased in English, in the YOU line.
             Be quick and natural, like a person in conversation: keep BN to about 12 words unless the user asks for detail.
             For anything that needs fresh or researched facts (news, prices, scores, "latest", comparisons, things you are unsure about) call research instead of guessing.
             research runs in the background and the answer is announced later. After calling it, tell him in one short Bengali sentence that you are looking it up and he can do other things meanwhile. Do not wait for it and do not make up the answer.
@@ -184,13 +186,43 @@ class GeminiClient(
     }
 
     @Synchronized
-    fun chat(userText: String): Reply {
-        if (apiKeyProvider().isBlank()) {
-            throw IOException("Gemini API key is missing. Paste it in the Setup tab and tap Save.")
-        }
-        history += JSONObject().put("role", "user")
-            .put("parts", JSONArray().put(JSONObject().put("text", userText)))
+    fun chat(userText: String): Reply =
+        converse(JSONArray().put(JSONObject().put("text", userText)), audio = false)
 
+    /** The user's voice (16 kHz mono WAV) goes straight to Gemini, which hears it and answers. */
+    @Synchronized
+    fun chatAudio(wav: ByteArray): Reply = converse(
+        JSONArray()
+            .put(JSONObject().put("inlineData", JSONObject()
+                .put("mimeType", "audio/wav")
+                .put("data", Base64.encodeToString(wav, Base64.NO_WRAP))))
+            .put(JSONObject().put("text", "(The user just spoke to you. Listen carefully; it is Bengali or English. Answer as instructed. If you cannot make out any words, reply in BN asking him to repeat.)")),
+        audio = true
+    )
+
+    private fun converse(userParts: JSONArray, audio: Boolean): Reply {
+        if (apiKeyProvider().isBlank()) {
+            throw IOException("Gemini API key is missing. Paste it in the Settings tab and tap Save.")
+        }
+        val userTurn = JSONObject().put("role", "user").put("parts", userParts)
+        history += userTurn
+
+        // Audio is bulky: once answered (or failed), keep only a short text note in the history.
+        fun shrink(note: String) {
+            if (!audio) return
+            val i = history.indexOf(userTurn)
+            if (i >= 0) history[i] = JSONObject().put("role", "user")
+                .put("parts", JSONArray().put(JSONObject().put("text", "(voice) $note")))
+        }
+        try {
+            return runTurns(::shrink)
+        } catch (e: Exception) {
+            shrink("(not understood)")
+            throw e
+        }
+    }
+
+    private fun runTurns(shrink: (String) -> Unit): Reply {
         repeat(6) {
             val resp = callApi(SYSTEM_PROMPT.replace("{INTRO}", personaIntro()) + memoryBlock(), JSONArray(history), withTools = true)
             val content = resp.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")
@@ -204,8 +236,10 @@ class GeminiClient(
                     .filter { !it.optBoolean("thought") }
                     .joinToString("\n") { it.optString("text") }
                     .trim()
+                val reply = parse(text)
+                shrink(reply.you.ifBlank { "(voice request)" })
                 trimHistory()
-                return parse(text)
+                return reply
             }
 
             val responses = JSONArray()

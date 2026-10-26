@@ -11,6 +11,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import com.arina.assistant.overlay.OverlayService
+import com.arina.assistant.permissions.PermItem
+import com.arina.assistant.permissions.PermKind
+import com.arina.assistant.permissions.PermissionCenter
 import com.arina.assistant.ui.ArinaEngine
 import com.arina.assistant.ui.ArinaTheme
 import com.arina.assistant.ui.MainScreen
@@ -71,22 +74,13 @@ class MainActivity : ComponentActivity() {
                             startArina()
                         }
                     },
-                    onGrantPhone = {
-                        phonePermissions.launch(
-                            arrayOf(
-                                Manifest.permission.CALL_PHONE,
-                                Manifest.permission.READ_CONTACTS,
-                                Manifest.permission.SEND_SMS
-                            )
-                        )
+                    onPermission = ::requestItem,
+                    onGrantAll = {
+                        val missing = PermissionCenter.missingRuntime(this)
+                        if (missing.isNotEmpty()) phonePermissions.launch(missing)
+                        else openNextSpecial()
                     },
-                    onGrantOverlay = {
-                        wantsToStart = false
-                        overlayPermission.launch(overlaySettingsIntent())
-                    },
-                    onOpenAccessibility = {
-                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                    }
+                    onAppInfo = { openSafely(PermissionCenter.appInfoIntent(this)) }
                 )
             }
         }
@@ -105,6 +99,31 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         engine.refreshSetup()
+    }
+
+    /** One row of the permission list was tapped. */
+    private fun requestItem(item: PermItem) {
+        wantsToStart = false
+        if (item.kind == PermKind.Runtime) {
+            val need = item.perms.filter { checkSelfPermission(it) != 0 }.toTypedArray()
+            if (need.isNotEmpty()) phonePermissions.launch(need) else openSafely(PermissionCenter.appInfoIntent(this))
+        } else {
+            openSafely(PermissionCenter.intentFor(this, item))
+        }
+    }
+
+    private fun openNextSpecial() {
+        val next = PermissionCenter.special.firstOrNull { engine.perms[it.id] != true } ?: return
+        requestItem(next)
+    }
+
+    /** Settings screens differ between phones; fall back to the app's details page if one is missing. */
+    private fun openSafely(intent: Intent) {
+        try {
+            startActivity(intent)
+        } catch (e: Exception) {
+            try { startActivity(PermissionCenter.appInfoIntent(this)) } catch (_: Exception) { }
+        }
     }
 
     private fun hasMic() = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == 0

@@ -9,6 +9,7 @@ import android.provider.Settings
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import com.arina.assistant.Keys
 import com.arina.assistant.ai.GeminiClient
@@ -18,6 +19,8 @@ import com.arina.assistant.ai.TavilySearch
 import com.arina.assistant.ai.ToolRunner
 import com.arina.assistant.device.ArinaAccessibilityService
 import com.arina.assistant.device.DeviceActions
+import com.arina.assistant.permissions.PermissionCenter
+import com.arina.assistant.voice.MicListener
 import com.arina.assistant.voice.SoundLoop
 import com.arina.assistant.voice.SpeechInput
 import com.arina.assistant.voice.SpeechProblem
@@ -91,7 +94,6 @@ class ArinaEngine private constructor(private val app: Application) {
     val persona = mutableStateOf(
         runCatching { Persona.valueOf(uiPrefs.getString("persona", "Arina").orEmpty()) }.getOrDefault(Persona.Arina)
     )
-    val avatar = AvatarHost(app)
     val profile: MutableState<String> = mutableStateOf(memory.profile())
     val facts = mutableStateListOf<Memory.Fact>().also { it.addAll(memory.facts()) }
     val researchActive = mutableStateOf(false)
@@ -104,7 +106,7 @@ class ArinaEngine private constructor(private val app: Application) {
     )
     private val sound = SoundLoop()
     private val researchJobs = mutableListOf<Job>()
-    private val voice: VoiceOutput = VoiceOutput(app, avatar) { cartesiaKey.value to currentVoiceId() }
+    private val voice: VoiceOutput = VoiceOutput(app) { cartesiaKey.value to currentVoiceId() }
     private val ears: SpeechInput = SpeechInput(app)
     private var job: Job? = null
     private var failStreak = 0
@@ -116,14 +118,13 @@ class ArinaEngine private constructor(private val app: Application) {
     fun switchPersona(p: Persona) {
         if (p == persona.value) return
         job?.cancel()
-        ears.cancel()
+        stopEars()
         voice.stop()
         level.floatValue = 0f
         status.value = Status.Idle
         gemini.reset()
         persona.value = p
         uiPrefs.edit().putString("persona", p.name).apply()
-        avatar.setAvatar(p.avatarKey)
         caption.value = ""
         notice.value = if (p == Persona.Aurion && voiceIdAurion.value.isBlank())
             "Aurion has no voice yet. Paste his Cartesia Voice ID in Setup and tap Save." else null
@@ -131,13 +132,37 @@ class ArinaEngine private constructor(private val app: Application) {
         if (micOn.value) restartListening()
     }
 
+    /** Status of every permission row in the Settings tab, by row id. */
+    val perms = mutableStateMapOf<String, Boolean>()
+
     fun refreshSetup() {
-        fun granted(p: String) = app.checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED
-        micGranted.value = granted(Manifest.permission.RECORD_AUDIO)
-        phoneGranted.value = granted(Manifest.permission.CALL_PHONE) &&
-            granted(Manifest.permission.READ_CONTACTS) && granted(Manifest.permission.SEND_SMS)
-        overlayGranted.value = Settings.canDrawOverlays(app)
-        accessibilityOn.value = ArinaAccessibilityService.instance != null
+        for (item in PermissionCenter.runtime + PermissionCenter.special) {
+            perms[item.id] = runCatching { PermissionCenter.isGranted(app, item) }.getOrDefault(false)
+        }
+        micGranted.value = perms["mic"] == true
+        overlayGranted.value = perms["overlay"] == true
+        phoneGranted.value = perms["phone"] == true
+        accessibilityOn.value = perms["accessibility"] == true
+    }
+
+    // ---- Listening ---------------------------------------------------------------------------
+
+    /** true: our own microphone capture and Gemini hears the audio (no beep). false: Android's speech recognizer. */
+    val geminiEars = mutableStateOf(uiPrefs.getBoolean("gemini_ears", true))
+    private val mic = MicListener()
+
+    private fun stopEars() {
+        ears.cancel()
+        mic.stop()
+    }
+
+    fun setGeminiEars(on: Boolean) {
+        geminiEars.value = on
+        uiPrefs.edit().putBoolean("gemini_ears", on).apply()
+        if (micOn.value && status.value == Status.Listening) {
+            stopEars()
+            startListening()
+        }
     }
 
     fun notificationsGranted(): Boolean =
@@ -212,7 +237,7 @@ class ArinaEngine private constructor(private val app: Application) {
     fun turnOff() {
         micOn.value = false
         job?.cancel()
-        ears.cancel()
+        stopEars()
         voice.stop()
         level.floatValue = 0f
         status.value = Status.Idle
@@ -230,6 +255,22 @@ class ArinaEngine private constructor(private val app: Application) {
     private fun startListening() {
         if (!micOn.value) return
         status.value = Status.Listening
+        if (geminiEars.value) {
+            mic.start(
+                onLevel = { level.floatValue = it },
+                onSpeech = { wav ->
+                    level.floatValue = 0f
+                    failStreak = 0
+                    handle(null, wav, typed = false)
+                },
+                onError = { msg ->
+                    level.floatValue = 0f
+                    notice.value = msg
+                    turnOff()
+                }
+            )
+            return
+        }
         ears.listen(
             onLevel = { level.floatValue = it },
             onFinal = { text ->
@@ -237,7 +278,7 @@ class ArinaEngine private constructor(private val app: Application) {
                 if (text.isBlank()) restartListening()
                 else {
                     failStreak = 0
-                    handle(text, typed = false)
+                    handle(text, null, typed = false)
                 }
             },
             onProblem = { kind, message ->
@@ -274,8 +315,8 @@ class ArinaEngine private constructor(private val app: Application) {
         val t = text.trim()
         if (t.isEmpty()) return
         if (status.value == Status.Thinking || status.value == Status.Speaking) return
-        ears.cancel()
-        handle(t, typed = true)
+        stopEars()
+        handle(t, null, typed = true)
     }
 
     private fun fail(msg: String) {
@@ -339,7 +380,7 @@ class ArinaEngine private constructor(private val app: Application) {
     /** Speaks a finished research result once nothing else is being said. */
     private suspend fun announce(r: Reply) {
         while (status.value == Status.Thinking || status.value == Status.Speaking) delay(400)
-        ears.cancel()
+        stopEars()
         level.floatValue = 0f
         messages += ChatMessage(false, r.en)
         caption.value = r.en
@@ -356,15 +397,15 @@ class ArinaEngine private constructor(private val app: Application) {
         }
     }
 
-    private fun handle(text: String, typed: Boolean) {
+    private fun handle(text: String?, wav: ByteArray?, typed: Boolean) {
         notice.value = null
         caption.value = ""
-        if (typed) messages += ChatMessage(true, text)
+        if (typed && text != null) messages += ChatMessage(true, text)
         status.value = Status.Thinking
         job = scope.launch {
             try {
                 val reply = try {
-                    withContext(Dispatchers.IO) { gemini.chat(text) }
+                    withContext(Dispatchers.IO) { if (wav != null) gemini.chatAudio(wav) else gemini.chat(text.orEmpty()) }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
