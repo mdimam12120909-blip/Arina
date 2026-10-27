@@ -13,7 +13,7 @@ interface ToolHooks {
     fun showGallery(album: String, count: Int): String
     fun showFile(name: String): String
     fun showLink(url: String): String
-    fun operatePhone(goal: String): String
+    fun operatePhone(goal: String, chat: Boolean): String
     fun termux(command: String): String
 }
 
@@ -77,7 +77,10 @@ class ToolRunner(
         ), required = listOf("count")))
         put(decl("show_file", "Find a file on the phone by (part of) its name and show it on screen: images, PDFs and text files can be previewed.", listOf(Triple("name", "STRING", "Part of the file name."))))
         put(decl("show_link", "Show a web page on screen inside a card for one minute.", listOf(Triple("url", "STRING", "Website address."))))
-        put(decl("operate_phone", "Operate the phone by itself like a person: open apps, search, tap, type, scroll, e.g. play a video on YouTube. Runs in the background after the user allows it. Needs Device control enabled.", listOf(Triple("goal", "STRING", "The complete goal in English with every detail, e.g. 'Open YouTube, search for Arijit Singh songs and play the first video'."))))
+        put(decl("operate_phone", "Operate the phone by itself like a person: open apps, search, tap, type, scroll, e.g. play a video on YouTube, or have a text conversation with another AI app (ChatGPT, Gemini, Claude...) and bring back a plan or answer. Runs in the background after the user allows it. Needs Device control enabled.", listOf(
+            Triple("goal", "STRING", "The complete goal in English with every detail, e.g. 'Open YouTube, search for Arijit Singh songs and play the first video' or 'Open ChatGPT and discuss YouTube automation with it, then write a plan'."),
+            Triple("chat", "BOOLEAN", "true only when the job is a back-and-forth text conversation with another AI app; otherwise false.")
+        ), required = listOf("goal")))
         put(decl("termux", "Run one shell command in Termux. The user is asked to allow every command before it runs. Returns the output.", listOf(Triple("command", "STRING", "The bash command line."))))
     }
 
@@ -97,7 +100,7 @@ class ToolRunner(
             "show_gallery" -> hooks.showGallery(args.optString("album"), args.optInt("count", 4))
             "show_file" -> hooks.showFile(args.optString("name"))
             "show_link" -> hooks.showLink(args.optString("url"))
-            "operate_phone" -> hooks.operatePhone(args.optString("goal"))
+            "operate_phone" -> hooks.operatePhone(args.optString("goal"), args.optBoolean("chat", false))
             "termux" -> hooks.termux(args.optString("command"))
             "remember" -> {
                 val added = memory.add(args.optString("fact"))

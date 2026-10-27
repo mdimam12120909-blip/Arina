@@ -130,7 +130,7 @@ class ArinaEngine private constructor(private val app: Application) {
         override fun showGallery(album: String, count: Int) = doShowGallery(album, count)
         override fun showFile(name: String) = doShowFile(name)
         override fun showLink(url: String) = doShowLink(url)
-        override fun operatePhone(goal: String) = startOperate(goal)
+        override fun operatePhone(goal: String, chat: Boolean) = startOperate(goal, chat)
         override fun termux(command: String): String {
             if (!Termux.installed(app)) return "ERROR: Termux is not installed on this phone."
             val ok = runBlocking { ask("Run a command in Termux", command, ASK_LINES) }
@@ -572,7 +572,7 @@ class ArinaEngine private constructor(private val app: Application) {
 
     // ---- Operating the phone ------------------------------------------------------------------
 
-    private fun startOperate(goal: String): String {
+    private fun startOperate(goal: String, chat: Boolean): String {
         if (ArinaAccessibilityService.instance == null) {
             return "ERROR: Device control (Accessibility) is off. Tell him to turn it on in the Settings tab."
         }
@@ -587,9 +587,10 @@ class ArinaEngine private constructor(private val app: Application) {
             agentLine.value = "Starting…"
             try {
                 val outcome = withContext(Dispatchers.IO) {
-                    PhoneAgent(gemini, device).run(goal, { line -> agentLine.value = line }, { agentJob?.isActive != true })
+                    PhoneAgent(gemini, device).run(goal, chat, { line -> agentLine.value = line }, { agentJob?.isActive != true })
                 }
                 agentActive.value = false
+                if (outcome.report.isNotBlank()) openCard(Card(CardKind.Text, "Result", text = outcome.report, seconds = 0))
                 announce(Reply("", outcome.bn, outcome.en))
             } catch (e: CancellationException) {
                 throw e

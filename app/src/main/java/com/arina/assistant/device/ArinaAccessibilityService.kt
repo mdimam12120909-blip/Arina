@@ -74,12 +74,12 @@ class ArinaAccessibilityService : AccessibilityService() {
     class Snapshot(val app: String, val text: String, val nodes: List<AccessibilityNodeInfo>)
 
     /** A numbered text list of what is on screen right now, plus the matching nodes. */
-    fun snapshot(): Snapshot? {
+    fun snapshot(textMax: Int = 70, maxNodes: Int = 70): Snapshot? {
         val root = rootInActiveWindow ?: return null
         val nodes = ArrayList<AccessibilityNodeInfo>()
         val sb = StringBuilder()
         fun walk(n: AccessibilityNodeInfo?, depth: Int) {
-            if (n == null || nodes.size >= 70 || depth > 40) return
+            if (n == null || nodes.size >= maxNodes || depth > 40) return
             if (n.isVisibleToUser) {
                 val text = n.text?.toString()?.trim().orEmpty()
                 val desc = n.contentDescription?.toString()?.trim().orEmpty()
@@ -90,7 +90,7 @@ class ArinaAccessibilityService : AccessibilityService() {
                     val cls = n.className?.toString()?.substringAfterLast('.').orEmpty()
                     val id = n.viewIdResourceName?.substringAfterLast('/').orEmpty()
                     sb.append('[').append(i).append("] ").append(cls)
-                    if (text.isNotEmpty()) sb.append(" text=\"").append(text.take(70)).append('"')
+                    if (text.isNotEmpty()) sb.append(" text=\"").append(text.take(textMax)).append('"')
                     if (desc.isNotEmpty()) sb.append(" desc=\"").append(desc.take(90)).append('"')
                     if (id.isNotEmpty()) sb.append(" id=").append(id)
                     if (n.isClickable) sb.append(" clickable")
