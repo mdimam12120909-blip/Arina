@@ -65,7 +65,8 @@ class PhoneAgent(private val gemini: GeminiClient, private val device: DeviceAct
             val raw = gemini.generate(SYSTEM, prompt, json = true)
             val a = runCatching {
                 JSONObject(raw.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim())
-            }.getOrNull() ?: run { history += "(unreadable answer)"; continue }
+            }.getOrNull()
+            if (a == null) { history += "(unreadable answer)"; continue }
 
             val action = a.optString("action")
             val idx = a.optInt("index", -1)
