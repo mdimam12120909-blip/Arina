@@ -60,6 +60,7 @@ object PermissionCenter {
             add(Manifest.permission.WRITE_CALL_LOG)
             if (sdk >= 26) add(Manifest.permission.ANSWER_PHONE_CALLS)
         }))
+        add(PermItem("termux", "Run commands in Termux", "Lets AriAuri run shell commands in Termux; it asks you before every command", PermKind.Runtime, listOf("com.termux.permission.RUN_COMMAND")))
         add(PermItem("sms", "SMS", "Send and read text messages", PermKind.Runtime,
             listOf(Manifest.permission.SEND_SMS, Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS)))
         add(PermItem("calendar", "Calendar", "Read and create events", PermKind.Runtime,

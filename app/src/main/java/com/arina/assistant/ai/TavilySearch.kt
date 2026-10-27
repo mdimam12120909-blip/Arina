@@ -18,12 +18,29 @@ object TavilySearch {
         .build()
 
     /** Returns the search results as plain text for the model to summarise. */
-    fun search(key: String, query: String): String {
+    fun search(key: String, query: String, results: Int = 6): String =
+        text(call(key, query, results, images = false))
+
+    /** Image addresses for a query (Tavily include_images). */
+    fun images(key: String, query: String): List<String> {
+        val json = call(key, query, 5, images = true)
+        val out = LinkedHashSet<String>()
+        val top = json.optJSONArray("images")
+        if (top != null) for (i in 0 until top.length()) {
+            val o = top.opt(i)
+            val u = if (o is JSONObject) o.optString("url") else o?.toString().orEmpty()
+            if (u.startsWith("http")) out += u
+        }
+        return out.take(8)
+    }
+
+    private fun call(key: String, query: String, results: Int, images: Boolean): JSONObject {
         val body = JSONObject()
             .put("query", query)
             .put("search_depth", "basic")
-            .put("max_results", 6)
-            .put("include_answer", true)
+            .put("max_results", results)
+            .put("include_answer", !images)
+            .put("include_images", images)
             .toString()
             .toRequestBody("application/json".toMediaType())
         val request = Request.Builder()
@@ -40,7 +57,10 @@ object TavilySearch {
         if (code !in 200..299) {
             throw IOException("Tavily error $code: ${raw.take(200)}")
         }
-        val json = JSONObject(raw)
+        return JSONObject(raw)
+    }
+
+    private fun text(json: JSONObject): String {
         return buildString {
             val answer = json.optString("answer")
             if (answer.isNotBlank()) append("SEARCH ENGINE SUMMARY: ").append(answer).append("\n\n")

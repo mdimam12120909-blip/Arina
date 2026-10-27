@@ -129,6 +129,7 @@ fun MainScreen(
             }
             BottomNav(tab) { tab = it }
         }
+        Stage(vm, Modifier.align(Alignment.Center).padding(horizontal = 14.dp))
     }
 }
 
@@ -155,8 +156,8 @@ private fun Header(vm: ArinaEngine, onPower: () -> Unit, modifier: Modifier = Mo
         LogoMark(Modifier.size(34.dp))
         Spacer(Modifier.width(12.dp))
         Column {
-            Text(vm.persona.value.displayName.uppercase(), color = ArinaColors.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = 6.sp)
-            Text("VOICE INTELLIGENCE", color = ArinaColors.Muted, fontSize = 9.sp, letterSpacing = 3.sp)
+            Text("ARIAURI", color = ArinaColors.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = 6.sp)
+            Text(vm.persona.value.displayName.uppercase() + " ACTIVE", color = ArinaColors.Muted, fontSize = 9.sp, letterSpacing = 3.sp)
         }
         Spacer(Modifier.weight(1f))
         Row(
@@ -555,7 +556,20 @@ private fun SettingsPanel(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onG
                 }
             }
         }
-        PermissionCenter.runtime.forEach { item -> PermRow(item, vm.perms[item.id] == true, onPermission) }
+        PermissionCenter.runtime.forEach { item ->
+            PermRow(item, vm.perms[item.id] == true, onPermission)
+            if (item.id == "termux") {
+                Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("One-time Termux setup", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Open Termux and run this, then restart Termux:\n" +
+                            "mkdir -p ~/.termux && echo 'allow-external-apps=true' >> ~/.termux/termux.properties\n" +
+                            "Then tap Allow on the Termux row above (or Allow all).",
+                        color = ArinaColors.Text, fontSize = 12.sp, lineHeight = 18.sp
+                    )
+                }
+            }
+        }
         Spacer(Modifier.size(12.dp))
     }
 }

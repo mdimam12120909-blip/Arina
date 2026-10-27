@@ -1,3 +1,4 @@
 <resources>
-    <string name="accessibility_desc">Lets Arina press Back, Home and tap on-screen items when you ask her to.</string>
+    <string name="app_name">AriAuri</string>
+    <string name="accessibility_desc">Lets AriAuri press Back, Home, tap, type and scroll on screen when you ask it to and allow it.</string>
 </resources>

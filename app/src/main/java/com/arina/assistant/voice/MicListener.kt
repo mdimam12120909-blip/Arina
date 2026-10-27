@@ -25,7 +25,7 @@ class MicListener {
         const val FRAME = 320                 // 20 ms
         const val PRE_ROLL_FRAMES = 15        // 300 ms kept from before the speech started
         const val START_FRAMES = 4            // 80 ms of loud sound = speech started
-        const val END_SILENCE_FRAMES = 40     // 800 ms of quiet = phrase finished
+        const val END_SILENCE_FRAMES = 27     // 540 ms of quiet = phrase finished (faster replies)
         const val MIN_SPEECH_FRAMES = 15      // ignore bursts shorter than 300 ms
         const val MAX_FRAMES = 1000           // 20 s cap
     }

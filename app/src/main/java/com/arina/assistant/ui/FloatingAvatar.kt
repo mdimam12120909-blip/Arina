@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -31,8 +32,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * The only thing shown while Arina runs in the background: a 1:1 square portrait.
- * Tap the portrait to talk. Drag it anywhere. English text only.
+ * The floating capsule: a round orb with the current mood, a short status line and two small buttons.
+ * Tap the orb to turn the mic on or off. Drag the capsule anywhere. English text only.
  */
 @Composable
 fun FloatingAvatar(
@@ -41,53 +42,49 @@ fun FloatingAvatar(
     onOpenApp: () -> Unit,
     onClose: () -> Unit
 ) {
-    val shape = RoundedCornerShape(28.dp)
-    val status = engine.status.value
+    val shape = RoundedCornerShape(40.dp)
+    val problem = engine.notice.value != null
+    val mood = moodOf(engine.status.value, engine.researchActive.value, problem)
     val line = engine.notice.value ?: engine.caption.value
+    val micOn = engine.micOn.value
+    val accent = if (micOn) Color(0xFF3DDC97) else ArinaColors.Muted
 
-    Box(
+    Row(
         Modifier
-            .size(170.dp)
             .clip(shape)
-            .background(ArinaColors.Background)
-            .border(2.dp, Brush.sweepGradient(listOf(ArinaColors.Glow, ArinaColors.Deep, ArinaColors.Glow)), shape)
+            .background(Brush.horizontalGradient(listOf(Color(0xF00B2250), Color(0xF2041020))))
+            .border(1.5.dp, Brush.linearGradient(listOf(ArinaColors.Glow, ArinaColors.Deep.copy(alpha = 0.4f), ArinaColors.Glow)), shape)
+            .padding(6.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        OrbView(
-            persona = engine.persona.value,
-            mood = moodOf(status, engine.researchActive.value, engine.notice.value != null),
-            level = engine.level.floatValue,
-            modifier = Modifier.fillMaxSize().clickable(onClick = onTap)
-        )
-
-        Row(Modifier.align(Alignment.TopStart).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(8.dp).clip(CircleShape)
-                    .background(if (engine.micOn.value) Color(0xFF3DDC97) else ArinaColors.Muted)
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(
-                if (engine.micOn.value) "MIC ON" else "MIC OFF",
-                color = if (engine.micOn.value) Color(0xFF3DDC97) else ArinaColors.Muted,
-                fontSize = 9.sp
-            )
-        }
-
-        Row(Modifier.align(Alignment.TopEnd).padding(6.dp)) {
-            MiniButton(Icons.Outlined.OpenInNew, "Open Arina app", onOpenApp)
-            Box(Modifier.size(6.dp))
-            MiniButton(Icons.Outlined.Close, "Turn off Arina", onClose)
-        }
-
-        Column(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                .background(Brush.verticalGradient(listOf(Color.Transparent, ArinaColors.Background.copy(alpha = 0.92f))))
-                .padding(horizontal = 8.dp, vertical = 6.dp)
+        Box(
+            Modifier.size(64.dp).clip(CircleShape).background(ArinaColors.Background)
+                .border(1.5.dp, accent, CircleShape)
         ) {
-            Text(engine.persona.value.displayName.uppercase() + "  " + moodOf(status, engine.researchActive.value, engine.notice.value != null).label, color = ArinaColors.Glow, fontSize = 10.sp, letterSpacing = 1.sp)
-            if (line.isNotBlank()) {
-                Text(line, color = ArinaColors.Text, fontSize = 11.sp, lineHeight = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
+            OrbView(
+                persona = engine.persona.value,
+                mood = mood,
+                level = engine.level.floatValue,
+                modifier = Modifier.fillMaxSize().clickable(onClick = onTap)
+            )
         }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.widthIn(min = 96.dp, max = 150.dp)) {
+            Text(
+                engine.persona.value.displayName.uppercase() + "  ·  " + mood.label,
+                color = ArinaColors.Glow, fontSize = 9.sp, letterSpacing = 1.2.sp, maxLines = 1
+            )
+            Text(
+                line.ifBlank { if (micOn) "Listening…" else "Tap the orb to talk" },
+                color = ArinaColors.Text, fontSize = 11.sp, lineHeight = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
+            MiniButton(Icons.Outlined.OpenInNew, "Open AriAuri app", onOpenApp)
+            MiniButton(Icons.Outlined.Close, "Turn off AriAuri", onClose)
+        }
+        Spacer(Modifier.width(4.dp))
     }
 }
 

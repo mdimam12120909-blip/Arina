@@ -19,6 +19,9 @@ data class Reply(val you: String, val bn: String, val en: String)
 
 private class ModelUnavailable(message: String) : IOException(message)
 
+/** Per-call options: ask for JSON, or allow a slow, long answer (reports). */
+private data class Opts(val json: Boolean = false, val slow: Boolean = false)
+
 /**
  * Talks to the Gemini API. Blocking calls: run on Dispatchers.IO.
  * Gemini decides which phone tool to call; we run it and feed the result back.
@@ -64,15 +67,20 @@ class GeminiClient(
             Only say an action worked if the tool result starts with OK. If it starts with ERROR, explain simply what went wrong.
             If no tool is needed, just answer helpfully.
             When the user's message is audio, understand the speech (Bengali or English) and answer; put what he said, paraphrased in English, in the YOU line.
+            Never repeat a sentence, opening or filler you already used earlier in this conversation; vary your wording every time, and do not say his name in every reply. Never announce the same action twice.
             Be quick and natural, like a person in conversation: keep BN to about 12 words unless the user asks for detail.
             For anything that needs fresh or researched facts (news, prices, scores, "latest", comparisons, things you are unsure about) call research instead of guessing.
-            research runs in the background and the answer is announced later. After calling it, tell him in one short Bengali sentence that you are looking it up and he can do other things meanwhile. Do not wait for it and do not make up the answer.
+            research runs in the background and the answer is announced later. The app itself tells him by voice that you are looking it up, BEFORE the work starts, so after any tool whose result says the user was already told, reply with BN: - and EN: - and nothing else. Never make up the answer.
             Use web_search only when he wants to see the results in the browser himself.
+            For long or big jobs call deep_research (many searches over several minutes, then a full report on screen).
+            When he wants to SEE something (a photo of a person or thing, a picture, a gallery photo, a file, a web page) call show_image, show_gallery, show_file or show_link; the card stays on screen for one minute.
+            When he wants you to operate the phone for him (play a video on YouTube, search inside an app, change a setting, send something through an app) call operate_phone with the full goal in English; he will be asked to allow it.
+            When he wants a command run in Termux call termux; he will be asked to allow each command. Never run destructive commands unless he asked for exactly that.
 
-            FINAL ANSWER FORMAT (always exactly these three lines, nothing else, no markdown, no emojis):
-            YOU: <very short English paraphrase of what the user asked>
+            FINAL ANSWER FORMAT (always exactly these three lines in this order, nothing else, no markdown, no emojis):
             BN: <your reply in natural spoken Bengali, Bangla script, 1-2 short sentences, it will be read aloud>
             EN: <short English translation of your Bengali reply, it is the only text shown on screen>
+            YOU: <very short English paraphrase of what the user asked>
         """.trimIndent()
     }
 
@@ -80,6 +88,11 @@ class GeminiClient(
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(ATTEMPT_SECONDS, TimeUnit.SECONDS)
         .callTimeout(ATTEMPT_SECONDS, TimeUnit.SECONDS)
+        .build()
+
+    private val httpSlow = http.newBuilder()
+        .readTimeout(150, TimeUnit.SECONDS)
+        .callTimeout(150, TimeUnit.SECONDS)
         .build()
 
     private val history = mutableListOf<JSONObject>()
@@ -90,18 +103,19 @@ class GeminiClient(
 
     private class BadThinkingConfig : IOException("thinking config rejected")
 
-    private fun callModel(model: String, system: String, contents: JSONArray, withTools: Boolean): JSONObject {
-        if (model in noThinkingConfig) return send(model, false, system, contents, withTools)
+    private fun callModel(model: String, system: String, contents: JSONArray, withTools: Boolean, o: Opts): JSONObject {
+        if (model in noThinkingConfig) return send(model, false, system, contents, withTools, o)
         return try {
-            send(model, true, system, contents, withTools)
+            send(model, true, system, contents, withTools, o)
         } catch (e: BadThinkingConfig) {
             noThinkingConfig += model
-            send(model, false, system, contents, withTools)
+            send(model, false, system, contents, withTools, o)
         }
     }
 
-    private fun send(model: String, withThinking: Boolean, system: String, contents: JSONArray, withTools: Boolean): JSONObject {
+    private fun send(model: String, withThinking: Boolean, system: String, contents: JSONArray, withTools: Boolean, o: Opts): JSONObject {
         val generation = JSONObject().put("temperature", 0.7)
+        if (o.json) generation.put("responseMimeType", "application/json")
         // Lower thinking = faster answers. "low" is the lowest level documented for every current Flash model.
         if (withThinking) generation.put("thinkingConfig", JSONObject().put("thinkingLevel", "low"))
 
@@ -118,7 +132,7 @@ class GeminiClient(
             .build()
 
         val (code, raw) = try {
-            http.newCall(request).execute().use { it.code to it.body?.string().orEmpty() }
+            (if (o.slow) httpSlow else http).newCall(request).execute().use { it.code to it.body?.string().orEmpty() }
         } catch (e: InterruptedIOException) {
             throw ModelUnavailable("Gemini ($model) was too slow and was skipped.")
         } catch (e: IOException) {
@@ -139,14 +153,14 @@ class GeminiClient(
         throw IOException(text)
     }
 
-    private fun callApi(system: String, contents: JSONArray, withTools: Boolean): JSONObject {
+    private fun callApi(system: String, contents: JSONArray, withTools: Boolean, o: Opts = Opts()): JSONObject {
         var last: IOException? = null
-        val deadline = System.currentTimeMillis() + TOTAL_MILLIS
+        val deadline = System.currentTimeMillis() + if (o.slow) 170_000L else TOTAL_MILLIS
         val order = listOfNotNull(activeModel) + MODELS.filter { it != activeModel }
         for (m in order) {
             if (System.currentTimeMillis() > deadline) break
             try {
-                val r = callModel(m, system, contents, withTools)
+                val r = callModel(m, system, contents, withTools, o)
                 activeModel = m
                 return r
             } catch (e: ModelUnavailable) {
@@ -258,6 +272,21 @@ class GeminiClient(
         }
         trimHistory()
         throw IOException("I could not finish that task. Please try again.")
+    }
+
+    /** One plain model call without tools or conversation history. [json] asks for a JSON answer. */
+    fun generate(system: String, user: String, json: Boolean = false, slow: Boolean = false): String {
+        if (apiKeyProvider().isBlank()) throw IOException("Gemini API key is missing.")
+        val contents = JSONArray().put(
+            JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", user)))
+        )
+        val resp = callApi(system, contents, withTools = false, o = Opts(json, slow))
+        val parts = resp.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
+            ?: throw IOException("Gemini returned an empty answer.")
+        return (0 until parts.length()).map { parts.getJSONObject(it) }
+            .filter { !it.optBoolean("thought") }
+            .joinToString("\n") { it.optString("text") }
+            .trim()
     }
 
     /** Turns raw web-search material into a spoken Bengali answer. No tools, own conversation. */

@@ -3,6 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Basics -->
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
@@ -64,6 +65,7 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
     <queries>
+        <package android:name="com.termux" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
@@ -79,7 +81,9 @@
 
     <application
         android:allowBackup="true"
-        android:label="Arina"
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
 
@@ -102,7 +106,7 @@
         <service
             android:name=".device.ArinaAccessibilityService"
             android:exported="true"
-            android:label="Arina Device Control"
+            android:label="AriAuri Device Control"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
@@ -115,11 +119,14 @@
         <service
             android:name=".device.ArinaNotificationListener"
             android:exported="true"
-            android:label="Arina Notifications"
+            android:label="AriAuri Notifications"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+        <receiver
+            android:name=".device.TermuxResultReceiver"
+            android:exported="false" />
     </application>
 </manifest>

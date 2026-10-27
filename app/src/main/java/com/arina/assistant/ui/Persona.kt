@@ -8,11 +8,11 @@ enum class Persona(
 ) {
     Arina(
         "Arina", "MPFB",
-        "You are Arina, a warm, friendly female AI voice assistant living on the user's Android phone."
+        "You are Arina, a warm, friendly female AI voice assistant living on the user's Android phone. You and Aurion together are the assistant called AriAuri."
     ),
     Aurion(
         "Aurion", "AvatarSDK",
-        "You are Aurion, a calm, confident male AI voice assistant living on the user's Android phone. " +
+        "You are Aurion, a calm, confident male AI voice assistant living on the user's Android phone. You and Arina together are the assistant called AriAuri. " +
             "Speak Bengali in a natural, respectful masculine tone."
     )
 }

@@ -31,8 +31,19 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.arina.assistant.MainActivity
 import com.arina.assistant.ui.ArinaEngine
+import com.arina.assistant.R
 import com.arina.assistant.ui.ArinaTheme
+import com.arina.assistant.ui.EdgeGlow
 import com.arina.assistant.ui.FloatingAvatar
+import com.arina.assistant.ui.Stage
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
 import kotlin.math.hypot
 
 /** Keeps Arina alive in the background and shows the floating 1:1 avatar over other apps. */
@@ -55,6 +66,9 @@ class OverlayService : Service() {
     private val owner = OverlayOwner()
     private var container: DragLayout? = null
     private var windowManager: WindowManager? = null
+    private var stageView: ComposeView? = null
+    private var glowView: ComposeView? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -65,7 +79,7 @@ class OverlayService : Service() {
         }
         val engine = ArinaEngine.get(this)
         if (!Settings.canDrawOverlays(this)) {
-            engine.notice.value = "Allow 'Display over other apps' for Arina first."
+            engine.notice.value = "Allow 'Display over other apps' for AriAuri first."
             stopSelf()
             return START_NOT_STICKY
         }
@@ -76,15 +90,19 @@ class OverlayService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        if (container == null) addOverlay(engine)
+        if (container == null) {
+            addOverlay(engine)
+            watchStage(engine)
+        }
         engine.overlayOn.value = true
+        engine.glow.intValue++
         return START_NOT_STICKY
     }
 
     private fun promoteToForeground() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL, "Arina is running", NotificationManager.IMPORTANCE_LOW)
+            NotificationChannel(CHANNEL, "AriAuri is running", NotificationManager.IMPORTANCE_LOW)
         )
         val open = PendingIntent.getActivity(
             this, 0,
@@ -100,9 +118,9 @@ class OverlayService : Service() {
         )
         @Suppress("DEPRECATION")
         val notification = Notification.Builder(this, CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("Arina is on")
-            .setContentText("Tap the floating avatar to talk.")
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle("AriAuri is on")
+            .setContentText("Tap the floating orb to talk.")
             .setContentIntent(open)
             .addAction(Notification.Action.Builder(0, "Turn off", off).build())
             .setOngoing(true)
@@ -161,7 +179,65 @@ class OverlayService : Service() {
         container = layout
     }
 
+    private fun composeView(content: @androidx.compose.runtime.Composable () -> Unit): ComposeView =
+        ComposeView(this).apply {
+            setViewTreeLifecycleOwner(owner)
+            setViewTreeViewModelStoreOwner(owner)
+            setViewTreeSavedStateRegistryOwner(owner)
+            setContent { ArinaTheme { content() } }
+        }
+
+    /** Shows the permission / picture / phone-control popups in their own window, and the edge glow on demand. */
+    private fun watchStage(engine: ArinaEngine) {
+        val wm = windowManager ?: return
+        val width = (resources.displayMetrics.widthPixels * 0.94f).toInt()
+
+        scope.launch {
+            snapshotFlow { engine.approval.value != null || engine.card.value != null || engine.agentActive.value }
+                .collect { visible ->
+                    if (visible && stageView == null) {
+                        val lp = WindowManager.LayoutParams(
+                            width, WindowManager.LayoutParams.WRAP_CONTENT,
+                            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                            PixelFormat.TRANSLUCENT
+                        ).apply { gravity = Gravity.CENTER }
+                        val v = composeView { Stage(engine) }
+                        runCatching { wm.addView(v, lp); stageView = v }
+                    } else if (!visible) {
+                        stageView?.let { runCatching { wm.removeView(it) } }
+                        stageView = null
+                    }
+                }
+        }
+
+        scope.launch {
+            snapshotFlow { engine.glow.intValue }.drop(0).collect {
+                glowView?.let { runCatching { wm.removeView(it) } }
+                val lp = WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                    PixelFormat.TRANSLUCENT
+                )
+                if (Build.VERSION.SDK_INT >= 28) lp.layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                val v = composeView { EdgeGlow() }
+                runCatching { wm.addView(v, lp); glowView = v }
+                delay(4200)
+                runCatching { wm.removeView(v) }
+                if (glowView === v) glowView = null
+            }
+        }
+    }
+
     override fun onDestroy() {
+        scope.cancel()
+        stageView?.let { runCatching { windowManager?.removeView(it) } }
+        glowView?.let { runCatching { windowManager?.removeView(it) } }
+        stageView = null
+        glowView = null
         container?.let { runCatching { windowManager?.removeView(it) } }
         container = null
         owner.destroy()
