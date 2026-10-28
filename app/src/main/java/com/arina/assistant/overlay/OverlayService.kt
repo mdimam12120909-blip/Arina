@@ -33,7 +33,8 @@ import com.arina.assistant.MainActivity
 import com.arina.assistant.ui.ArinaEngine
 import com.arina.assistant.R
 import com.arina.assistant.ui.ArinaTheme
-import com.arina.assistant.ui.EdgeGlow
+import com.arina.assistant.ui.Aura
+import com.arina.assistant.companion.Buddy
 import com.arina.assistant.ui.FloatingAvatar
 import com.arina.assistant.ui.Stage
 import androidx.compose.runtime.snapshotFlow
@@ -93,6 +94,13 @@ class OverlayService : Service() {
         if (container == null) {
             addOverlay(engine)
             watchStage(engine)
+            val buddy = Buddy(this, engine)
+            scope.launch {
+                while (true) {
+                    delay(30_000)
+                    runCatching { buddy.tick() }
+                }
+            }
         }
         engine.overlayOn.value = true
         engine.glow.intValue++
@@ -211,25 +219,18 @@ class OverlayService : Service() {
                 }
         }
 
-        scope.launch {
-            snapshotFlow { engine.glow.intValue }.drop(0).collect {
-                glowView?.let { runCatching { wm.removeView(it) } }
-                val lp = WindowManager.LayoutParams(
-                    WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
-                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                    PixelFormat.TRANSLUCENT
-                )
-                if (Build.VERSION.SDK_INT >= 28) lp.layoutInDisplayCutoutMode =
-                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-                val v = composeView { EdgeGlow() }
-                runCatching { wm.addView(v, lp); glowView = v }
-                delay(4200)
-                runCatching { wm.removeView(v) }
-                if (glowView === v) glowView = null
-            }
-        }
+        // The aura (edge light and top pill) lives in its own window that never takes a touch.
+        val lp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        )
+        if (Build.VERSION.SDK_INT >= 28) lp.layoutInDisplayCutoutMode =
+            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        val v = composeView { Aura(engine) }
+        runCatching { wm.addView(v, lp); glowView = v }
     }
 
     override fun onDestroy() {

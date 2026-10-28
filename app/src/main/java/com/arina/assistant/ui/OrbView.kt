@@ -84,6 +84,9 @@ private fun moodColor(persona: Persona, mood: Mood): Color {
     }
 }
 
+/** The colour the orb (and the screen-edge light) shows for a mood. */
+fun moodTint(persona: Persona, mood: Mood): Color = moodColor(persona, mood)
+
 /** The persona's signature colour (green for Arina, blue for Aurion), used across the app. */
 fun accentOf(persona: Persona): Color = if (persona == Persona.Arina) Color(0xFF2FD16F) else Color(0xFF3D8BFF)
 

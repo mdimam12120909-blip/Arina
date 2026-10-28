@@ -9,6 +9,8 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Face
+import androidx.compose.material.icons.outlined.HealthAndSafety
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.Dp
@@ -92,7 +94,7 @@ import com.arina.assistant.permissions.PermKind
 import com.arina.assistant.permissions.PermissionCenter
 
 private enum class Page(val title: String) {
-    Home("Home"), Chat("Chat"), Memory("Memory"), Soul("Soul"), Settings("Settings")
+    Home("Home"), Chat("Chat"), Memory("Memory"), Routine("Routine"), Health("Phone Health"), Soul("Soul"), Settings("Settings")
 }
 
 private val Good = Color(0xFF3DDC97)
@@ -134,6 +136,8 @@ fun MainScreen(
                     Page.Home -> HomePanel(vm, onMicClick) { page = it }
                     Page.Chat -> ChatPanel(vm)
                     Page.Memory -> MemoryPanel(vm)
+                    Page.Routine -> RoutinePanel(vm)
+                    Page.Health -> HealthPanel(vm)
                     Page.Soul -> SoulPanel(vm)
                     Page.Settings -> SettingsPanel(vm, onPermission, onGrantAll, onAppInfo)
                 }
@@ -207,6 +211,8 @@ private class Node(val label: String, val icon: ImageVector, val color: Color, v
 private val NODES = listOf(
     Node("MEMORY", Icons.Outlined.Psychology, Color(0xFF28C8FF), Page.Memory),
     Node("CHAT", Icons.Outlined.ChatBubbleOutline, Color(0xFFFF9A3D), Page.Chat),
+    Node("ROUTINE", Icons.Outlined.Schedule, Color(0xFFB07BFF), Page.Routine),
+    Node("HEALTH", Icons.Outlined.HealthAndSafety, Color(0xFFFF5C8A), Page.Health),
     Node("SOUL", Icons.Outlined.Face, Color(0xFFE6F2FF), Page.Soul),
     Node("SETTINGS", Icons.Outlined.Settings, Color(0xFF2FD16F), Page.Settings)
 )
@@ -226,7 +232,7 @@ private fun HomePanel(vm: ArinaEngine, onMicClick: () -> Unit, go: (Page) -> Uni
         TranscriptCard(vm, accent)
 
         // Orb with the four nodes wired to it
-        BoxWithConstraints(Modifier.fillMaxWidth().height(300.dp)) {
+        BoxWithConstraints(Modifier.fillMaxWidth().height(372.dp)) {
             val orbSize = minOf(maxWidth - 104.dp, 280.dp)
             val inf = rememberInfiniteTransition(label = "wire")
             val flow by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(2600, easing = LinearEasing), RepeatMode.Restart), label = "flow")
@@ -234,9 +240,9 @@ private fun HomePanel(vm: ArinaEngine, onMicClick: () -> Unit, go: (Page) -> Uni
                 val orbLeft = size.width - orbSize.toPx()
                 val endX = orbLeft + orbSize.toPx() * 0.20f
                 NODES.forEachIndexed { i, n ->
-                    val sy = (30 + 80 * i).dp.toPx()
+                    val sy = (28 + 62 * i).dp.toPx()
                     val sx = 112.dp.toPx()
-                    val ey = size.height / 2f + (i - 1.5f) * 12.dp.toPx()
+                    val ey = size.height / 2f + (i - 2.5f) * 10.dp.toPx()
                     val c1 = Offset(sx + 60.dp.toPx(), sy)
                     val c2 = Offset(endX - 70.dp.toPx(), ey)
                     val path = Path().apply { moveTo(sx, sy); cubicTo(c1.x, c1.y, c2.x, c2.y, endX, ey) }
@@ -250,7 +256,7 @@ private fun HomePanel(vm: ArinaEngine, onMicClick: () -> Unit, go: (Page) -> Uni
                 }
             }
             NODES.forEachIndexed { i, n ->
-                NodeButton(n, Modifier.offset(y = (6 + 80 * i).dp)) { go(n.page) }
+                NodeButton(n, Modifier.offset(y = (4 + 62 * i).dp)) { go(n.page) }
             }
             OrbView(
                 persona = persona, mood = mood, level = vm.level.floatValue,
@@ -667,6 +673,22 @@ private fun SettingsPanel(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onG
             StatusLine("Cartesia voice (Arina)", vm.cartesiaKeySet)
             StatusLine("Cartesia voice (Aurion)", vm.voiceIdAurion.value.isNotBlank())
             StatusLine("Web research", vm.tavilyKeySet)
+        }
+
+        SectionTitle("COMPANION")
+        Row(Modifier.fillMaxWidth().glass().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Speak up on its own", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    "AriAuri notices long scrolling or non-stop phone use (needs Usage access below) and nudges you kindly, at most once every 30 minutes. Routines always remind you.",
+                    color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 16.sp
+                )
+            }
+            Switch(
+                checked = vm.proactiveOn.value,
+                onCheckedChange = { vm.setProactive(it) },
+                colors = SwitchDefaults.colors(checkedTrackColor = ArinaColors.Glow, checkedThumbColor = ArinaColors.Background)
+            )
         }
 
         SectionTitle("LISTENING")

@@ -12,6 +12,15 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.snapshotFlow
+import com.arina.assistant.health.DeviceStats
+import com.arina.assistant.health.Finding
+import com.arina.assistant.health.PhoneHealth
+import com.arina.assistant.routine.Routine
+import com.arina.assistant.routine.RoutineScheduler
+import com.arina.assistant.routine.RoutineStore
+import org.json.JSONArray
+import org.json.JSONObject
 import com.arina.assistant.Keys
 import com.arina.assistant.ai.DeepResearch
 import com.arina.assistant.ai.GeminiClient
@@ -77,9 +86,25 @@ class ArinaEngine private constructor(private val app: Application) {
     val caption = mutableStateOf("")
     val notice = mutableStateOf<String?>(null)
     val overlayOn = mutableStateOf(false)
-    val messages = mutableStateListOf(
-        ChatMessage(false, "Hi, I'm AriAuri. Turn the mic on and give me a task.")
-    )
+    private val chatPrefs = app.getSharedPreferences("arina_chat", Context.MODE_PRIVATE)
+    val messages = mutableStateListOf<ChatMessage>().also { l ->
+        runCatching {
+            val a = JSONArray(chatPrefs.getString("m", "[]"))
+            for (i in 0 until a.length()) { val o = a.getJSONObject(i); l += ChatMessage(o.getBoolean("u"), o.getString("t")) }
+        }
+        if (l.isEmpty()) l += ChatMessage(false, "Hi, I'm AriAuri. Turn the mic on and give me a task.")
+    }
+
+    init {
+        // The chat survives closing the app: the last 80 messages are saved on this phone.
+        scope.launch {
+            snapshotFlow { messages.toList() }.collect { list ->
+                val a = JSONArray()
+                list.takeLast(80).forEach { a.put(JSONObject().put("u", it.fromUser).put("t", it.text)) }
+                chatPrefs.edit().putString("m", a.toString()).apply()
+            }
+        }
+    }
 
     // Keys (editable in the Setup tab)
     val geminiKey: MutableState<String> = mutableStateOf(Keys.gemini(app))
@@ -116,6 +141,134 @@ class ArinaEngine private constructor(private val app: Application) {
     val agentLine = mutableStateOf("")
     /** Goes up each time the screen-edge glow should play. */
     val glow = mutableIntStateOf(0)
+
+    // ---- Routines, companion talk, phone health -------------------------------------------------
+    private val routineStore = RoutineStore(app)
+    val routines = mutableStateListOf<Routine>().also { it.addAll(routineStore.all()) }
+    val proactiveOn = mutableStateOf(app.getSharedPreferences("arina_ui", Context.MODE_PRIVATE).getBoolean("proactive", true))
+
+    fun setProactive(on: Boolean) {
+        proactiveOn.value = on
+        app.getSharedPreferences("arina_ui", Context.MODE_PRIVATE).edit().putBoolean("proactive", on).apply()
+    }
+
+    private fun reloadRoutines() {
+        routines.clear()
+        routines.addAll(routineStore.all())
+    }
+
+    fun daysText(mask: Int): String {
+        if (mask and 127 == 127) return "every day"
+        val names = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+        return names.filterIndexed { i, _ -> (mask shr i) and 1 == 1 }.joinToString(" ").ifBlank { "no days" }
+    }
+
+    fun saveRoutine(r: Routine) {
+        val list = routineStore.all().filter { it.id != r.id } + r
+        routineStore.save(list)
+        RoutineScheduler.schedule(app, r)
+        reloadRoutines()
+    }
+
+    fun toggleRoutine(id: Long) {
+        routineStore.get(id)?.let { saveRoutine(it.copy(enabled = !it.enabled)) }
+    }
+
+    fun deleteRoutine(id: Long) {
+        RoutineScheduler.cancel(app, id)
+        routineStore.save(routineStore.all().filter { it.id != id })
+        reloadRoutines()
+    }
+
+    private fun doAddRoutine(title: String, time: String, days: String, note: String): String {
+        val m = Regex("(\\d{1,2})[:.](\\d{2})").find(time) ?: return "ERROR: time must look like 21:30 (24-hour)."
+        val h = m.groupValues[1].toInt(); val min = m.groupValues[2].toInt()
+        if (h !in 0..23 || min !in 0..59) return "ERROR: that time is not valid."
+        val d = days.lowercase()
+        val mask = when {
+            d.isBlank() || "every" in d || "daily" in d -> 127
+            "weekday" in d -> 31
+            "weekend" in d -> 96
+            else -> listOf("mon", "tue", "wed", "thu", "fri", "sat", "sun").foldIndexed(0) { i, acc, n -> if (n in d) acc or (1 shl i) else acc }.let { if (it == 0) 127 else it }
+        }
+        val r = Routine(System.currentTimeMillis(), title.trim().take(60), h, min, mask, note.trim().take(160), true)
+        scope.launch { saveRoutine(r) }
+        return "OK: routine '${r.title}' set for ${r.timeText()} (${daysText(mask)})."
+    }
+
+    /** True when AriAuri may speak up by itself: nothing else is going on. */
+    fun canSpeakUnprompted(): Boolean =
+        status.value == Status.Idle && !agentActive.value && approval.value == null &&
+            ackJob?.isActive != true && job?.isActive != true
+
+    private fun proactiveLine(situation: String): Reply {
+        val system = persona.value.intro + "\n" +
+            "You are speaking up on your own now; nobody asked you a question. React to the situation below like a close, caring friend: warm, a little playful, never preachy, never scolding.\n" +
+            "Reply with JSON only: {\"bn\":\"...\",\"en\":\"...\"}. bn: one or two short natural spoken Bengali sentences in Bangla script, at most 22 words. en: the same in English.\n" +
+            "Do not reuse any of these recent lines or their wording: ${recentLines.joinToString(" | ")}\n" + memory.promptBlock()
+        val raw = gemini.generate(system, "SITUATION: $situation", json = true)
+        val o = JSONObject(raw.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim())
+        val bn = o.optString("bn")
+        if (bn.isBlank()) throw java.io.IOException("empty nudge")
+        recentLines.addLast(bn)
+        while (recentLines.size > 8) recentLines.removeFirst()
+        return Reply("", bn, o.optString("en").ifBlank { "…" })
+    }
+
+    /** Speaks up about [situation] if the moment is quiet. */
+    fun nudge(situation: String) {
+        scope.launch {
+            val r = withContext(Dispatchers.IO) { runCatching { proactiveLine(situation) }.getOrNull() } ?: return@launch
+            if (canSpeakUnprompted()) announce(r)
+        }
+    }
+
+    /** A routine's time has come: say it even if the app was idle. */
+    fun routineDue(r: Routine) {
+        scope.launch {
+            reloadRoutines()
+            val r2 = withContext(Dispatchers.IO) {
+                runCatching { proactiveLine("Routine time has come: '${r.title}'. ${r.note} Remind him now, briefly.") }.getOrNull()
+            } ?: Reply("", "সময় হয়েছে: ${r.title}।", "Time for: ${r.title}.")
+            announce(r2)
+        }
+    }
+
+    val healthFindings = mutableStateListOf<Finding>()
+    val healthScanning = mutableStateOf(false)
+    val healthMessage = mutableStateOf("")
+    val deviceStats = mutableStateOf<DeviceStats?>(null)
+
+    fun refreshStats() { deviceStats.value = runCatching { PhoneHealth.stats(app) }.getOrNull() }
+
+    fun scanHealth() {
+        if (healthScanning.value) return
+        healthScanning.value = true
+        healthMessage.value = "Scanning installed apps…"
+        scope.launch {
+            try {
+                val list = withContext(Dispatchers.IO) { PhoneHealth.scan(app) }
+                healthFindings.clear(); healthFindings.addAll(list)
+                healthMessage.value = if (list.isEmpty()) "No suspicious apps found." else "${list.size} app(s) deserve a look."
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                healthMessage.value = "Scan failed: ${(e.message ?: "unknown").take(120)}"
+            } finally {
+                healthScanning.value = false
+            }
+        }
+    }
+
+    fun cleanCache() {
+        val freed = PhoneHealth.clearOwnCache(app)
+        healthMessage.value = "Cleaned %.1f MB of AriAuri's cache.".format(freed / 1_048_576f)
+        refreshStats()
+    }
+
+    fun openIntent(i: android.content.Intent) {
+        runCatching { app.startActivity(i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    }
 
     private val device = DeviceActions(app)
     private val tasks = Tasks(app)
@@ -183,6 +336,20 @@ class ArinaEngine private constructor(private val app: Application) {
             return if (ok) "OK: marked done." else "ERROR: no open task matches '$text'."
         }
         override fun listTasks(): String = tasks.summary()
+        override fun addRoutine(title: String, time: String, days: String, note: String): String = doAddRoutine(title, time, days, note)
+        override fun listRoutines(): String =
+            routines.joinToString("\n") { "- ${it.title} at ${it.timeText()} (${daysText(it.days)})${if (it.enabled) "" else " [off]"}" }.ifBlank { "No routines yet." }
+        override fun removeRoutine(title: String): String {
+            val hit = routines.firstOrNull { it.title.contains(title, true) } ?: return "ERROR: no routine matches '$title'."
+            scope.launch { deleteRoutine(hit.id) }
+            return "OK: removed ${hit.title}."
+        }
+        override fun scanPhone(): String {
+            val list = PhoneHealth.scan(app)
+            scope.launch { healthFindings.clear(); healthFindings.addAll(list) }
+            return if (list.isEmpty()) "OK: no suspicious apps found."
+            else "OK: ${list.size} apps deserve a look; the most risky: " + list.take(3).joinToString { "${it.label} (${it.risk.label}: ${it.reasons.first()})" } + ". The full list is in Settings, Phone Health."
+        }
         override fun termux(command: String): String {
             if (!Termux.installed(app)) return "ERROR: Termux is not installed on this phone."
             val ok = runBlocking { ask("Run a command in Termux", command, ASK_LINES) }

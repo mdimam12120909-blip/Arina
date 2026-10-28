@@ -18,6 +18,10 @@ interface ToolHooks {
     fun addTask(text: String): String
     fun completeTask(text: String): String
     fun listTasks(): String
+    fun addRoutine(title: String, time: String, days: String, note: String): String
+    fun listRoutines(): String
+    fun removeRoutine(title: String): String
+    fun scanPhone(): String
 }
 
 /** Describes the phone tools to Gemini and runs them when Gemini asks. */
@@ -87,6 +91,15 @@ class ToolRunner(
         put(decl("add_task", "Add an item to the user's to-do list shown on the home screen.", listOf(Triple("text", "STRING", "The task, short, in the user's words (English or Bengali)."))))
         put(decl("complete_task", "Mark a to-do item as done.", listOf(Triple("text", "STRING", "Part of the task text."))))
         put(decl("list_tasks", "Read the user's open to-do items."))
+        put(decl("add_routine", "Add a routine: AriAuri reminds the user (notification and voice) at this time on these days.", listOf(
+            Triple("title", "STRING", "What the routine is, e.g. 'Study', 'Gym', 'Sleep'."),
+            Triple("time", "STRING", "24-hour time like 21:30."),
+            Triple("days", "STRING", "'daily', 'weekdays', 'weekend', or day names like 'mon,wed,fri'. Empty means daily."),
+            Triple("note", "STRING", "Optional extra detail to say, e.g. 'Read 30 pages'.")
+        ), required = listOf("title", "time")))
+        put(decl("list_routines", "Read the user's routines."))
+        put(decl("remove_routine", "Delete a routine.", listOf(Triple("title", "STRING", "Part of the routine's title."))))
+        put(decl("scan_phone", "Check the installed apps for suspicious ones (heuristic, not an antivirus). Results are listed in Settings, Phone Health."))
         put(decl("termux", "Run one shell command in Termux. The user is asked to allow every command before it runs. Returns the output.", listOf(Triple("command", "STRING", "The bash command line."))))
     }
 
@@ -108,6 +121,10 @@ class ToolRunner(
             "show_link" -> hooks.showLink(args.optString("url"))
             "operate_phone" -> hooks.operatePhone(args.optString("goal"), args.optBoolean("chat", false))
             "termux" -> hooks.termux(args.optString("command"))
+            "add_routine" -> hooks.addRoutine(args.optString("title"), args.optString("time"), args.optString("days"), args.optString("note"))
+            "list_routines" -> hooks.listRoutines()
+            "remove_routine" -> hooks.removeRoutine(args.optString("title"))
+            "scan_phone" -> hooks.scanPhone()
             "add_task" -> hooks.addTask(args.optString("text"))
             "complete_task" -> hooks.completeTask(args.optString("text"))
             "list_tasks" -> hooks.listTasks()
