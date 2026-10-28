@@ -37,7 +37,8 @@ class PhoneAgent(private val gemini: GeminiClient, private val device: DeviceAct
             - To search inside an app that has no such address: click the search icon/box, type the query with submit true, then click the wanted result.
             - Only use wait when the screen is clearly still loading.
             - Never send a message, post, buy, pay, delete or change account settings unless the GOAL says exactly that. If a screen asks for a password, OTP, payment or a decision only the user can make, use fail and explain.
-            - When the goal is reached (for example the video is playing), use done.
+            - As soon as the goal's result is visible on screen (search results are showing, the video is playing, the message is typed), use done at once. Do not keep exploring or tapping extra things.
+            - If the current app is the home screen or launcher and the goal was already reached earlier, use done; never reopen an app you already finished with.
             CHAT MODE (only when the task says CHAT MODE): you are talking to another AI app on the user's behalf, in plain text like the user would.
             Open the app, click the message box, type your first message about the topic (clear, specific, in English unless told otherwise) with submit true, or click the send button, then wait_reply, then read the reply on SCREEN and note the key points.
             Ask sensible follow-up questions (at most 6 messages in total), scroll when the reply is long, then finish with done. In done, "report" must be the complete result the user asked for (for example a step by step plan) in plain English text built from your notes, and bn/en are a short spoken summary.
@@ -72,6 +73,7 @@ class PhoneAgent(private val gemini: GeminiClient, private val device: DeviceAct
             }.getOrNull()
             if (a == null) { history += "(unreadable answer)"; continue }
 
+            if (cancelled()) return Outcome("থামিয়ে দিলাম।", "Stopped.")
             val action = a.optString("action")
             val idx = a.optInt("index", -1)
             val node = snap.nodes.getOrNull(idx)

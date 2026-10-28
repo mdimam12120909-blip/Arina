@@ -693,6 +693,8 @@ class ArinaEngine private constructor(private val app: Application) {
     }
 
     private fun handle(text: String?, wav: ByteArray?, typed: Boolean) {
+        // The user said something new (for example "come out"): a running phone task must not keep going and undo it.
+        if (agentActive.value || agentJob?.isActive == true) stopAgent()
         notice.value = null
         caption.value = ""
         if (typed && text != null) messages += ChatMessage(true, text)
