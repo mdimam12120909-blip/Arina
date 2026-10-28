@@ -23,6 +23,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import com.arina.assistant.Keys
 import com.arina.assistant.ai.DeepResearch
+import com.arina.assistant.ai.Workflow
 import com.arina.assistant.ai.GeminiClient
 import com.arina.assistant.ai.PhoneAgent
 import com.arina.assistant.ai.Tasks
@@ -320,6 +321,7 @@ class ArinaEngine private constructor(private val app: Application) {
     private val hooks = object : ToolHooks {
         override fun research(question: String) = startResearch(question)
         override fun deepResearch(topic: String) = startDeepResearch(topic)
+        override fun runWorkflow(goal: String) = startWorkflow(goal)
         override fun showImage(query: String) = doShowImage(query)
         override fun showGallery(album: String, count: Int) = doShowGallery(album, count)
         override fun showFile(name: String) = doShowFile(name)
@@ -745,6 +747,35 @@ class ArinaEngine private constructor(private val app: Application) {
     }
 
     // ---- Deep research ----------------------------------------------------------------------
+
+    private fun startWorkflow(goal: String): String {
+        val g = goal.trim()
+        if (g.isEmpty()) return "ERROR: no goal given."
+        ack(DEEP_LINES)
+        scope.launch {
+            val me = coroutineContext[Job]!!
+            researchJobs += me
+            researchActive.value = true
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    Workflow.run(g, tavilyKey.value, gemini, { done, total, line ->
+                        scope.launch { caption.value = "Working: step $done of $total, $line" }
+                    }, { !me.isActive })
+                }
+                openCard(Card(CardKind.Text, "Result: ${g.take(36)}", text = result.output, seconds = 0))
+                withContext(Dispatchers.IO) { gemini.noteResearch(g, Reply("", result.bn, result.en)) }
+                announce(Reply("", result.bn.ifBlank { "কাজ শেষ, ফলাফল স্ক্রিনে আছে।" }, result.en.ifBlank { "Done. The result is on screen." }))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                notice.value = "Workflow failed: ${(e.message ?: e.javaClass.simpleName).take(200)}"
+            } finally {
+                researchJobs.remove(me)
+                if (researchJobs.isEmpty()) researchActive.value = false
+            }
+        }
+        return TOLD
+    }
 
     private fun startDeepResearch(topic: String): String {
         val t = topic.trim()
