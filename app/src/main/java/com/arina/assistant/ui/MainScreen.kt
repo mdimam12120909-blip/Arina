@@ -657,7 +657,7 @@ private fun SettingsPanel(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onG
         SectionTitle("CONNECTIONS")
         Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Keys are stored only on this phone.", color = ArinaColors.Muted, fontSize = 12.sp)
-            KeyField("Gemini API key", gemini, true) { gemini = it }
+            KeyField("Gemini API keys (1 to 5, separated by comma)", gemini, true) { gemini = it }
             KeyField("Cartesia API key", cartesia, true) { cartesia = it }
             KeyField("Arina voice ID (Cartesia)", voice, false) { voice = it }
             KeyField("Aurion voice ID (Cartesia)", aurionVoice, false) { aurionVoice = it }
@@ -670,7 +670,7 @@ private fun SettingsPanel(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onG
                 }
             }
             vm.notice.value?.let { Text(it, color = Warn, fontSize = 12.sp, lineHeight = 17.sp) }
-            StatusLine("Gemini", vm.geminiKeySet)
+            StatusLine("Gemini (" + vm.geminiKey.value.split(Regex("[,;\\s]+")).count { it.length > 10 } + " keys)", vm.geminiKeySet)
             StatusLine("Cartesia voice (Arina)", vm.cartesiaKeySet)
             StatusLine("Cartesia voice (Aurion)", vm.voiceIdAurion.value.isNotBlank())
             StatusLine("Web research", vm.tavilyKeySet)

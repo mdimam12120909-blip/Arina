@@ -24,6 +24,7 @@ import org.json.JSONObject
 import com.arina.assistant.Keys
 import com.arina.assistant.ai.DeepResearch
 import com.arina.assistant.ai.Workflow
+import com.arina.assistant.device.FrontCamera
 import com.arina.assistant.ai.GeminiClient
 import com.arina.assistant.ai.PhoneAgent
 import com.arina.assistant.ai.Tasks
@@ -322,6 +323,7 @@ class ArinaEngine private constructor(private val app: Application) {
         override fun research(question: String) = startResearch(question)
         override fun deepResearch(topic: String) = startDeepResearch(topic)
         override fun runWorkflow(goal: String) = startWorkflow(goal)
+        override fun lookCamera(question: String): String = doLook(question)
         override fun showImage(query: String) = doShowImage(query)
         override fun showGallery(album: String, count: Int) = doShowGallery(album, count)
         override fun showFile(name: String) = doShowFile(name)
@@ -747,6 +749,23 @@ class ArinaEngine private constructor(private val app: Application) {
     }
 
     // ---- Deep research ----------------------------------------------------------------------
+
+    /** Runs on the tool thread (IO). One front-camera photo, looked at by Gemini; the photo is not saved. */
+    private fun doLook(question: String): String {
+        if (app.checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+            return "ERROR: camera permission is not allowed. Tell the user to allow Camera in Settings, Permissions."
+        scope.launch { caption.value = "Looking through the front camera…" }
+        val jpeg = try {
+            FrontCamera.capture(app)
+        } catch (e: Exception) {
+            return "ERROR: could not use the front camera: ${(e.message ?: e.javaClass.simpleName).take(120)}"
+        }
+        return try {
+            "OK: " + gemini.vision(jpeg, question.ifBlank { "Describe what you see." })
+        } catch (e: Exception) {
+            "ERROR: could not understand the photo: ${(e.message ?: e.javaClass.simpleName).take(120)}"
+        }
+    }
 
     private fun startWorkflow(goal: String): String {
         val g = goal.trim()

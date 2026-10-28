@@ -71,6 +71,7 @@ class GeminiClient(
             STYLE: sharp, logical, confident, direct. Lead with the answer or the action. No greeting, no "sure/of course", no closing offer like "anything else?", no apologies or filler. State what is done or the key fact, then the one next step only if it matters.
             Write for the ear: short crisp sentences, one idea each, numbers and names stated plainly, no lists symbols or brackets in BN. Keep BN to about 12 words unless he asks for detail; when detail is asked, give at most 4 short pointer sentences, never a long paragraph.
             HOW YOU WORK: you do the work yourself, you do not just name it. For a one-step job call the matching tool and confirm in a few words. For a big or multi-part job (build, write, fix, compare, prepare, analyse, anything a person would need an hour for) call run_workflow once with the complete goal: it plans the steps, runs independent steps in parallel in the background and shows the finished result. Do not ask permission to plan; ask a question only if a missing detail would make the result wrong.
+            When he asks you to look at him or something in front of the phone (how do I look, what is this, am I tired, read this), call look_camera with his question; describe what it returns in your own short words, never say you cannot see.
             Prefer run_workflow for mixed jobs, deep_research for pure research, operate_phone for things done inside apps. Never promise a time; say what you are doing.
             For anything that needs fresh or researched facts (news, prices, scores, "latest", comparisons, things you are unsure about) call research instead of guessing.
             research runs in the background and the answer is announced later. The app itself tells him by voice that you are looking it up, BEFORE the work starts, so after any tool whose result says the user was already told, reply with BN: - and EN: - and nothing else. Never make up the answer.
@@ -116,7 +117,32 @@ class GeminiClient(
         }
     }
 
+    private val keyCursor = java.util.concurrent.atomic.AtomicInteger()
+
+    /** All saved keys. One text field holds several, separated by comma, space or new line. */
+    private fun keys(): List<String> = apiKeyProvider().split(Regex("[,;\\s]+")).filter { it.length > 10 }
+
+    /**
+     * Every call starts on the next key in turn, so agents working at the same time spread over different keys.
+     * A key that is out of quota (429) hands the same request to the next key before the model is given up on.
+     */
     private fun send(model: String, withThinking: Boolean, system: String, contents: JSONArray, withTools: Boolean, o: Opts): JSONObject {
+        val all = keys().ifEmpty { listOf(apiKeyProvider().trim()) }
+        val start = Math.floorMod(keyCursor.getAndIncrement(), all.size)
+        var last: ModelUnavailable? = null
+        for (i in all.indices) {
+            val key = all[(start + i) % all.size]
+            try {
+                return sendOnce(key, model, withThinking, system, contents, withTools, o)
+            } catch (e: ModelUnavailable) {
+                last = e
+                if (e.message?.contains("error 429") != true) throw e
+            }
+        }
+        throw last!!
+    }
+
+    private fun sendOnce(key: String, model: String, withThinking: Boolean, system: String, contents: JSONArray, withTools: Boolean, o: Opts): JSONObject {
         val generation = JSONObject().put("temperature", 0.7)
         if (o.json) generation.put("responseMimeType", "application/json")
         // Lower thinking = faster answers. "low" is the lowest level documented for every current Flash model.
@@ -130,7 +156,7 @@ class GeminiClient(
 
         val request = Request.Builder()
             .url("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
-            .header("x-goog-api-key", apiKeyProvider().trim())
+            .header("x-goog-api-key", key)
             .post(body.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
@@ -275,6 +301,22 @@ class GeminiClient(
         }
         trimHistory()
         throw IOException("I could not finish that task. Please try again.")
+    }
+
+    /** Looks at one photo (JPEG) and answers the question about it in English. Plain call, no tools. */
+    fun vision(jpeg: ByteArray, question: String): String {
+        if (apiKeyProvider().isBlank()) throw IOException("Gemini API key is missing.")
+        val parts = JSONArray()
+            .put(JSONObject().put("inlineData", JSONObject().put("mimeType", "image/jpeg").put("data", android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP))))
+            .put(JSONObject().put("text", question))
+        val contents = JSONArray().put(JSONObject().put("role", "user").put("parts", parts))
+        val sys = "You are the eyes of a phone assistant. The photo was just taken by the phone's front camera, so it shows the user or what is in front of him. " +
+            "Answer the question about the photo factually and briefly in English. Describe only what is visible; never guess identity, age or health; say so if the photo is dark or unclear."
+        val resp = callApi(sys, contents, withTools = false, o = Opts(false, false))
+        val out = resp.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
+            ?: throw IOException("Gemini returned an empty answer.")
+        return (0 until out.length()).map { out.getJSONObject(it) }.filter { !it.optBoolean("thought") }
+            .joinToString("\n") { it.optString("text") }.trim()
     }
 
     /** One plain model call without tools or conversation history. [json] asks for a JSON answer. */

@@ -10,6 +10,7 @@ interface ToolHooks {
     fun research(question: String): String
     fun deepResearch(topic: String): String
     fun runWorkflow(goal: String): String
+    fun lookCamera(question: String): String
     fun showImage(query: String): String
     fun showGallery(album: String, count: Int): String
     fun showFile(name: String): String
@@ -79,6 +80,7 @@ class ToolRunner(
         put(decl("get_status", "Get the current date, time and battery level."))
         put(decl("deep_research", "Start a long, thorough research job in the background (many web searches over a few minutes, then a full written report on screen and a spoken summary). Use for big questions, comparisons, 'research X for me', study-style tasks. Returns at once.", listOf(Triple("topic", "STRING", "The full topic or question to research, with any details the user gave."))))
         put(decl("run_workflow", "Do a big multi-part job on its own: it plans the steps, runs independent steps in parallel in the background (web look-ups, analysis, writing, coding, debugging), then shows the finished result on screen. Use for 'build / write / fix / compare / prepare X' jobs that would take a person an hour or more. Returns at once.", listOf(Triple("goal", "STRING", "The complete goal with every detail the user gave."))))
+        put(decl("look_camera", "Take one photo with the FRONT camera (it faces the user) and look at it. Use when the user asks you to look at him or what is in front of the phone: how he looks, whether he seems tired, what he is holding, to read something shown to the camera. Returns a description.", listOf(Triple("question", "STRING", "What to find out from the photo, in English."))))
         put(decl("show_image", "Find pictures on the web and show them on screen for one minute. Use when the user asks to see a photo or picture of someone or something.", listOf(Triple("query", "STRING", "Web image search query in English, e.g. 'Lionel Messi photo'."))))
         put(decl("show_gallery", "Show the user's own recent photos from the phone gallery on screen for one minute.", listOf(
             Triple("album", "STRING", "Album/folder name such as Camera, Screenshots, WhatsApp; empty for all photos."),
@@ -118,6 +120,7 @@ class ToolRunner(
             "research" -> hooks.research(args.optString("question"))
             "deep_research" -> hooks.deepResearch(args.optString("topic"))
             "run_workflow" -> hooks.runWorkflow(args.optString("goal"))
+            "look_camera" -> hooks.lookCamera(args.optString("question"))
             "show_image" -> hooks.showImage(args.optString("query"))
             "show_gallery" -> hooks.showGallery(args.optString("album"), args.optInt("count", 4))
             "show_file" -> hooks.showFile(args.optString("name"))
