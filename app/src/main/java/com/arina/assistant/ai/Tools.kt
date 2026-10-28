@@ -15,6 +15,9 @@ interface ToolHooks {
     fun showLink(url: String): String
     fun operatePhone(goal: String, chat: Boolean): String
     fun termux(command: String): String
+    fun addTask(text: String): String
+    fun completeTask(text: String): String
+    fun listTasks(): String
 }
 
 /** Describes the phone tools to Gemini and runs them when Gemini asks. */
@@ -81,6 +84,9 @@ class ToolRunner(
             Triple("goal", "STRING", "The complete goal in English with every detail, e.g. 'Open YouTube, search for Arijit Singh songs and play the first video' or 'Open ChatGPT and discuss YouTube automation with it, then write a plan'."),
             Triple("chat", "BOOLEAN", "true only when the job is a back-and-forth text conversation with another AI app; otherwise false.")
         ), required = listOf("goal")))
+        put(decl("add_task", "Add an item to the user's to-do list shown on the home screen.", listOf(Triple("text", "STRING", "The task, short, in the user's words (English or Bengali)."))))
+        put(decl("complete_task", "Mark a to-do item as done.", listOf(Triple("text", "STRING", "Part of the task text."))))
+        put(decl("list_tasks", "Read the user's open to-do items."))
         put(decl("termux", "Run one shell command in Termux. The user is asked to allow every command before it runs. Returns the output.", listOf(Triple("command", "STRING", "The bash command line."))))
     }
 
@@ -102,6 +108,9 @@ class ToolRunner(
             "show_link" -> hooks.showLink(args.optString("url"))
             "operate_phone" -> hooks.operatePhone(args.optString("goal"), args.optBoolean("chat", false))
             "termux" -> hooks.termux(args.optString("command"))
+            "add_task" -> hooks.addTask(args.optString("text"))
+            "complete_task" -> hooks.completeTask(args.optString("text"))
+            "list_tasks" -> hooks.listTasks()
             "remember" -> {
                 val added = memory.add(args.optString("fact"))
                 onMemoryChanged()

@@ -25,13 +25,17 @@ class PhoneAgent(private val gemini: GeminiClient, private val device: DeviceAct
             {"action":"scroll","direction":"down"|"up"}
             {"action":"back"} | {"action":"home"} | {"action":"wait"}
             {"action":"open_app","app":"YouTube"}            app name as on the phone
+            {"action":"open_url","url":"https://..."}          open a web address; the matching installed app opens it directly
             {"action":"wait_reply"}                            wait until the other AI finishes writing its reply (use right after sending a chat message)
             {"action":"note","text":"..."}                     save one key point from a reply; notes are kept for the final report
             {"action":"done","bn":"...","en":"...","report":"..."}           goal reached: bn = one short spoken Bengali sentence (Bangla script) saying what you did, en = same in English
             {"action":"fail","bn":"...","en":"..."}           cannot continue: say why in the same way
             Rules:
             - Use only element numbers that are in the current SCREEN list. Look at PREVIOUS ACTIONS and never repeat a step that did nothing; try something else (another element, scroll, back).
-            - To search inside an app: click the search icon/box, type the query with submit true, then click the wanted result.
+            - BE FAST. Use the fewest steps. To search, prefer open_url with a search address over clicking through the app:
+              YouTube https://www.youtube.com/results?search_query=QUERY, Google https://www.google.com/search?q=QUERY, Google Maps https://www.google.com/maps/search/?api=1&query=QUERY (replace spaces with +). Then click the wanted result.
+            - To search inside an app that has no such address: click the search icon/box, type the query with submit true, then click the wanted result.
+            - Only use wait when the screen is clearly still loading.
             - Never send a message, post, buy, pay, delete or change account settings unless the GOAL says exactly that. If a screen asks for a password, OTP, payment or a decision only the user can make, use fail and explain.
             - When the goal is reached (for example the video is playing), use done.
             CHAT MODE (only when the task says CHAT MODE): you are talking to another AI app on the user's behalf, in plain text like the user would.
@@ -76,12 +80,14 @@ class PhoneAgent(private val gemini: GeminiClient, private val device: DeviceAct
                 "type" -> "type \"${a.optString("text")}\" in [$idx]"
                 "scroll" -> "scroll ${a.optString("direction")}"
                 "open_app" -> "open ${a.optString("app")}"
+                "open_url" -> "open link"
                 else -> action
             }
             onStep("Step $step: $desc")
             if (desc == last) { if (++repeats >= 3) return Outcome("এই ধাপে আটকে গেছি, থামলাম।", "I got stuck, so I stopped.") } else { repeats = 0; last = desc }
 
             var ok = true
+            val before = snap.text.hashCode()
             when (action) {
                 "done", "fail" -> return Outcome(a.optString("bn").ifBlank { "শেষ।" }, a.optString("en").ifBlank { "Done." }, a.optString("report"))
                 "note" -> a.optString("text").takeIf { it.isNotBlank() }?.let { notes += it.take(600) }
@@ -95,13 +101,33 @@ class PhoneAgent(private val gemini: GeminiClient, private val device: DeviceAct
                 "back" -> ok = svc.press("back")
                 "home" -> ok = svc.press("home")
                 "open_app" -> ok = device.openApp(a.optString("app")).startsWith("OK")
+                "open_url" -> ok = device.openUrl(a.optString("url")).startsWith("OK")
                 "wait" -> Thread.sleep(1500)
                 else -> ok = false
             }
             history += "$desc -> ${if (ok) "done" else "FAILED"}"
-            Thread.sleep(1200)
+            if (action != "wait" && action != "wait_reply") settle(svc, before)
         }
         return Outcome("অনেক ধাপ হয়ে গেল, এখানেই থামলাম।", "I reached my step limit and stopped.", notes.joinToString("\n") { "- $it" })
+    }
+
+    /**
+     * After an action: wait only as long as the screen needs. Polls every 150 ms; once the screen differs from
+     * [before] and has stayed the same for two checks, go on. If nothing changes within 1.2 s, go on anyway.
+     */
+    private fun settle(svc: ArinaAccessibilityService, before: Int) {
+        val start = System.currentTimeMillis()
+        var last = before
+        var stable = 0
+        var changed = false
+        while (System.currentTimeMillis() - start < 3500) {
+            Thread.sleep(150)
+            val now = svc.snapshot(textMax = 30, maxNodes = 40)?.text.orEmpty().hashCode()
+            if (now != before) changed = true
+            if (changed) { if (now == last) { if (++stable >= 2) return } else stable = 0 }
+            last = now
+            if (!changed && System.currentTimeMillis() - start > 1200) return
+        }
     }
 
     /** Waits until the screen text stops changing (the other AI finished typing), at most 70 seconds. */

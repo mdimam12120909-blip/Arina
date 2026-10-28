@@ -34,13 +34,26 @@ object TavilySearch {
         return out.take(8)
     }
 
-    private fun call(key: String, query: String, results: Int, images: Boolean): JSONObject {
+    /** Today's top headlines as (title, address) pairs. One search. */
+    fun headlines(key: String, query: String = "top world news today", count: Int = 8): List<Pair<String, String>> {
+        val json = call(key, query, count, images = false, news = true)
+        val a = json.optJSONArray("results") ?: return emptyList()
+        return (0 until a.length()).mapNotNull {
+            val r = a.getJSONObject(it)
+            val title = r.optString("title").trim()
+            val url = r.optString("url")
+            if (title.isNotEmpty() && url.startsWith("http")) title to url else null
+        }
+    }
+
+    private fun call(key: String, query: String, results: Int, images: Boolean, news: Boolean = false): JSONObject {
         val body = JSONObject()
             .put("query", query)
             .put("search_depth", "basic")
             .put("max_results", results)
             .put("include_answer", !images)
             .put("include_images", images)
+            .apply { if (news) put("topic", "news").put("time_range", "day") }
             .toString()
             .toRequestBody("application/json".toMediaType())
         val request = Request.Builder()

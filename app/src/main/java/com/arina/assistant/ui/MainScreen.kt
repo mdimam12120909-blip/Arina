@@ -1,5 +1,18 @@
 package com.arina.assistant.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Face
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -78,11 +91,8 @@ import com.arina.assistant.permissions.PermItem
 import com.arina.assistant.permissions.PermKind
 import com.arina.assistant.permissions.PermissionCenter
 
-private enum class Tab(val label: String, val icon: ImageVector) {
-    Home("Home", Icons.Outlined.GraphicEq),
-    Chat("Chat", Icons.Outlined.ChatBubbleOutline),
-    Memory("Memory", Icons.Outlined.Psychology),
-    Settings("Settings", Icons.Outlined.Settings)
+private enum class Page(val title: String) {
+    Home("Home"), Chat("Chat"), Memory("Memory"), Soul("Soul"), Settings("Settings")
 }
 
 private val Good = Color(0xFF3DDC97)
@@ -112,22 +122,23 @@ fun MainScreen(
     onGrantAll: () -> Unit,
     onAppInfo: () -> Unit
 ) {
-    var tab by rememberSaveable { mutableStateOf(Tab.Home) }
+    var page by rememberSaveable { mutableStateOf(Page.Home) }
+    BackHandler(enabled = page != Page.Home) { page = Page.Home }
 
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF020817), Color(0xFF041634), Color(0xFF020817))))) {
+    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF020817), Color(0xFF031428), Color(0xFF020817))))) {
         GridBackdrop(Modifier.fillMaxSize())
         Column(Modifier.fillMaxSize().imePadding()) {
-            Header(vm, onPower, Modifier.statusBarsPadding())
-            PersonaSwitch(vm.persona.value, vm::switchPersona)
+            Header(vm, page, onPower, { page = Page.Home }, Modifier.statusBarsPadding())
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                when (tab) {
-                    Tab.Home -> HomePanel(vm, onMicClick)
-                    Tab.Chat -> ChatPanel(vm)
-                    Tab.Memory -> MemoryPanel(vm)
-                    Tab.Settings -> SettingsPanel(vm, onPermission, onGrantAll, onAppInfo)
+                when (page) {
+                    Page.Home -> HomePanel(vm, onMicClick) { page = it }
+                    Page.Chat -> ChatPanel(vm)
+                    Page.Memory -> MemoryPanel(vm)
+                    Page.Soul -> SoulPanel(vm)
+                    Page.Settings -> SettingsPanel(vm, onPermission, onGrantAll, onAppInfo)
                 }
             }
-            BottomNav(tab) { tab = it }
+            Spacer(Modifier.navigationBarsPadding())
         }
         Stage(vm, Modifier.align(Alignment.Center).padding(horizontal = 14.dp))
     }
@@ -147,17 +158,23 @@ private fun GridBackdrop(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun Header(vm: ArinaEngine, onPower: () -> Unit, modifier: Modifier = Modifier) {
+private fun Header(vm: ArinaEngine, page: Page, onPower: () -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
     val on = vm.overlayOn.value
+    val accent = accentOf(vm.persona.value)
     Row(
         modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        LogoMark(Modifier.size(34.dp))
-        Spacer(Modifier.width(12.dp))
-        Column {
-            Text("ARIAURI", color = ArinaColors.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = 6.sp)
-            Text(vm.persona.value.displayName.uppercase() + " ACTIVE", color = ArinaColors.Muted, fontSize = 9.sp, letterSpacing = 3.sp)
+        if (page == Page.Home) {
+            LogoMark(Modifier.size(34.dp), accent)
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text("ARIAURI", color = ArinaColors.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = 6.sp)
+                Text(vm.persona.value.displayName.uppercase() + " ACTIVE", color = accent, fontSize = 9.sp, letterSpacing = 3.sp)
+            }
+        } else {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = ArinaColors.Text) }
+            Text(page.title.uppercase(), color = ArinaColors.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold, letterSpacing = 5.sp)
         }
         Spacer(Modifier.weight(1f))
         Row(
@@ -165,7 +182,7 @@ private fun Header(vm: ArinaEngine, onPower: () -> Unit, modifier: Modifier = Mo
                 .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Filled.PowerSettingsNew, "Floating orb", tint = if (on) Good else ArinaColors.Glow, modifier = Modifier.size(18.dp))
+            Icon(Icons.Filled.PowerSettingsNew, "Floating orb", tint = if (on) Good else accent, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text(if (on) "ORB ON" else "ORB OFF", color = ArinaColors.Text, fontSize = 11.sp, letterSpacing = 1.5.sp, fontWeight = FontWeight.Medium)
         }
@@ -173,135 +190,271 @@ private fun Header(vm: ArinaEngine, onPower: () -> Unit, modifier: Modifier = Mo
 }
 
 @Composable
-private fun PersonaSwitch(selected: Persona, onSelect: (Persona) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 2.dp), horizontalArrangement = Arrangement.Center) {
-        Row(Modifier.glass(RoundedCornerShape(50)).padding(4.dp)) {
-            Persona.entries.forEach { p ->
-                val on = p == selected
-                Text(
-                    p.displayName.uppercase(),
-                    color = if (on) ArinaColors.Background else ArinaColors.Text,
-                    fontSize = 12.sp,
-                    letterSpacing = 2.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(if (on) ArinaColors.Glow else Color.Transparent)
-                        .clickable { onSelect(p) }
-                        .padding(horizontal = 26.dp, vertical = 8.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun LogoMark(modifier: Modifier = Modifier) {
+private fun LogoMark(modifier: Modifier = Modifier, accent: Color = ArinaColors.Glow) {
     Canvas(modifier) {
-        val w = size.width
-        val h = size.height
-        val outer = Path().apply {
-            moveTo(w * 0.5f, h * 0.06f); lineTo(w * 0.94f, h * 0.92f); lineTo(w * 0.06f, h * 0.92f); close()
-        }
-        val inner = Path().apply {
-            moveTo(w * 0.5f, h * 0.34f); lineTo(w * 0.72f, h * 0.78f); lineTo(w * 0.28f, h * 0.78f); close()
-        }
-        val brush = Brush.linearGradient(listOf(ArinaColors.Glow, ArinaColors.Deep))
-        drawPath(outer, brush, style = Stroke(width = 3.dp.toPx(), join = StrokeJoin.Round))
-        drawPath(inner, brush, style = Stroke(width = 2.dp.toPx(), join = StrokeJoin.Round))
+        val r = size.minDimension * 0.30f
+        val brush = Brush.linearGradient(listOf(Color(0xFF2FD16F), Color(0xFF3D8BFF)))
+        drawCircle(brush, radius = r, center = Offset(size.width * 0.36f, size.height / 2f), style = Stroke(2.6.dp.toPx()))
+        drawCircle(brush, radius = r, center = Offset(size.width * 0.64f, size.height / 2f), style = Stroke(2.6.dp.toPx()))
+        drawCircle(accent, radius = 2.6.dp.toPx(), center = center)
     }
 }
 
+// ---- Home ---------------------------------------------------------------------------------------
+
+private class Node(val label: String, val icon: ImageVector, val color: Color, val page: Page)
+
+private val NODES = listOf(
+    Node("MEMORY", Icons.Outlined.Psychology, Color(0xFF28C8FF), Page.Memory),
+    Node("CHAT", Icons.Outlined.ChatBubbleOutline, Color(0xFFFF9A3D), Page.Chat),
+    Node("SOUL", Icons.Outlined.Face, Color(0xFFE6F2FF), Page.Soul),
+    Node("SETTINGS", Icons.Outlined.Settings, Color(0xFF2FD16F), Page.Settings)
+)
+
 @Composable
-private fun HomePanel(vm: ArinaEngine, onMicClick: () -> Unit) {
+private fun HomePanel(vm: ArinaEngine, onMicClick: () -> Unit, go: (Page) -> Unit) {
+    val persona = vm.persona.value
+    val accent = accentOf(persona)
     val problem = vm.notice.value != null
     val mood = moodOf(vm.status.value, vm.researchActive.value, problem)
-    val shown = vm.notice.value ?: vm.caption.value
+    LaunchedEffect(vm.tavilyKey.value) { vm.refreshHeadlines() }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        TranscriptCard(vm, accent)
+
+        // Orb with the four nodes wired to it
+        BoxWithConstraints(Modifier.fillMaxWidth().height(300.dp)) {
+            val orbSize = minOf(maxWidth - 104.dp, 280.dp)
+            val inf = rememberInfiniteTransition(label = "wire")
+            val flow by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(2600, easing = LinearEasing), RepeatMode.Restart), label = "flow")
+            Canvas(Modifier.fillMaxSize()) {
+                val orbLeft = size.width - orbSize.toPx()
+                val endX = orbLeft + orbSize.toPx() * 0.20f
+                NODES.forEachIndexed { i, n ->
+                    val sy = (30 + 80 * i).dp.toPx()
+                    val sx = 112.dp.toPx()
+                    val ey = size.height / 2f + (i - 1.5f) * 12.dp.toPx()
+                    val c1 = Offset(sx + 60.dp.toPx(), sy)
+                    val c2 = Offset(endX - 70.dp.toPx(), ey)
+                    val path = Path().apply { moveTo(sx, sy); cubicTo(c1.x, c1.y, c2.x, c2.y, endX, ey) }
+                    drawPath(path, n.color.copy(alpha = 0.18f), style = Stroke(5.dp.toPx()))
+                    drawPath(path, n.color.copy(alpha = 0.85f), style = Stroke(1.8.dp.toPx()))
+                    val u = (flow + i * 0.25f) % 1f
+                    val mt = 1f - u
+                    val px = mt * mt * mt * sx + 3 * mt * mt * u * c1.x + 3 * mt * u * u * c2.x + u * u * u * endX
+                    val py = mt * mt * mt * sy + 3 * mt * mt * u * c1.y + 3 * mt * u * u * c2.y + u * u * u * ey
+                    drawCircle(Color.White.copy(alpha = 0.9f), 2.6.dp.toPx(), Offset(px, py))
+                }
+            }
+            NODES.forEachIndexed { i, n ->
+                NodeButton(n, Modifier.offset(y = (6 + 80 * i).dp)) { go(n.page) }
+            }
             OrbView(
-                persona = vm.persona.value,
-                mood = mood,
-                level = vm.level.floatValue,
-                modifier = Modifier.fillMaxWidth().widthIn(max = 440.dp).aspectRatio(1f)
+                persona = persona, mood = mood, level = vm.level.floatValue,
+                modifier = Modifier.align(Alignment.CenterEnd).size(orbSize)
+            )
+            Text(
+                mood.label + " •", color = accent, fontSize = 10.sp, letterSpacing = 3.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = orbSize / 2 - 36.dp)
             )
         }
-        MoodChip(mood)
-        Spacer(Modifier.size(10.dp))
-        Box(Modifier.fillMaxWidth().heightIn(min = 64.dp, max = 120.dp), contentAlignment = Alignment.Center) {
-            if (shown.isNotBlank()) {
-                Text(
-                    shown,
-                    color = if (problem) Warn else ArinaColors.Text,
-                    fontSize = 15.sp,
-                    lineHeight = 22.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().glass().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp)
-                )
-            } else {
-                Text(
-                    if (vm.micOn.value) "I'm listening." else "Turn the microphone on and speak.",
-                    color = ArinaColors.Muted, fontSize = 14.sp
-                )
+
+        // Stop and mic
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            val busy = vm.status.value == Status.Speaking || vm.status.value == Status.Thinking || vm.agentActive.value
+            Row(
+                Modifier.clip(RoundedCornerShape(50))
+                    .border(1.5.dp, if (busy) Color(0xFFFF5C6C) else ArinaColors.Muted.copy(alpha = 0.4f), RoundedCornerShape(50))
+                    .clickable(enabled = busy) { vm.interrupt() }
+                    .padding(horizontal = 18.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Filled.Stop, "Stop", tint = if (busy) Color(0xFFFF5C6C) else ArinaColors.Muted, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("STOP", color = if (busy) ArinaColors.Text else ArinaColors.Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
             }
+            Spacer(Modifier.width(18.dp))
+            MicSwitch(vm.micOn.value, vm.level.floatValue, accent, onMicClick)
+            Spacer(Modifier.width(18.dp))
+            Text(
+                if (vm.micOn.value) "MIC ON" else "MIC OFF",
+                color = if (vm.micOn.value) Good else ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold
+            )
         }
-        Spacer(Modifier.size(6.dp))
-        MicSwitch(vm.micOn.value, vm.level.floatValue, onMicClick)
-        Text(
-            if (vm.micOn.value) "MICROPHONE ON  ·  TAP TO TURN OFF" else "MICROPHONE OFF  ·  TAP TO TURN ON",
-            color = ArinaColors.Muted, fontSize = 10.sp, letterSpacing = 2.sp,
-            modifier = Modifier.padding(top = 4.dp, bottom = 10.dp)
-        )
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            HeadlinesCard(vm, accent, Modifier.weight(1.2f))
+            TasksCard(vm, accent, Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(16.dp))
     }
 }
 
 @Composable
-private fun MoodChip(mood: Mood) {
-    val color = when (mood) {
-        Mood.Alert -> Color(0xFFFF5C6C)
-        Mood.Researching -> Warn
-        Mood.Thinking -> Color(0xFFA27BFF)
-        Mood.Standby -> ArinaColors.Muted
-        else -> ArinaColors.Glow
+private fun TranscriptCard(vm: ArinaEngine, accent: Color) {
+    val lastUser = vm.messages.lastOrNull { it.fromUser }?.text
+    val lastAi = vm.notice.value ?: vm.caption.value.ifBlank { vm.messages.lastOrNull { !it.fromUser }?.text.orEmpty() }
+    Column(
+        Modifier.fillMaxWidth().glass(RoundedCornerShape(20.dp)).border(1.5.dp, accent.copy(alpha = 0.7f), RoundedCornerShape(20.dp)).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text("TRANSCRIPT", color = accent, fontSize = 11.sp, letterSpacing = 3.sp, fontWeight = FontWeight.Bold)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+            Text(vm.persona.value.displayName.uppercase(), color = accent, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(64.dp))
+            Text(lastAi.ifBlank { "—" }, color = if (vm.notice.value != null) Warn else ArinaColors.Text, fontSize = 14.sp, lineHeight = 20.sp, maxLines = 4)
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+            Text("YOU", color = ArinaColors.Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(64.dp))
+            Text(lastUser ?: "—", color = ArinaColors.Muted, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 2)
+        }
     }
+}
+
+@Composable
+private fun NodeButton(n: Node, modifier: Modifier, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(50)
     Row(
-        Modifier.glass(RoundedCornerShape(50)).padding(horizontal = 14.dp, vertical = 6.dp),
+        modifier.width(112.dp).height(48.dp).clip(shape)
+            .background(Color(0xCC041020))
+            .border(1.6.dp, n.color, shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(Modifier.size(7.dp).clip(CircleShape).background(color))
+        Box(Modifier.size(30.dp).clip(CircleShape).border(1.6.dp, n.color, CircleShape), contentAlignment = Alignment.Center) {
+            Icon(n.icon, n.label, tint = n.color, modifier = Modifier.size(17.dp))
+        }
         Spacer(Modifier.width(8.dp))
-        Text(mood.label, color = color, fontSize = 11.sp, letterSpacing = 2.5.sp, fontWeight = FontWeight.Medium)
+        Text(n.label, color = ArinaColors.Text, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, maxLines = 1)
     }
 }
 
 @Composable
-private fun MicSwitch(micOn: Boolean, level: Float, onClick: () -> Unit) {
+private fun MicSwitch(micOn: Boolean, level: Float, accent: Color, onClick: () -> Unit) {
     val inf = rememberInfiniteTransition(label = "mic")
     val ring by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(1800, easing = LinearEasing), RepeatMode.Restart), label = "ring")
-    Box(Modifier.size(112.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(84.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val base = size.minDimension * 0.34f
             drawCircle(
-                Brush.radialGradient(listOf(ArinaColors.Glow.copy(alpha = if (micOn) 0.30f + level * 0.4f else 0.10f), Color.Transparent), center = center, radius = base * 1.9f),
+                Brush.radialGradient(listOf(accent.copy(alpha = if (micOn) 0.30f + level * 0.4f else 0.10f), Color.Transparent), center = center, radius = base * 1.9f),
                 radius = base * 1.9f, center = center
             )
             if (micOn) for (i in 0..1) {
                 val p = (ring + i * 0.5f) % 1f
-                drawCircle(ArinaColors.Primary.copy(alpha = (1f - p) * 0.55f), radius = base + p * base * 0.7f, center = center, style = Stroke(2.dp.toPx()))
+                drawCircle(accent.copy(alpha = (1f - p) * 0.55f), radius = base + p * base * 0.7f, center = center, style = Stroke(2.dp.toPx()))
             }
         }
         Box(
-            Modifier.size(70.dp).clip(CircleShape)
+            Modifier.size(54.dp).clip(CircleShape)
                 .background(Brush.radialGradient(listOf(if (micOn) Color(0xFF0A3A7A) else Color(0xFF0A1B38), Color(0xFF031230))))
-                .border(2.dp, Brush.sweepGradient(listOf(ArinaColors.Glow, ArinaColors.Deep, ArinaColors.Glow)), CircleShape)
+                .border(2.dp, accent, CircleShape)
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
+            Icon(if (micOn) Icons.Filled.Mic else Icons.Filled.MicOff, "Microphone", tint = if (micOn) accent else ArinaColors.Muted, modifier = Modifier.size(26.dp))
+        }
+    }
+}
+
+@Composable
+private fun HeadlinesCard(vm: ArinaEngine, accent: Color, modifier: Modifier) {
+    Column(modifier.heightIn(min = 190.dp).glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("TODAY HEADLINES", color = ArinaColors.Text, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, modifier = Modifier.weight(1f))
             Icon(
-                if (micOn) Icons.Filled.Mic else Icons.Filled.MicOff, "Microphone",
-                tint = if (micOn) ArinaColors.Glow else ArinaColors.Muted, modifier = Modifier.size(32.dp)
+                Icons.Outlined.Refresh, "Refresh", tint = if (vm.headlinesBusy.value) ArinaColors.Muted else accent,
+                modifier = Modifier.size(18.dp).clickable { vm.refreshHeadlines(force = true) }
             )
+        }
+        when {
+            !vm.tavilyKeySet -> Text("Add a free Tavily key in Settings to see headlines.", color = ArinaColors.Muted, fontSize = 12.sp)
+            vm.headlines.isEmpty() -> Text(if (vm.headlinesBusy.value) "Loading…" else "No headlines yet.", color = ArinaColors.Muted, fontSize = 12.sp)
+            else -> vm.headlines.take(5).forEach { (title, url) ->
+                Row(Modifier.fillMaxWidth().clickable { vm.openLink(url, title) }) {
+                    Box(Modifier.width(3.dp).height(30.dp).background(accent))
+                    Spacer(Modifier.width(8.dp))
+                    Text(title, color = ArinaColors.Text, fontSize = 12.sp, lineHeight = 15.sp, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TasksCard(vm: ArinaEngine, accent: Color, modifier: Modifier) {
+    var adding by remember { mutableStateOf(false) }
+    var draft by remember { mutableStateOf("") }
+    val tasks = vm.taskList
+    val left = tasks.count { !it.done }
+    val frac = if (tasks.isEmpty()) 0f else (tasks.size - left).toFloat() / tasks.size
+    Column(modifier.heightIn(min = 190.dp).glass(strong = true).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("TODAY TASKS", color = ArinaColors.Text, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Text("$left left", color = ArinaColors.Muted, fontSize = 10.sp)
+            }
+            Icon(Icons.Outlined.Add, "Add task", tint = accent, modifier = Modifier.size(20.dp).clickable { adding = !adding })
+        }
+        Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x33FFFFFF))) {
+            Box(Modifier.fillMaxWidth(frac).height(4.dp).background(accent))
+        }
+        if (adding) {
+            OutlinedTextField(
+                value = draft, onValueChange = { draft = it }, singleLine = true,
+                placeholder = { Text("New task", fontSize = 12.sp, color = ArinaColors.Muted) },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { vm.addTaskTyped(draft); draft = ""; adding = false }),
+                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = ArinaColors.Text, unfocusedTextColor = ArinaColors.Text, focusedBorderColor = accent, unfocusedBorderColor = ArinaColors.Muted),
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        if (tasks.isEmpty() && !adding) Text("Nothing yet. Say “add a task…” or tap +.", color = ArinaColors.Muted, fontSize = 12.sp)
+        tasks.take(6).forEach { t ->
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { vm.toggleTask(t.id) }) {
+                Box(Modifier.size(10.dp).clip(CircleShape).border(1.5.dp, accent, CircleShape).background(if (t.done) accent else Color.Transparent))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    t.text, color = if (t.done) ArinaColors.Muted else ArinaColors.Text, fontSize = 12.sp, lineHeight = 15.sp, maxLines = 2,
+                    textDecoration = if (t.done) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(Icons.Outlined.Close, "Delete", tint = ArinaColors.Muted, modifier = Modifier.size(14.dp).clickable { vm.removeTask(t.id) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun SoulPanel(vm: ArinaEngine) {
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Text("Choose who you talk to. Each has its own colour, voice and personality.", color = ArinaColors.Muted, fontSize = 13.sp)
+        Persona.entries.forEach { p ->
+            val sel = p == vm.persona.value
+            val color = accentOf(p)
+            val shape = RoundedCornerShape(24.dp)
+            Row(
+                Modifier.fillMaxWidth().clip(shape)
+                    .background(Brush.horizontalGradient(listOf(color.copy(alpha = if (sel) 0.28f else 0.08f), Color(0xAA041020))))
+                    .border(if (sel) 2.dp else 1.dp, color.copy(alpha = if (sel) 1f else 0.4f), shape)
+                    .clickable { vm.switchPersona(p) }
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OrbView(p, Mood.Standby, 0f, Modifier.size(120.dp))
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(p.displayName.uppercase(), color = ArinaColors.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
+                    Text(if (p == Persona.Arina) "Female voice · green" else "Male voice · blue", color = color, fontSize = 12.sp)
+                    Text(if (sel) "ACTIVE" else "Tap to switch", color = if (sel) Good else ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 2.sp)
+                }
+            }
         }
     }
 }
@@ -608,28 +761,6 @@ private fun PermRow(item: PermItem, ok: Boolean, onPermission: (PermItem) -> Uni
                 modifier = Modifier.clip(RoundedCornerShape(50)).background(ArinaColors.Glow)
                     .clickable { onPermission(item) }.padding(horizontal = 16.dp, vertical = 7.dp)
             )
-        }
-    }
-}
-
-@Composable
-private fun BottomNav(selected: Tab, onSelect: (Tab) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xF2020817))))
-            .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly
-    ) {
-        Tab.entries.forEach { t ->
-            val sel = t == selected
-            Column(
-                Modifier.clip(RoundedCornerShape(14.dp)).clickable { onSelect(t) }.padding(horizontal = 18.dp, vertical = 6.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Icon(t.icon, t.label, tint = if (sel) ArinaColors.Glow else ArinaColors.Muted, modifier = Modifier.size(24.dp))
-                Text(t.label.uppercase(), fontSize = 9.sp, letterSpacing = 1.5.sp, color = if (sel) ArinaColors.Glow else ArinaColors.Muted)
-            }
         }
     }
 }

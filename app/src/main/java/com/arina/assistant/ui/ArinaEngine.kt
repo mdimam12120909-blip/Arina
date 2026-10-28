@@ -16,6 +16,7 @@ import com.arina.assistant.Keys
 import com.arina.assistant.ai.DeepResearch
 import com.arina.assistant.ai.GeminiClient
 import com.arina.assistant.ai.PhoneAgent
+import com.arina.assistant.ai.Tasks
 import com.arina.assistant.ai.ToolHooks
 import com.arina.assistant.device.ShowTools
 import com.arina.assistant.device.Termux
@@ -117,6 +118,46 @@ class ArinaEngine private constructor(private val app: Application) {
     val glow = mutableIntStateOf(0)
 
     private val device = DeviceActions(app)
+    private val tasks = Tasks(app)
+    val taskList = mutableStateListOf<Tasks.Task>().also { it.addAll(tasks.all()) }
+    val headlines = mutableStateListOf<Pair<String, String>>()
+    val headlinesBusy = mutableStateOf(false)
+
+    private fun reloadTasks() {
+        taskList.clear()
+        taskList.addAll(tasks.all())
+    }
+
+    fun addTaskTyped(text: String) { tasks.add(text); reloadTasks() }
+    fun toggleTask(id: Long) { tasks.toggle(id); reloadTasks() }
+    fun removeTask(id: Long) { tasks.remove(id); reloadTasks() }
+
+    /** Fetches today's top headlines (one Tavily search) and keeps them for three hours. */
+    fun refreshHeadlines(force: Boolean = false) {
+        val key = tavilyKey.value
+        if (key.isBlank() || headlinesBusy.value) return
+        val last = uiPrefs.getLong("headlines_at", 0L)
+        if (!force && headlines.isNotEmpty() && System.currentTimeMillis() - last < 3 * 3600_000L) return
+        headlinesBusy.value = true
+        scope.launch {
+            try {
+                val list = withContext(Dispatchers.IO) { TavilySearch.headlines(key) }
+                if (list.isNotEmpty()) {
+                    headlines.clear(); headlines.addAll(list)
+                    uiPrefs.edit().putLong("headlines_at", System.currentTimeMillis()).apply()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                notice.value = "Headlines failed: ${(e.message ?: "unknown").take(120)}"
+            } finally {
+                headlinesBusy.value = false
+            }
+        }
+    }
+
+    /** Opens a headline inside a card for one minute. */
+    fun openLink(url: String, title: String) = openCard(Card(CardKind.Web, title.take(40), url = url))
     private val show = ShowTools(app)
     private var agentJob: Job? = null
     private var ackJob: Job? = null
@@ -131,6 +172,17 @@ class ArinaEngine private constructor(private val app: Application) {
         override fun showFile(name: String) = doShowFile(name)
         override fun showLink(url: String) = doShowLink(url)
         override fun operatePhone(goal: String, chat: Boolean) = startOperate(goal, chat)
+        override fun addTask(text: String): String {
+            val ok = tasks.add(text)
+            scope.launch { reloadTasks() }
+            return if (ok) "OK: task added." else "OK: that task is already on the list."
+        }
+        override fun completeTask(text: String): String {
+            val ok = tasks.complete(text)
+            scope.launch { reloadTasks() }
+            return if (ok) "OK: marked done." else "ERROR: no open task matches '$text'."
+        }
+        override fun listTasks(): String = tasks.summary()
         override fun termux(command: String): String {
             if (!Termux.installed(app)) return "ERROR: Termux is not installed on this phone."
             val ok = runBlocking { ask("Run a command in Termux", command, ASK_LINES) }
@@ -601,6 +653,17 @@ class ArinaEngine private constructor(private val app: Application) {
             }
         }
         return TOLD
+    }
+
+    /** The STOP button: cut off whatever is being said or worked on right now, keep the mic as it is. */
+    fun interrupt() {
+        job?.cancel()
+        ackJob?.cancel()
+        voice.stop()
+        stopAgent()
+        level.floatValue = 0f
+        status.value = Status.Idle
+        if (micOn.value) restartListening()
     }
 
     fun stopAgent() {
