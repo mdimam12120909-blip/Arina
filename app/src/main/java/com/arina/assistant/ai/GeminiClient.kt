@@ -19,6 +19,9 @@ data class Reply(val you: String, val bn: String, val en: String)
 
 private class ModelUnavailable(message: String) : IOException(message)
 
+/** This one key was refused (invalid, expired, blocked). Another key may still work. */
+private class BadKey(message: String) : IOException(message)
+
 /** Per-call options: ask for JSON, or allow a slow, long answer (reports). */
 private data class Opts(val json: Boolean = false, val slow: Boolean = false)
 
@@ -68,7 +71,7 @@ class GeminiClient(
 
         private val SYSTEM_PROMPT = """
             {INTRO}
-            The user is Habib Hossan Shahadat; call him Habib.
+            The user is Habib Hossan Shahadat; call him Habib.${Identity.PROMPT}
             When the user asks you to do something on the phone, call the matching tool, then confirm.
             Pass app names to open_app in English exactly as they appear on the phone (WhatsApp, YouTube, Camera, Chrome, Settings...).
             Pass phone-number digits as ASCII digits. Contact names can be Bengali or English, as spoken.
@@ -142,6 +145,7 @@ class GeminiClient(
         val all = keys().ifEmpty { listOf(apiKeyProvider().trim()) }
         val start = Math.floorMod(keyCursor.getAndIncrement(), all.size)
         var last: ModelUnavailable? = null
+        var bad: BadKey? = null
         for (i in all.indices) {
             val key = all[(start + i) % all.size]
             try {
@@ -149,9 +153,11 @@ class GeminiClient(
             } catch (e: ModelUnavailable) {
                 last = e
                 if (e.message?.contains("error 429") != true) throw e
+            } catch (e: BadKey) {
+                bad = e
             }
         }
-        throw last!!
+        throw last ?: bad ?: IOException("No Gemini key worked.")
     }
 
     private fun sendOnce(key: String, model: String, withThinking: Boolean, system: String, contents: JSONArray, withTools: Boolean, o: Opts): JSONObject {
@@ -186,7 +192,9 @@ class GeminiClient(
         if (withThinking && code == 400 && msg.contains("thinking", ignoreCase = true)) throw BadThinkingConfig()
 
         val text = "Gemini error $code ($model): $msg"
-        val keyProblem = msg.contains("API key", ignoreCase = true)
+        val keyProblem = msg.contains("API key", ignoreCase = true) || code == 401 ||
+            (code == 403 && !msg.contains("model", ignoreCase = true))
+        if (keyProblem) throw BadKey("Gemini refused the key ending ${key.takeLast(4)}: $msg")
         // Wrong/retired model, overloaded or per-model quota: try the next model. A bad key will not get better.
         if (!keyProblem && (code == 404 || code == 429 || code >= 500 ||
                 ((code == 400 || code == 403) && msg.contains("model", ignoreCase = true)))

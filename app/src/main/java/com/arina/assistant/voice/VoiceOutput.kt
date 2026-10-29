@@ -55,6 +55,7 @@ class VoiceOutput(
     }
 
     private class Retry(message: String) : IOException(message)
+    private class BadKey(message: String) : IOException(message)
 
     private fun fetch(text: String, keyList: List<String>): File {
         val voice = voiceName().trim().ifBlank { "Kore" }
@@ -68,6 +69,8 @@ class VoiceOutput(
                     val f = once(model, key, voice, text)
                     goodModel = model
                     return f
+                } catch (e: BadKey) {
+                    last = e
                 } catch (e: Retry) {
                     last = e
                     // A key out of quota: try the next key. Anything else (model missing...): try the next model.
@@ -99,6 +102,8 @@ class VoiceOutput(
             if (!resp.isSuccessful) {
                 val detail = runCatching { JSONObject(raw).getJSONObject("error").getString("message") }.getOrDefault(raw).take(200)
                 val msg = "Gemini voice error ${resp.code} ($model): $detail"
+                if (resp.code == 401 || (resp.code in 400..403 && detail.contains("API key", ignoreCase = true)))
+                    throw BadKey("Gemini refused the key ending ${key.takeLast(4)}: $detail")
                 if (resp.code == 429 || resp.code == 404 || resp.code >= 500 ||
                     (resp.code == 400 && detail.contains("model", ignoreCase = true))
                 ) throw Retry(msg)
