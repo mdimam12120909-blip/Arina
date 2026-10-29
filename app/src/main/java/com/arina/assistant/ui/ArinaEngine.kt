@@ -63,7 +63,7 @@ data class ChatMessage(val fromUser: Boolean, val text: String)
 
 /**
  * Arina's brain, shared by the app screen and the floating avatar (one instance per process).
- * Ears (Android Bengali recognizer) -> Gemini -> phone tools -> voice (Cartesia).
+ * Ears (Android Bengali recognizer) -> Gemini -> phone tools -> voice (Gemini speech).
  *
  * The mic is a switch: the user turns it on and it stays on, listening again after every
  * answer, until the user turns it off.
@@ -110,13 +110,13 @@ class ArinaEngine private constructor(private val app: Application) {
 
     // Keys (editable in the Setup tab)
     val geminiKey: MutableState<String> = mutableStateOf(Keys.gemini(app))
-    val cartesiaKey: MutableState<String> = mutableStateOf(Keys.cartesia(app))
-    val voiceId: MutableState<String> = mutableStateOf(Keys.voiceId(app))
+    val geminiSlots = mutableStateListOf<String>().also { it.addAll(Keys.geminiSlots(app)) }
+    val voiceArina: MutableState<String> = mutableStateOf(Keys.voiceArina(app))
     val tavilyKey: MutableState<String> = mutableStateOf(Keys.tavily(app))
-    val voiceIdAurion: MutableState<String> = mutableStateOf(Keys.voiceIdAurion(app))
+    val voiceAurion: MutableState<String> = mutableStateOf(Keys.voiceAurion(app))
     val tavilyKeySet: Boolean get() = tavilyKey.value.isNotBlank()
     val geminiKeySet: Boolean get() = geminiKey.value.isNotBlank()
-    val cartesiaKeySet: Boolean get() = cartesiaKey.value.isNotBlank() && voiceId.value.isNotBlank()
+    val geminiKeyCount: Int get() = geminiSlots.count { it.isNotBlank() }
 
     // Permissions
     val micGranted = mutableStateOf(false)
@@ -390,13 +390,13 @@ class ArinaEngine private constructor(private val app: Application) {
     )
     private val sound = SoundLoop()
     private val researchJobs = mutableListOf<Job>()
-    private val voice: VoiceOutput = VoiceOutput(app) { cartesiaKey.value to currentVoiceId() }
+    private val voice: VoiceOutput = VoiceOutput(app, { geminiKey.value }, { currentVoiceId() })
     private val ears: SpeechInput = SpeechInput(app)
     private var job: Job? = null
     private var failStreak = 0
 
     private fun currentVoiceId(): String =
-        if (persona.value == Persona.Aurion) voiceIdAurion.value else voiceId.value
+        if (persona.value == Persona.Aurion) voiceAurion.value else voiceArina.value
 
     /** Switches between Arina (female) and Aurion (male): voice, avatar and personality change together. */
     fun switchPersona(p: Persona) {
@@ -410,8 +410,7 @@ class ArinaEngine private constructor(private val app: Application) {
         persona.value = p
         uiPrefs.edit().putString("persona", p.name).apply()
         caption.value = ""
-        notice.value = if (p == Persona.Aurion && voiceIdAurion.value.isBlank())
-            "Aurion has no voice yet. Paste his Cartesia Voice ID in Setup and tap Save." else null
+        notice.value = null
         messages += ChatMessage(false, "${p.displayName} here, part of AriAuri.")
         if (micOn.value) restartListening()
     }
@@ -474,17 +473,17 @@ class ArinaEngine private constructor(private val app: Application) {
         reloadFacts()
     }
 
-    fun saveKeys(gemini: String, cartesia: String, voice: String, tavily: String, aurionVoice: String) {
-        Keys.save(app, gemini, cartesia, voice, tavily, aurionVoice)
-        voiceIdAurion.value = Keys.voiceIdAurion(app)
+    fun saveKeys(gemini: List<String>, tavily: String, arinaVoice: String, aurionVoice: String) {
+        Keys.save(app, gemini, tavily, arinaVoice, aurionVoice)
+        voiceAurion.value = Keys.voiceAurion(app)
+        voiceArina.value = Keys.voiceArina(app)
         tavilyKey.value = Keys.tavily(app)
         geminiKey.value = Keys.gemini(app)
-        cartesiaKey.value = Keys.cartesia(app)
-        voiceId.value = Keys.voiceId(app)
+        geminiSlots.clear(); geminiSlots.addAll(Keys.geminiSlots(app))
         notice.value = "Saved."
     }
 
-    /** Speaks a short test line so the Cartesia key and voice can be checked. */
+    /** Speaks a short test line so the Gemini key and voice can be checked. */
     fun testVoice() {
         if (status.value != Status.Idle) return
         notice.value = null

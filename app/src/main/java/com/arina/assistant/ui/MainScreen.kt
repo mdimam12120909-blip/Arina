@@ -70,6 +70,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -644,11 +645,10 @@ private fun PillButton(label: String, onClick: () -> Unit) {
 
 @Composable
 private fun SettingsPanel(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onGrantAll: () -> Unit, onAppInfo: () -> Unit) {
-    var gemini by remember { mutableStateOf(vm.geminiKey.value) }
-    var cartesia by remember { mutableStateOf(vm.cartesiaKey.value) }
-    var voice by remember { mutableStateOf(vm.voiceId.value) }
+    val gemini = remember { mutableStateListOf(*vm.geminiSlots.toTypedArray()) }
+    var arinaVoice by remember { mutableStateOf(vm.voiceArina.value) }
     var tavily by remember { mutableStateOf(vm.tavilyKey.value) }
-    var aurionVoice by remember { mutableStateOf(vm.voiceIdAurion.value) }
+    var aurionVoice by remember { mutableStateOf(vm.voiceAurion.value) }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 8.dp),
@@ -657,22 +657,19 @@ private fun SettingsPanel(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onG
         SectionTitle("CONNECTIONS")
         Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Keys are stored only on this phone.", color = ArinaColors.Muted, fontSize = 12.sp)
-            KeyField("Gemini API keys (1 to 5, separated by comma)", gemini, true) { gemini = it }
-            KeyField("Cartesia API key", cartesia, true) { cartesia = it }
-            KeyField("Arina voice ID (Cartesia)", voice, false) { voice = it }
-            KeyField("Aurion voice ID (Cartesia)", aurionVoice, false) { aurionVoice = it }
+            gemini.forEachIndexed { i, v -> KeyField("Gemini API key ${i + 1}" + if (i == 0) " (main)" else " (optional)", v, true) { gemini[i] = it } }
+            KeyField("Arina voice (Gemini voice name, e.g. Kore, Leda, Aoede)", arinaVoice, false) { arinaVoice = it }
+            KeyField("Aurion voice (Gemini voice name, e.g. Charon, Puck, Orus)", aurionVoice, false) { aurionVoice = it }
             KeyField("Tavily search key (free, for web research)", tavily, true) { tavily = it }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PillButton("Save") { vm.saveKeys(gemini, cartesia, voice, tavily, aurionVoice) }
+                PillButton("Save") { vm.saveKeys(gemini.toList(), tavily, arinaVoice, aurionVoice) }
                 PillButton("Test voice") {
-                    vm.saveKeys(gemini, cartesia, voice, tavily, aurionVoice)
+                    vm.saveKeys(gemini.toList(), tavily, arinaVoice, aurionVoice)
                     vm.testVoice()
                 }
             }
             vm.notice.value?.let { Text(it, color = Warn, fontSize = 12.sp, lineHeight = 17.sp) }
-            StatusLine("Gemini (" + vm.geminiKey.value.split(Regex("[,;\\s]+")).count { it.length > 10 } + " keys)", vm.geminiKeySet)
-            StatusLine("Cartesia voice (Arina)", vm.cartesiaKeySet)
-            StatusLine("Cartesia voice (Aurion)", vm.voiceIdAurion.value.isNotBlank())
+            StatusLine("Gemini brain and voice (" + vm.geminiKeyCount + " keys)", vm.geminiKeySet)
             StatusLine("Web research", vm.tavilyKeySet)
         }
 

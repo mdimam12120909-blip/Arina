@@ -3,14 +3,16 @@ package com.arina.assistant
 import android.content.Context
 
 /**
- * API keys. Keys typed into the app's Setup tab are stored on the phone and win over
- * the keys baked in at build time, so they can be fixed without rebuilding.
+ * API keys and voice names. Values typed in Settings are stored on the phone and win over the keys baked in
+ * at build time, so they can be fixed without rebuilding. Gemini has five slots; each request uses the next one.
  */
 object Keys {
+    const val GEMINI_SLOTS = 5
+
     private fun prefs(c: Context) = c.getSharedPreferences("arina_keys", Context.MODE_PRIVATE)
 
     /**
-     * A key typed in the Setup tab wins over the build key, except right after a rebuild whose
+     * A key typed in Settings wins over the build key, except right after a rebuild whose
      * key changed: then the new build key replaces the old saved one (so updating a GitHub secret works).
      */
     private fun pick(c: Context, name: String, fallback: String): String {
@@ -22,19 +24,27 @@ object Keys {
         return p.getString(name, null)?.trim()?.takeIf { it.isNotEmpty() } ?: fallback
     }
 
-    fun gemini(c: Context) = pick(c, "gemini", BuildConfig.GEMINI_API_KEY)
-    fun cartesia(c: Context) = pick(c, "cartesia", BuildConfig.CARTESIA_API_KEY)
-    fun voiceId(c: Context) = pick(c, "cartesia_voice", BuildConfig.CARTESIA_VOICE_ID)
-    fun tavily(c: Context) = pick(c, "tavily", BuildConfig.TAVILY_API_KEY)
-    fun voiceIdAurion(c: Context) = pick(c, "cartesia_voice_aurion", "")
+    private fun slotName(i: Int) = if (i == 0) "gemini" else "gemini${i + 1}"
 
-    fun save(c: Context, gemini: String, cartesia: String, voiceId: String, tavily: String, voiceIdAurion: String) {
-        prefs(c).edit()
-            .putString("gemini", gemini.trim())
-            .putString("cartesia", cartesia.trim())
-            .putString("cartesia_voice", voiceId.trim())
-            .putString("tavily", tavily.trim())
-            .putString("cartesia_voice_aurion", voiceIdAurion.trim())
+    /** The five Gemini key slots, in order; empty strings for unused slots. Slot 1 can come from the build. */
+    fun geminiSlots(c: Context): List<String> = List(GEMINI_SLOTS) { i ->
+        if (i == 0) pick(c, "gemini", BuildConfig.GEMINI_API_KEY)
+        else prefs(c).getString(slotName(i), "")?.trim().orEmpty()
+    }
+
+    /** All non-empty Gemini keys joined by new lines, the form the clients read. */
+    fun gemini(c: Context): String = geminiSlots(c).filter { it.isNotBlank() }.joinToString("\n")
+
+    fun tavily(c: Context) = pick(c, "tavily", BuildConfig.TAVILY_API_KEY)
+    fun voiceArina(c: Context): String = prefs(c).getString("tts_voice_arina", null)?.trim()?.takeIf { it.isNotEmpty() } ?: "Kore"
+    fun voiceAurion(c: Context): String = prefs(c).getString("tts_voice_aurion", null)?.trim()?.takeIf { it.isNotEmpty() } ?: "Charon"
+
+    fun save(c: Context, gemini: List<String>, tavily: String, voiceArina: String, voiceAurion: String) {
+        val e = prefs(c).edit()
+        for (i in 0 until GEMINI_SLOTS) e.putString(slotName(i), gemini.getOrNull(i).orEmpty().trim())
+        e.putString("tavily", tavily.trim())
+            .putString("tts_voice_arina", voiceArina.trim())
+            .putString("tts_voice_aurion", voiceAurion.trim())
             .apply()
     }
 }
