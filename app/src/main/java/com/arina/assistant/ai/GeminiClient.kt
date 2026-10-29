@@ -30,8 +30,12 @@ class GeminiClient(
     private val apiKeyProvider: () -> String,
     private val tools: ToolRunner,
     private val memoryBlock: () -> String,
-    private val personaIntro: () -> String
+    private val personaIntro: () -> String,
+    private val skillsBlock: () -> String = { "" }
 ) {
+
+    /** True while a task is running in the background: noise and side talk are then likely, so be stricter. */
+    @Volatile var busy: Boolean = false
 
     companion object {
         // Tried in this order until one works for the user's key. Google retires models often.
@@ -57,6 +61,11 @@ class GeminiClient(
             EN: <short English version of the answer, it is the only text shown on screen>
         """.trimIndent()
 
+        private val BUSY_NOTE = """
+
+            A background task is running right now, so the microphone may pick up room noise or other people. Answer audio only if it is clearly addressed to you: a stop, cancel or change, or a new request. Otherwise reply YOU: (noise), BN: -, EN: -.
+        """.trimIndent()
+
         private val SYSTEM_PROMPT = """
             {INTRO}
             The user is Habib Hossan Shahadat; call him Habib.
@@ -68,6 +77,9 @@ class GeminiClient(
             If no tool is needed, just answer helpfully.
             When the user's message is audio, understand the speech (Bengali or English) and answer; put what he said, paraphrased in English, in the YOU line.
             Never repeat a sentence, opening or filler you already used earlier in this conversation; vary your wording every time, and do not say his name in every reply. Never announce the same action twice.
+            QUALITY OVER SPEED: never rush a real task. Understand the goal first, think it through in order, check your own result before you present it, and give one clean, correct, professional answer. Short chat replies stay short; real work is done carefully.
+            NOISE: if the audio is silence, noise, music, TV or talk not meant for you, or no clear request, never say you did not understand and never ask him to repeat; reply YOU: (noise), BN: -, EN: -.
+            SKILLS: when a request fits a saved skill, call use_skill with its name and the full task; the skill's steps are then followed exactly. When he says to remember how to do something as a skill, call save_skill.
             STYLE: sharp, logical, confident, direct. Lead with the answer or the action. No greeting, no "sure/of course", no closing offer like "anything else?", no apologies or filler. State what is done or the key fact, then the one next step only if it matters.
             Write for the ear: short crisp sentences, one idea each, numbers and names stated plainly, no lists symbols or brackets in BN. Keep BN to about 12 words unless he asks for detail; when detail is asked, give at most 4 short pointer sentences, never a long paragraph.
             HOW YOU WORK: you do the work yourself, you do not just name it. For a one-step job call the matching tool and confirm in a few words. For a big or multi-part job (build, write, fix, compare, prepare, analyse, anything a person would need an hour for) call run_workflow once with the complete goal: it plans the steps, runs independent steps in parallel in the background and shows the finished result. Do not ask permission to plan; ask a question only if a missing detail would make the result wrong.
@@ -146,7 +158,7 @@ class GeminiClient(
         val generation = JSONObject().put("temperature", 0.7)
         if (o.json) generation.put("responseMimeType", "application/json")
         // Lower thinking = faster answers. "low" is the lowest level documented for every current Flash model.
-        if (withThinking) generation.put("thinkingConfig", JSONObject().put("thinkingLevel", "low"))
+        if (withThinking) generation.put("thinkingConfig", JSONObject().put("thinkingLevel", if (o.slow) "high" else "low"))
 
         val body = JSONObject()
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
@@ -239,7 +251,7 @@ class GeminiClient(
             .put(JSONObject().put("inlineData", JSONObject()
                 .put("mimeType", "audio/wav")
                 .put("data", Base64.encodeToString(wav, Base64.NO_WRAP))))
-            .put(JSONObject().put("text", "(The user just spoke to you. Listen carefully; it is Bengali or English. Answer as instructed. If you cannot make out any words, reply in BN asking him to repeat.)")),
+            .put(JSONObject().put("text", "(The user just spoke to you. Listen carefully; it is Bengali or English. Answer as instructed. If this is only noise, silence, music, TV, or people talking to each other and not to you, or you cannot clearly make out a request meant for you, do NOT answer and do NOT ask him to repeat: reply exactly YOU: (noise) then BN: - then EN: -.)")),
         audio = true
     )
 
@@ -267,7 +279,7 @@ class GeminiClient(
 
     private fun runTurns(shrink: (String) -> Unit): Reply {
         repeat(6) {
-            val resp = callApi(SYSTEM_PROMPT.replace("{INTRO}", personaIntro()) + memoryBlock(), JSONArray(history), withTools = true)
+            val resp = callApi(SYSTEM_PROMPT.replace("{INTRO}", personaIntro()) + memoryBlock() + skillsBlock() + (if (busy) BUSY_NOTE else ""), JSONArray(history), withTools = true)
             val content = resp.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")
                 ?: throw IOException("Gemini returned an empty answer. Try rephrasing.")
             val parts = content.optJSONArray("parts") ?: JSONArray()

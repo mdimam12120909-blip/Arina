@@ -146,6 +146,18 @@ class ArinaEngine private constructor(private val app: Application) {
 
     // ---- Routines, companion talk, phone health -------------------------------------------------
     private val routineStore = RoutineStore(app)
+    private val skillStore = com.arina.assistant.ai.SkillStore(app)
+    val skills = mutableStateListOf<com.arina.assistant.ai.Skill>().also { it.addAll(skillStore.all()) }
+    fun addSkill(name: String, whenText: String, steps: String): Boolean {
+        val ok = skillStore.save(name, whenText, steps)
+        skills.clear(); skills.addAll(skillStore.all())
+        return ok
+    }
+    fun removeSkill(name: String) {
+        skillStore.remove(name)
+        skills.clear(); skills.addAll(skillStore.all())
+    }
+
     val routines = mutableStateListOf<Routine>().also { it.addAll(routineStore.all()) }
     val proactiveOn = mutableStateOf(app.getSharedPreferences("arina_ui", Context.MODE_PRIVATE).getBoolean("proactive", true))
 
@@ -322,8 +334,15 @@ class ArinaEngine private constructor(private val app: Application) {
     private val hooks = object : ToolHooks {
         override fun research(question: String) = startResearch(question)
         override fun deepResearch(topic: String) = startDeepResearch(topic)
-        override fun runWorkflow(goal: String) = startWorkflow(goal)
+        override fun runWorkflow(goal: String) = startWorkflow(goal, null)
         override fun lookCamera(question: String): String = doLook(question)
+        override fun useSkill(name: String, task: String): String {
+            val sk = skillStore.find(name) ?: return "ERROR: no skill named '$name'. Saved skills: " + skillStore.all().joinToString { it.name }
+            return startWorkflow(task.ifBlank { name }, sk)
+        }
+        override fun saveSkill(name: String, whenText: String, steps: String): String =
+            if (addSkill(name, whenText, steps)) "OK: skill '${name.trim()}' saved." else "ERROR: the skill needs a new name and steps (built-in names cannot be replaced)."
+        override fun listSkills(): String = skillStore.all().joinToString("\n") { "- ${it.name}: ${it.when_}" }
         override fun showImage(query: String) = doShowImage(query)
         override fun showGallery(album: String, count: Int) = doShowGallery(album, count)
         override fun showFile(name: String) = doShowFile(name)
@@ -366,7 +385,8 @@ class ArinaEngine private constructor(private val app: Application) {
         { geminiKey.value },
         ToolRunner(device, memory, { scope.launch { reloadFacts() } }, hooks),
         { memory.promptBlock() },
-        { persona.value.intro }
+        { persona.value.intro },
+        { skillStore.index() }
     )
     private val sound = SoundLoop()
     private val researchJobs = mutableListOf<Job>()
@@ -535,7 +555,9 @@ class ArinaEngine private constructor(private val app: Application) {
                     level.floatValue = 0f
                     notice.value = msg
                     turnOff()
-                }
+                },
+                // While a task runs, only a clear, longer phrase counts, so room noise cannot interrupt the work.
+                strict = { researchActive.value || agentActive.value }
             )
             return
         }
@@ -767,7 +789,7 @@ class ArinaEngine private constructor(private val app: Application) {
         }
     }
 
-    private fun startWorkflow(goal: String): String {
+    private fun startWorkflow(goal: String, skill: com.arina.assistant.ai.Skill? = null): String {
         val g = goal.trim()
         if (g.isEmpty()) return "ERROR: no goal given."
         ack(DEEP_LINES)
@@ -777,9 +799,11 @@ class ArinaEngine private constructor(private val app: Application) {
             researchActive.value = true
             try {
                 val result = withContext(Dispatchers.IO) {
-                    Workflow.run(g, tavilyKey.value, gemini, { done, total, line ->
-                        scope.launch { caption.value = "Working: step $done of $total, $line" }
-                    }, { !me.isActive })
+                    Workflow.run(
+                        goal = g, tavilyKey = tavilyKey.value, gemini = gemini, skill = skill,
+                        onProgress = { done, total, line -> scope.launch { caption.value = "Working: step $done of $total, $line" } },
+                        cancelled = { !me.isActive }
+                    )
                 }
                 openCard(Card(CardKind.Text, "Result: ${g.take(36)}", text = result.output, seconds = 0))
                 withContext(Dispatchers.IO) { gemini.noteResearch(g, Reply("", result.bn, result.en)) }
@@ -856,7 +880,10 @@ class ArinaEngine private constructor(private val app: Application) {
             agentLine.value = "Starting…"
             try {
                 val outcome = withContext(Dispatchers.IO) {
-                    PhoneAgent(gemini, device).run(goal, chat, { line -> agentLine.value = line }, { agentJob?.isActive != true })
+                    PhoneAgent(gemini, device).run(goal, chat, { line -> agentLine.value = line }, {
+                        while (agentHold && agentJob?.isActive == true) Thread.sleep(100)
+                        agentJob?.isActive != true
+                    })
                 }
                 agentActive.value = false
                 if (outcome.report.isNotBlank()) openCard(Card(CardKind.Text, "Result", text = outcome.report, seconds = 0))
@@ -882,6 +909,8 @@ class ArinaEngine private constructor(private val app: Application) {
         status.value = Status.Idle
         if (micOn.value) restartListening()
     }
+
+    @Volatile private var agentHold = false
 
     fun stopAgent() {
         agentJob?.cancel()
@@ -911,13 +940,18 @@ class ArinaEngine private constructor(private val app: Application) {
 
     private fun handle(text: String?, wav: ByteArray?, typed: Boolean) {
         // The user said something new (for example "come out"): a running phone task must not keep going and undo it.
-        if (agentActive.value || agentJob?.isActive == true) stopAgent()
+        // Typed text is certainly meant for us: stop at once. Heard audio might be noise: only pause the phone task
+        // until the reply shows whether it was a real command.
+        val agentBefore = agentJob
+        val agentRunning = agentActive.value || agentJob?.isActive == true
+        if (agentRunning) { if (wav == null) stopAgent() else agentHold = true }
         notice.value = null
         caption.value = ""
         if (typed && text != null) messages += ChatMessage(true, text)
         status.value = Status.Thinking
         job = scope.launch {
             try {
+                gemini.busy = researchActive.value || agentActive.value
                 val reply = try {
                     withContext(Dispatchers.IO) { if (wav != null) gemini.chatAudio(wav) else gemini.chat(text.orEmpty()) }
                 } catch (e: CancellationException) {
@@ -925,6 +959,12 @@ class ArinaEngine private constructor(private val app: Application) {
                 } catch (e: Exception) {
                     fail("Error: ${(e.message ?: e.javaClass.simpleName).take(220)}")
                     return@launch
+                }
+                // Noise or side talk: say nothing, show nothing, and go back to listening.
+                if (!typed && reply.you.trim().lowercase().startsWith("(noise")) { agentHold = false; return@launch }
+                if (agentHold) {
+                    agentHold = false
+                    if (agentJob === agentBefore && (agentActive.value || agentJob?.isActive == true)) stopAgent()
                 }
                 if (!typed) messages += ChatMessage(true, reply.you.ifBlank { "(voice request)" })
                 ackJob?.join()
@@ -940,6 +980,7 @@ class ArinaEngine private constructor(private val app: Application) {
                     notice.value = (e.message ?: "Voice failed.").take(260)
                 }
             } finally {
+                agentHold = false
                 status.value = Status.Idle
                 if (micOn.value) restartListening()
             }

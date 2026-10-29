@@ -692,6 +692,9 @@ private fun SettingsPanel(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onG
             )
         }
 
+        SectionTitle("SKILLS")
+        SkillsCard(vm)
+
         SectionTitle("LISTENING")
         Row(Modifier.fillMaxWidth().glass().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -784,6 +787,51 @@ private fun PermRow(item: PermItem, ok: Boolean, onPermission: (PermItem) -> Uni
                 modifier = Modifier.clip(RoundedCornerShape(50)).background(ArinaColors.Glow)
                     .clickable { onPermission(item) }.padding(horizontal = 16.dp, vertical = 7.dp)
             )
+        }
+    }
+}
+
+
+@Composable
+private fun SkillsCard(vm: ArinaEngine) {
+    var name by remember { mutableStateOf("") }
+    var whenText by remember { mutableStateOf("") }
+    var steps by remember { mutableStateOf("") }
+    var msg by remember { mutableStateOf("") }
+    Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            "A skill is a named method with fixed steps. Say its name, or just ask for that kind of work, and AriAuri follows the steps exactly and checks the result.",
+            color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 16.sp
+        )
+        vm.skills.forEach { sk ->
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(sk.name + if (sk.builtIn) "  (built in)" else "", color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text(sk.steps.lines().take(2).joinToString("  "), color = ArinaColors.Muted, fontSize = 11.sp, maxLines = 2)
+                }
+                if (!sk.builtIn) Text(
+                    "Delete", color = Warn, fontSize = 12.sp,
+                    modifier = Modifier.clickable { vm.removeSkill(sk.name) }.padding(8.dp)
+                )
+            }
+        }
+        KeyField("New skill name", name, false) { name = it }
+        KeyField("When it applies (one line)", whenText, false) { whenText = it }
+        OutlinedTextField(
+            value = steps, onValueChange = { steps = it },
+            modifier = Modifier.fillMaxWidth().heightIn(min = 110.dp),
+            label = { Text("Steps, one per line (1. ... 2. ...)", fontSize = 12.sp) },
+            shape = RoundedCornerShape(14.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = ArinaColors.Text, unfocusedTextColor = ArinaColors.Text,
+                focusedBorderColor = ArinaColors.Glow, unfocusedBorderColor = ArinaColors.Muted
+            )
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            PillButton("Save skill") {
+                msg = if (vm.addSkill(name, whenText, steps)) { name = ""; whenText = ""; steps = ""; "Saved." } else "Needs a new name and steps."
+            }
+            if (msg.isNotBlank()) Text(msg, color = ArinaColors.Muted, fontSize = 12.sp)
         }
     }
 }

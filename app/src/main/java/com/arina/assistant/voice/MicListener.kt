@@ -28,13 +28,15 @@ class MicListener {
         const val END_SILENCE_FRAMES = 27     // 540 ms of quiet = phrase finished (faster replies)
         const val MIN_SPEECH_FRAMES = 15      // ignore bursts shorter than 300 ms
         const val MAX_FRAMES = 1000           // 20 s cap
+        const val STRICT_MIN_FRAMES = 55      // while a task runs: only phrases of about 1.1 s or more count
+        const val STRICT_EXTRA_DB = 8f        // and the sound must be clearly louder than the room
     }
 
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var generation = 0
 
     @SuppressLint("MissingPermission")
-    fun start(onLevel: (Float) -> Unit, onSpeech: (ByteArray) -> Unit, onError: (String) -> Unit) {
+    fun start(onLevel: (Float) -> Unit, onSpeech: (ByteArray) -> Unit, onError: (String) -> Unit, strict: () -> Boolean = { false }) {
         stop()
         val mine = ++generation
         Thread {
@@ -82,7 +84,8 @@ class MicListener {
                         calibrated++
                         continue
                     }
-                    val startThr = max(noise + 10f, -48f)
+                    val locked = strict()
+                    val startThr = max(noise + 10f, -48f) + if (locked) STRICT_EXTRA_DB else 0f
                     val endThr = max(noise + 6f, -52f)
 
                     if (!inSpeech) {
@@ -102,7 +105,7 @@ class MicListener {
                         if (db > endThr) quiet = 0 else quiet++
                         if (quiet >= END_SILENCE_FRAMES || total >= MAX_FRAMES) {
                             val voiced = total - quiet
-                            if (voiced >= MIN_SPEECH_FRAMES) {
+                            if (voiced >= (if (locked) STRICT_MIN_FRAMES else MIN_SPEECH_FRAMES)) {
                                 val wav = toWav(speech)
                                 main.post { if (generation == mine) onSpeech(wav) }
                                 break

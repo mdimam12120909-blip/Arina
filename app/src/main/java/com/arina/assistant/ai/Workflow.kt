@@ -39,6 +39,11 @@ object Workflow {
         en: the same in short English.
     """.trimIndent()
 
+    private val REVIEW = """
+        You are a strict reviewer. Check the draft against the goal and any skill rules: missing parts, wrong or unsupported facts, vague wording, code that would not run, rules skipped.
+        Fix every problem you find and return the corrected result in the SAME JSON shape {"output":"...","bn":"...","en":"..."}. If it is already correct, return it unchanged. JSON only.
+    """.trimIndent()
+
     private fun clean(s: String) = s.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
 
     private fun plan(goal: String, gemini: GeminiClient): List<Step> = runCatching {
@@ -59,10 +64,12 @@ object Workflow {
         goal: String,
         tavilyKey: String,
         gemini: GeminiClient,
+        skill: Skill? = null,
         onProgress: (done: Int, total: Int, line: String) -> Unit,
         cancelled: () -> Boolean
     ): Result {
-        val steps = plan(goal, gemini).ifEmpty { listOf(Step("s1", "think", goal, emptyList())) }
+        val rules = skill?.let { "\n\nSKILL \"${it.name}\": follow these rules strictly, in this order, one or more steps per rule:\n${it.steps}" }.orEmpty()
+        val steps = plan(goal + rules, gemini).ifEmpty { listOf(Step("s1", "think", goal + rules, emptyList())) }
         val out = HashMap<String, String>()
         val pending = steps.toMutableList()
         val pool = Executors.newFixedThreadPool(4)
@@ -77,7 +84,7 @@ object Workflow {
                         runCatching {
                             if (s.kind == "search" && tavilyKey.isNotBlank())
                                 TavilySearch.search(tavilyKey, s.task, 6).take(NOTE_CAP)
-                            else gemini.generate(WORK, "OVERALL GOAL: $goal\nYOUR STEP: ${s.task}\n\n$inputs", slow = s.kind == "code").take(NOTE_CAP)
+                            else gemini.generate(WORK, "OVERALL GOAL: $goal$rules\nYOUR STEP: ${s.task}\n\n$inputs", slow = true).take(NOTE_CAP)
                         }.getOrElse { "(step failed: ${it.message})" }
                     })
                 }
@@ -88,8 +95,10 @@ object Workflow {
             pool.shutdownNow()
         }
         val material = steps.joinToString("\n\n") { "## ${it.id} (${it.kind}): ${it.task}\n${out[it.id].orEmpty()}" }
-        val raw = gemini.generate(MERGE, "GOAL: $goal\n\nSTEP OUTPUTS:\n${material.take(60_000)}", json = true, slow = true)
-        val o = JSONObject(clean(raw))
+        val raw = gemini.generate(MERGE, "GOAL: $goal$rules\n\nSTEP OUTPUTS:\n${material.take(60_000)}", json = true, slow = true)
+        // Second pass: check the draft against the goal and the rules, fix mistakes, then deliver.
+        val checked = runCatching { gemini.generate(REVIEW, "GOAL: $goal$rules\n\nDRAFT JSON:\n$raw", json = true, slow = true) }.getOrDefault(raw)
+        val o = runCatching { JSONObject(clean(checked)) }.getOrElse { JSONObject(clean(raw)) }
         return Result(o.optString("output").ifBlank { raw }, o.optString("bn"), o.optString("en"), steps.size)
     }
 }
