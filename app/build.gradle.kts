@@ -28,6 +28,17 @@ android {
         buildConfigField("String", "CARTESIA_VOICE_ID", "\"${localProps.getProperty("CARTESIA_VOICE_ID", "").trim()}\"")
     }
 
+    // One fixed key for every build, so a new APK installs over the old one and keeps its data and permissions.
+    // (A debug-only key kept in the repo on purpose; it protects nothing secret.)
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("ariauri-debug.keystore")
+            storePassword = "android"
+            keyAlias = "ariauri"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
