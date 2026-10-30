@@ -26,12 +26,12 @@ class StreamSpeaker(
     private val scope: CoroutineScope,
     private val beforeFirstPlay: suspend () -> Unit,
     private val onFirstPlay: () -> Unit
-) {
+) : Speaker {
     private val chunker = SmartChunker()
     private val queue = Channel<Deferred<Result<File>>>(Channel.UNLIMITED)
     private var index = 0
     @Volatile private var failure: Exception? = null
-    @Volatile var started = false
+    @Volatile override var started = false
         private set
 
     private val player: Job = scope.launch {
@@ -60,7 +60,7 @@ class StreamSpeaker(
     }
 
     @Synchronized
-    fun feed(piece: String) {
+    override fun feed(piece: String) {
         for (phrase in chunker.feed(piece)) enqueue(phrase)
     }
 
@@ -73,7 +73,7 @@ class StreamSpeaker(
     }
 
     /** The text has ended: speak what is left and wait until everything has been played. */
-    suspend fun finish() {
+    override suspend fun finish() {
         synchronized(this) {
             for (phrase in chunker.flush()) enqueue(phrase)
             queue.close()
@@ -82,7 +82,7 @@ class StreamSpeaker(
         failure?.let { throw it }
     }
 
-    fun cancel() {
+    override fun cancel() {
         queue.cancel()
         player.cancel()
     }

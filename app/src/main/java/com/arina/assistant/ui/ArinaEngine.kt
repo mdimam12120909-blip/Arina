@@ -40,6 +40,9 @@ import com.arina.assistant.device.DeviceActions
 import com.arina.assistant.permissions.PermissionCenter
 import com.arina.assistant.voice.MicListener
 import com.arina.assistant.voice.StreamSpeaker
+import com.arina.assistant.voice.Speaker
+import com.arina.assistant.voice.LiveSpeaker
+import com.arina.assistant.voice.CartesiaLive
 import com.arina.assistant.ai.Timing
 import com.arina.assistant.ai.KeyRole
 import com.arina.assistant.voice.SoundLoop
@@ -413,6 +416,14 @@ class ArinaEngine private constructor(private val app: Application) {
     private val sound = SoundLoop()
     private val researchJobs = mutableListOf<Job>()
     private val voice: VoiceOutput = VoiceOutput(app) { cartesiaKey.value to currentVoiceId() }
+    private val live = CartesiaLive { cartesiaKey.value to currentVoiceId() }
+
+    /** true: the voice is streamed and plays while it is generated. false: phrase files, played one after the other. */
+    val liveVoice = mutableStateOf(uiPrefs.getBoolean("live_voice", true))
+    fun setLiveVoice(on: Boolean) {
+        liveVoice.value = on
+        uiPrefs.edit().putBoolean("live_voice", on).apply()
+    }
     private val ears: SpeechInput = SpeechInput(app)
     private var job: Job? = null
     private var failStreak = 0
@@ -564,6 +575,7 @@ class ArinaEngine private constructor(private val app: Application) {
 
     private fun startListening() {
         if (!micOn.value) return
+        if (liveVoice.value) live.warmUp()   // open the voice connection while the user is still talking
         status.value = Status.Listening
         if (geminiEars.value) {
             mic.start(
@@ -974,7 +986,10 @@ class ArinaEngine private constructor(private val app: Application) {
         status.value = Status.Thinking
         job = scope.launch {
             // Speaks the Bengali line phrase by phrase while Gemini is still writing the rest of the answer.
-            val speaker = StreamSpeaker(voice, this, { ackJob?.join() }, { status.value = Status.Speaking })
+            val speaker: Speaker = if (liveVoice.value)
+                LiveSpeaker(live, voice, currentVoiceId(), this, { ackJob?.join() }, { status.value = Status.Speaking })
+            else
+                StreamSpeaker(voice, this, { ackJob?.join() }, { status.value = Status.Speaking })
             try {
                 gemini.busy = researchActive.value || agentActive.value
                 gemini.speakSink = { piece -> speaker.feed(piece) }

@@ -728,6 +728,22 @@ private fun SettingsPanel(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onG
             )
         }
 
+        Row(Modifier.fillMaxWidth().glass().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Live voice", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    if (vm.liveVoice.value) "The voice is streamed and starts while it is still being made."
+                    else "The voice is made phrase by phrase, then played.",
+                    color = ArinaColors.Muted, fontSize = 12.sp
+                )
+            }
+            Switch(
+                checked = vm.liveVoice.value,
+                onCheckedChange = { vm.setLiveVoice(it) },
+                colors = SwitchDefaults.colors(checkedTrackColor = ArinaColors.Glow, checkedThumbColor = ArinaColors.Background)
+            )
+        }
+
         Row(verticalAlignment = Alignment.CenterVertically) {
             SectionTitle("PERMISSIONS", Modifier.weight(1f))
             PillButton("Allow all") { onGrantAll() }
