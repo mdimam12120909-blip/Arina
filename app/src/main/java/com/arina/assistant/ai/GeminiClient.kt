@@ -139,6 +139,7 @@ class GeminiClient(
     }
 
     private val keyCursor = java.util.concurrent.atomic.AtomicInteger()
+    private val badUntil = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     /** All saved keys. One text field holds several, separated by comma, space or new line. */
     private fun keys(): List<String> = apiKeyProvider().split(Regex("[,;\\s]+")).filter { it.length > 10 }
@@ -152,15 +153,19 @@ class GeminiClient(
         val start = Math.floorMod(keyCursor.getAndIncrement(), all.size)
         var last: ModelUnavailable? = null
         var bad: BadKey? = null
-        for (i in all.indices) {
-            val key = all[(start + i) % all.size]
+        // Keys that failed a moment ago go to the back, so a dead key does not cost a wasted round trip on every request.
+        val now = System.currentTimeMillis()
+        val ordered = (all.indices).map { all[(start + it) % all.size] }.sortedBy { (badUntil[it] ?: 0L) > now }
+        for (key in ordered) {
             try {
                 return sendOnce(key, model, withThinking, system, contents, withTools, o)
             } catch (e: ModelUnavailable) {
                 last = e
                 if (e.message?.contains("error 429") != true) throw e
+                badUntil[key] = System.currentTimeMillis() + 30_000
             } catch (e: BadKey) {
                 bad = e
+                badUntil[key] = System.currentTimeMillis() + 10 * 60_000
             }
         }
         throw last ?: bad ?: IOException("No Gemini key worked.")
@@ -186,6 +191,7 @@ class GeminiClient(
                 val p = ps.getJSONObject(i)
                 val plainText = p.has("text") && !p.optBoolean("thought") && !p.has("functionCall")
                 if (plainText) {
+                    Timing.mark("gemini first text")
                     streamer?.feed(p.getString("text"))
                     val last = if (parts.length() > 0) parts.getJSONObject(parts.length() - 1) else null
                     if (last != null && last.has("text") && !last.optBoolean("thought") && !last.has("functionCall")) {
@@ -198,6 +204,7 @@ class GeminiClient(
             }
         }
         if (parts.length() == 0) throw IOException("Gemini returned an empty answer. Try rephrasing.")
+        Timing.mark("gemini finished")
         return JSONObject().put(
             "candidates",
             JSONArray().put(JSONObject().put("content", JSONObject().put("role", "model").put("parts", parts)))
@@ -222,8 +229,11 @@ class GeminiClient(
             .post(body.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
+        Timing.mark("gemini request sent")
+        Timing.note("model", model + if (o.stream) " (streaming)" else " (not streaming)")
         val (code, raw) = try {
             (if (o.slow) httpSlow else http).newCall(request).execute().use { resp ->
+                Timing.mark("gemini answered headers")
                 if (o.stream && resp.isSuccessful) return readStream(resp)
                 resp.code to resp.body?.string().orEmpty()
             }

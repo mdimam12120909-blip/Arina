@@ -10,6 +10,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import com.arina.assistant.ai.Timing
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
@@ -43,7 +44,9 @@ class VoiceOutput(
         if (key.isBlank() || voiceId.isBlank()) {
             throw IOException("Cartesia API key or Voice ID is missing. Paste them in the Setup tab and tap Save.")
         }
+        Timing.mark("voice request sent (single)")
         val file = withContext(Dispatchers.IO) { fetch(text, key.trim(), voiceId.trim(), File(ctx.cacheDir, "arina_voice.mp3")) }
+        Timing.mark("voice file ready (single)")
         playFile(file)
     }
 
@@ -53,7 +56,10 @@ class VoiceOutput(
         if (key.isBlank() || voiceId.isBlank()) {
             throw IOException("Cartesia API key or Voice ID is missing. Paste them in the Setup tab and tap Save.")
         }
-        return fetch(text, key.trim(), voiceId.trim(), File(ctx.cacheDir, "arina_voice_$n.mp3"))
+        Timing.mark("voice request sent (phrase 1)".takeIf { n == 0 } ?: "voice request sent (phrase ${n + 1})")
+        val f = fetch(text, key.trim(), voiceId.trim(), File(ctx.cacheDir, "arina_voice_$n.mp3"))
+        Timing.mark("voice file ready (phrase ${n + 1})")
+        return f
     }
 
     /** Plays a file made by [prepare] and returns when it has finished. */

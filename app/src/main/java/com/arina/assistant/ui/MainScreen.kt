@@ -692,6 +692,14 @@ private fun SettingsPanel(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onG
             )
         }
 
+        SectionTitle("SPEED (last reply)")
+        Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                vm.lastTiming.value.ifBlank { "Talk to AriAuri once, then look here. Each line is the time since you finished speaking." },
+                color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp
+            )
+        }
+
         SectionTitle("SKILLS")
         SkillsCard(vm)
 

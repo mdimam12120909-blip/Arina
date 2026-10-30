@@ -40,6 +40,7 @@ import com.arina.assistant.device.DeviceActions
 import com.arina.assistant.permissions.PermissionCenter
 import com.arina.assistant.voice.MicListener
 import com.arina.assistant.voice.StreamSpeaker
+import com.arina.assistant.ai.Timing
 import com.arina.assistant.voice.SoundLoop
 import com.arina.assistant.voice.SpeechInput
 import com.arina.assistant.voice.SpeechProblem
@@ -149,6 +150,9 @@ class ArinaEngine private constructor(private val app: Application) {
 
     // ---- Routines, companion talk, phone health -------------------------------------------------
     private val routineStore = RoutineStore(app)
+    /** Where the waiting time went in the last spoken exchange; shown in Settings. */
+    val lastTiming = mutableStateOf("")
+
     private val skillStore = com.arina.assistant.ai.SkillStore(app)
     val skills = mutableStateListOf<com.arina.assistant.ai.Skill>().also { it.addAll(skillStore.all()) }
     fun addSkill(name: String, whenText: String, steps: String): Boolean {
@@ -948,6 +952,7 @@ class ArinaEngine private constructor(private val app: Application) {
         val agentBefore = agentJob
         val agentRunning = agentActive.value || agentJob?.isActive == true
         if (agentRunning) { if (wav == null) stopAgent() else agentHold = true }
+        Timing.start()
         notice.value = null
         caption.value = ""
         if (typed && text != null) messages += ChatMessage(true, text)
@@ -993,6 +998,8 @@ class ArinaEngine private constructor(private val app: Application) {
                     notice.value = (e.message ?: "Voice failed.").take(260)
                 }
             } finally {
+                Timing.mark("all done")
+                lastTiming.value = Timing.report()
                 speaker.cancel()
                 agentHold = false
                 status.value = Status.Idle

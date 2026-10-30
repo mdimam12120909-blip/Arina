@@ -1,6 +1,7 @@
 package com.arina.assistant.voice
 
 import com.arina.assistant.ai.SmartChunker
+import com.arina.assistant.ai.Timing
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -41,6 +42,7 @@ class StreamSpeaker(
                 if (first) {
                     first = false
                     beforeFirstPlay()
+                    Timing.mark("voice playing")
                     onFirstPlay()
                 }
                 try {
@@ -65,6 +67,7 @@ class StreamSpeaker(
     @Synchronized
     private fun enqueue(phrase: String) {
         started = true
+        Timing.mark("first phrase ready")
         val n = index++
         queue.trySend(scope.async(Dispatchers.IO) { runCatching { voice.prepare(phrase, n) } })
     }
