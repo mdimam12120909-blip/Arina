@@ -1,6 +1,6 @@
 package com.arina.assistant.ui
 
-/** The two assistants. Each has its own avatar model, its own Gemini voice and its own personality line. */
+/** The two assistants. Each has its own avatar model, its own Cartesia voice and its own personality line. */
 enum class Persona(
     val displayName: String,
     val avatarKey: String, // key used by assets/avatar/index.html

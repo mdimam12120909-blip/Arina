@@ -646,6 +646,7 @@ private fun PillButton(label: String, onClick: () -> Unit) {
 @Composable
 private fun SettingsPanel(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onGrantAll: () -> Unit, onAppInfo: () -> Unit) {
     val gemini = remember { mutableStateListOf(*vm.geminiSlots.toTypedArray()) }
+    var cartesia by remember { mutableStateOf(vm.cartesiaKey.value) }
     var arinaVoice by remember { mutableStateOf(vm.voiceArina.value) }
     var tavily by remember { mutableStateOf(vm.tavilyKey.value) }
     var aurionVoice by remember { mutableStateOf(vm.voiceAurion.value) }
@@ -658,18 +659,20 @@ private fun SettingsPanel(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onG
         Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Keys are stored only on this phone.", color = ArinaColors.Muted, fontSize = 12.sp)
             gemini.forEachIndexed { i, v -> KeyField("Gemini API key ${i + 1}" + if (i == 0) " (main)" else " (optional)", v, true) { gemini[i] = it } }
-            KeyField("Arina voice (Gemini voice name, e.g. Kore, Leda, Aoede)", arinaVoice, false) { arinaVoice = it }
-            KeyField("Aurion voice (Gemini voice name, e.g. Charon, Puck, Orus)", aurionVoice, false) { aurionVoice = it }
+            KeyField("Cartesia API key (voice)", cartesia, true) { cartesia = it }
+            KeyField("Arina voice ID (Cartesia)", arinaVoice, false) { arinaVoice = it }
+            KeyField("Aurion voice ID (Cartesia)", aurionVoice, false) { aurionVoice = it }
             KeyField("Tavily search key (free, for web research)", tavily, true) { tavily = it }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PillButton("Save") { vm.saveKeys(gemini.toList(), tavily, arinaVoice, aurionVoice) }
+                PillButton("Save") { vm.saveKeys(gemini.toList(), cartesia, tavily, arinaVoice, aurionVoice) }
                 PillButton("Test voice") {
-                    vm.saveKeys(gemini.toList(), tavily, arinaVoice, aurionVoice)
+                    vm.saveKeys(gemini.toList(), cartesia, tavily, arinaVoice, aurionVoice)
                     vm.testVoice()
                 }
             }
             vm.notice.value?.let { Text(it, color = Warn, fontSize = 12.sp, lineHeight = 17.sp) }
-            StatusLine("Gemini brain and voice (" + vm.geminiKeyCount + " keys)", vm.geminiKeySet)
+            StatusLine("Gemini brain (" + vm.geminiKeyCount + " keys)", vm.geminiKeySet)
+            StatusLine("Cartesia voice", vm.cartesiaKeySet)
             StatusLine("Web research", vm.tavilyKeySet)
         }
 

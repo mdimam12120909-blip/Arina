@@ -4,7 +4,7 @@ import android.content.Context
 
 /**
  * API keys and voice names. Values typed in Settings are stored on the phone and win over the keys baked in
- * at build time, so they can be fixed without rebuilding. Gemini has five slots; each request uses the next one.
+ * at build time, so they can be fixed without rebuilding. Gemini has five slots; each request uses the next one. The voice is Cartesia.
  */
 object Keys {
     const val GEMINI_SLOTS = 5
@@ -36,15 +36,17 @@ object Keys {
     fun gemini(c: Context): String = geminiSlots(c).filter { it.isNotBlank() }.joinToString("\n")
 
     fun tavily(c: Context) = pick(c, "tavily", BuildConfig.TAVILY_API_KEY.ifBlank { Defaults.TAVILY_KEY })
-    fun voiceArina(c: Context): String = prefs(c).getString("tts_voice_arina", null)?.trim()?.takeIf { it.isNotEmpty() } ?: "Kore"
-    fun voiceAurion(c: Context): String = prefs(c).getString("tts_voice_aurion", null)?.trim()?.takeIf { it.isNotEmpty() } ?: "Charon"
+    fun cartesia(c: Context) = pick(c, "cartesia", BuildConfig.CARTESIA_API_KEY)
+    fun voiceArina(c: Context) = pick(c, "cartesia_voice", BuildConfig.CARTESIA_VOICE_ID.ifBlank { Defaults.VOICE_ARINA })
+    fun voiceAurion(c: Context) = pick(c, "cartesia_voice_aurion", Defaults.VOICE_AURION)
 
-    fun save(c: Context, gemini: List<String>, tavily: String, voiceArina: String, voiceAurion: String) {
+    fun save(c: Context, gemini: List<String>, cartesia: String, tavily: String, voiceArina: String, voiceAurion: String) {
         val e = prefs(c).edit()
         for (i in 0 until GEMINI_SLOTS) e.putString(slotName(i), gemini.getOrNull(i).orEmpty().trim())
-        e.putString("tavily", tavily.trim())
-            .putString("tts_voice_arina", voiceArina.trim())
-            .putString("tts_voice_aurion", voiceAurion.trim())
+        e.putString("cartesia", cartesia.trim())
+            .putString("tavily", tavily.trim())
+            .putString("cartesia_voice", voiceArina.trim())
+            .putString("cartesia_voice_aurion", voiceAurion.trim())
             .apply()
     }
 }

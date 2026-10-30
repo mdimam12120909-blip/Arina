@@ -63,7 +63,7 @@ data class ChatMessage(val fromUser: Boolean, val text: String)
 
 /**
  * Arina's brain, shared by the app screen and the floating avatar (one instance per process).
- * Ears (Android Bengali recognizer) -> Gemini -> phone tools -> voice (Gemini speech).
+ * Ears (Android Bengali recognizer) -> Gemini -> phone tools -> voice (Cartesia).
  *
  * The mic is a switch: the user turns it on and it stays on, listening again after every
  * answer, until the user turns it off.
@@ -111,12 +111,14 @@ class ArinaEngine private constructor(private val app: Application) {
     // Keys (editable in the Setup tab)
     val geminiKey: MutableState<String> = mutableStateOf(Keys.gemini(app))
     val geminiSlots = mutableStateListOf<String>().also { it.addAll(Keys.geminiSlots(app)) }
+    val cartesiaKey: MutableState<String> = mutableStateOf(Keys.cartesia(app))
     val voiceArina: MutableState<String> = mutableStateOf(Keys.voiceArina(app))
     val tavilyKey: MutableState<String> = mutableStateOf(Keys.tavily(app))
     val voiceAurion: MutableState<String> = mutableStateOf(Keys.voiceAurion(app))
     val tavilyKeySet: Boolean get() = tavilyKey.value.isNotBlank()
     val geminiKeySet: Boolean get() = geminiKey.value.isNotBlank()
     val geminiKeyCount: Int get() = geminiSlots.count { it.isNotBlank() }
+    val cartesiaKeySet: Boolean get() = cartesiaKey.value.isNotBlank() && voiceArina.value.isNotBlank()
 
     // Permissions
     val micGranted = mutableStateOf(false)
@@ -390,7 +392,7 @@ class ArinaEngine private constructor(private val app: Application) {
     )
     private val sound = SoundLoop()
     private val researchJobs = mutableListOf<Job>()
-    private val voice: VoiceOutput = VoiceOutput(app, { geminiKey.value }, { currentVoiceId() })
+    private val voice: VoiceOutput = VoiceOutput(app) { cartesiaKey.value to currentVoiceId() }
     private val ears: SpeechInput = SpeechInput(app)
     private var job: Job? = null
     private var failStreak = 0
@@ -473,8 +475,9 @@ class ArinaEngine private constructor(private val app: Application) {
         reloadFacts()
     }
 
-    fun saveKeys(gemini: List<String>, tavily: String, arinaVoice: String, aurionVoice: String) {
-        Keys.save(app, gemini, tavily, arinaVoice, aurionVoice)
+    fun saveKeys(gemini: List<String>, cartesia: String, tavily: String, arinaVoice: String, aurionVoice: String) {
+        Keys.save(app, gemini, cartesia, tavily, arinaVoice, aurionVoice)
+        cartesiaKey.value = Keys.cartesia(app)
         voiceAurion.value = Keys.voiceAurion(app)
         voiceArina.value = Keys.voiceArina(app)
         tavilyKey.value = Keys.tavily(app)
@@ -483,7 +486,7 @@ class ArinaEngine private constructor(private val app: Application) {
         notice.value = "Saved."
     }
 
-    /** Speaks a short test line so the Gemini key and voice can be checked. */
+    /** Speaks a short test line so the Cartesia key and voice can be checked. */
     fun testVoice() {
         if (status.value != Status.Idle) return
         notice.value = null
