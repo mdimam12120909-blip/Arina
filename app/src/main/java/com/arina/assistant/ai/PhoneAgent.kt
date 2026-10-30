@@ -67,7 +67,7 @@ class PhoneAgent(private val gemini: GeminiClient, private val device: DeviceAct
                 append("\nPREVIOUS ACTIONS:\n").append(history.takeLast(8).joinToString("\n").ifBlank { "(none yet)" })
                 append("\n\nSCREEN:\n").append(snap.text.ifBlank { "(nothing readable)" })
             }
-            val raw = gemini.generate(SYSTEM, prompt, json = true)
+            val raw = gemini.generate(SYSTEM, prompt, json = true, role = KeyRole.Agent)
             val a = runCatching {
                 JSONObject(raw.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim())
             }.getOrNull()

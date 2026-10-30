@@ -658,7 +658,15 @@ private fun SettingsPanel(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onG
         SectionTitle("CONNECTIONS")
         Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Keys are stored only on this phone.", color = ArinaColors.Muted, fontSize = 12.sp)
-            gemini.forEachIndexed { i, v -> KeyField("Gemini API key ${i + 1}" + if (i == 0) " (main)" else " (optional)", v, true) { gemini[i] = it } }
+            val keyJobs = listOf(
+                "Gemini key 1: Arina (conversation, also the fallback)",
+                "Gemini key 2: Aurion (conversation)",
+                "Gemini key 3: research",
+                "Gemini key 4: workflows and skills",
+                "Gemini key 5: phone agent, camera, background"
+            )
+            Text("Each key has one job, so nothing waits for another job. An empty key uses key 1.", color = ArinaColors.Muted, fontSize = 12.sp)
+            gemini.forEachIndexed { i, v -> KeyField(keyJobs.getOrElse(i) { "Gemini key ${i + 1}" }, v, true) { gemini[i] = it } }
             KeyField("Cartesia API key (voice)", cartesia, true) { cartesia = it }
             KeyField("Arina voice ID (Cartesia)", arinaVoice, false) { arinaVoice = it }
             KeyField("Aurion voice ID (Cartesia)", aurionVoice, false) { aurionVoice = it }
@@ -671,7 +679,7 @@ private fun SettingsPanel(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onG
                 }
             }
             vm.notice.value?.let { Text(it, color = Warn, fontSize = 12.sp, lineHeight = 17.sp) }
-            StatusLine("Gemini brain (" + vm.geminiKeyCount + " keys)", vm.geminiKeySet)
+            StatusLine("Gemini brain (" + vm.geminiKeyCount + " of 5 keys set)", vm.geminiKeySet)
             StatusLine("Cartesia voice", vm.cartesiaKeySet)
             StatusLine("Web research", vm.tavilyKeySet)
         }

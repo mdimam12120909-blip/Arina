@@ -22,15 +22,23 @@ private class ModelUnavailable(message: String) : IOException(message)
 /** This one key was refused (invalid, expired, blocked). Another key may still work. */
 private class BadKey(message: String) : IOException(message)
 
+/** Which job a Gemini call belongs to. Each job has its own key in Settings, so jobs never wait for each other's quota. */
+enum class KeyRole(val label: String) {
+    Talk("conversation"),
+    Research("research"),
+    Workflow("workflow and skills"),
+    Agent("phone agent, camera and background")
+}
+
 /** Per-call options: ask for JSON, or allow a slow, long answer (reports). */
-private data class Opts(val json: Boolean = false, val slow: Boolean = false, val stream: Boolean = false)
+private data class Opts(val json: Boolean = false, val slow: Boolean = false, val stream: Boolean = false, val role: KeyRole = KeyRole.Talk)
 
 /**
  * Talks to the Gemini API. Blocking calls: run on Dispatchers.IO.
  * Gemini decides which phone tool to call; we run it and feed the result back.
  */
 class GeminiClient(
-    private val apiKeyProvider: () -> String,
+    private val keyFor: (KeyRole) -> String,
     private val tools: ToolRunner,
     private val memoryBlock: () -> String,
     private val personaIntro: () -> String,
@@ -138,37 +146,14 @@ class GeminiClient(
         }
     }
 
-    private val keyCursor = java.util.concurrent.atomic.AtomicInteger()
-    private val badUntil = java.util.concurrent.ConcurrentHashMap<String, Long>()
-
-    /** All saved keys. One text field holds several, separated by comma, space or new line. */
-    private fun keys(): List<String> = apiKeyProvider().split(Regex("[,;\\s]+")).filter { it.length > 10 }
-
     /**
-     * Every call starts on the next key in turn, so agents working at the same time spread over different keys.
-     * A key that is out of quota (429) hands the same request to the next key before the model is given up on.
+     * One call uses the one key that belongs to its job (see [KeyRole]); keys are never tried in turn,
+     * because every extra attempt costs time. A refused key is reported with the name of the job it belongs to.
      */
     private fun send(model: String, withThinking: Boolean, system: String, contents: JSONArray, withTools: Boolean, o: Opts): JSONObject {
-        val all = keys().ifEmpty { listOf(apiKeyProvider().trim()) }
-        val start = Math.floorMod(keyCursor.getAndIncrement(), all.size)
-        var last: ModelUnavailable? = null
-        var bad: BadKey? = null
-        // Keys that failed a moment ago go to the back, so a dead key does not cost a wasted round trip on every request.
-        val now = System.currentTimeMillis()
-        val ordered = (all.indices).map { all[(start + it) % all.size] }.sortedBy { (badUntil[it] ?: 0L) > now }
-        for (key in ordered) {
-            try {
-                return sendOnce(key, model, withThinking, system, contents, withTools, o)
-            } catch (e: ModelUnavailable) {
-                last = e
-                if (e.message?.contains("error 429") != true) throw e
-                badUntil[key] = System.currentTimeMillis() + 30_000
-            } catch (e: BadKey) {
-                bad = e
-                badUntil[key] = System.currentTimeMillis() + 10 * 60_000
-            }
-        }
-        throw last ?: bad ?: IOException("No Gemini key worked.")
+        val key = keyFor(o.role).trim()
+        if (key.isBlank()) throw IOException("No Gemini key for ${o.role.label}. Add one in Settings, Connections.")
+        return sendOnce(key, model, withThinking, system, contents, withTools, o)
     }
 
     /**
@@ -251,7 +236,7 @@ class GeminiClient(
         val text = "Gemini error $code ($model): $msg"
         val keyProblem = msg.contains("API key", ignoreCase = true) || code == 401 ||
             (code == 403 && !msg.contains("model", ignoreCase = true))
-        if (keyProblem) throw BadKey("Gemini refused the key ending ${key.takeLast(4)}: $msg")
+        if (keyProblem) throw BadKey("Gemini refused the ${o.role.label} key (ending ${key.takeLast(4)}): $msg")
         // Wrong/retired model, overloaded or per-model quota: try the next model. A bad key will not get better.
         if (!keyProblem && (code == 404 || code == 429 || code >= 500 ||
                 ((code == 400 || code == 403) && msg.contains("model", ignoreCase = true)))
@@ -321,7 +306,7 @@ class GeminiClient(
     )
 
     private fun converse(userParts: JSONArray, audio: Boolean): Reply {
-        if (apiKeyProvider().isBlank()) {
+        if (keyFor(KeyRole.Talk).isBlank()) {
             throw IOException("Gemini API key is missing. Paste it in the Settings tab and tap Save.")
         }
         val userTurn = JSONObject().put("role", "user").put("parts", userParts)
@@ -382,14 +367,14 @@ class GeminiClient(
 
     /** Looks at one photo (JPEG) and answers the question about it in English. Plain call, no tools. */
     fun vision(jpeg: ByteArray, question: String): String {
-        if (apiKeyProvider().isBlank()) throw IOException("Gemini API key is missing.")
+        if (keyFor(KeyRole.Agent).isBlank()) throw IOException("Gemini API key is missing.")
         val parts = JSONArray()
             .put(JSONObject().put("inlineData", JSONObject().put("mimeType", "image/jpeg").put("data", android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP))))
             .put(JSONObject().put("text", question))
         val contents = JSONArray().put(JSONObject().put("role", "user").put("parts", parts))
         val sys = "You are the eyes of a phone assistant. The photo was just taken by the phone's front camera, so it shows the user or what is in front of him. " +
             "Answer the question about the photo factually and briefly in English. Describe only what is visible; never guess identity, age or health; say so if the photo is dark or unclear."
-        val resp = callApi(sys, contents, withTools = false, o = Opts(false, false))
+        val resp = callApi(sys, contents, withTools = false, o = Opts(role = KeyRole.Agent))
         val out = resp.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
             ?: throw IOException("Gemini returned an empty answer.")
         return (0 until out.length()).map { out.getJSONObject(it) }.filter { !it.optBoolean("thought") }
@@ -397,12 +382,12 @@ class GeminiClient(
     }
 
     /** One plain model call without tools or conversation history. [json] asks for a JSON answer. */
-    fun generate(system: String, user: String, json: Boolean = false, slow: Boolean = false): String {
-        if (apiKeyProvider().isBlank()) throw IOException("Gemini API key is missing.")
+    fun generate(system: String, user: String, json: Boolean = false, slow: Boolean = false, role: KeyRole = KeyRole.Talk): String {
+        if (keyFor(role).isBlank()) throw IOException("No Gemini key for ${role.label}. Add one in Settings, Connections.")
         val contents = JSONArray().put(
             JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", user)))
         )
-        val resp = callApi(system, contents, withTools = false, o = Opts(json, slow))
+        val resp = callApi(system, contents, withTools = false, o = Opts(json, slow, role = role))
         val parts = resp.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
             ?: throw IOException("Gemini returned an empty answer.")
         return (0 until parts.length()).map { parts.getJSONObject(it) }
@@ -413,14 +398,14 @@ class GeminiClient(
 
     /** Turns raw web-search material into a spoken Bengali answer. No tools, own conversation. */
     fun summarize(question: String, material: String): Reply {
-        if (apiKeyProvider().isBlank()) throw IOException("Gemini API key is missing.")
+        if (keyFor(KeyRole.Research).isBlank()) throw IOException("No Gemini key for research. Add one in Settings, Connections.")
         val contents = JSONArray().put(
             JSONObject().put("role", "user").put(
                 "parts",
                 JSONArray().put(JSONObject().put("text", "QUESTION: $question\n\nSEARCH MATERIAL:\n$material"))
             )
         )
-        val resp = callApi(SUMMARY_PROMPT.replace("You are Arina, a warm female voice assistant.", personaIntro()) + memoryBlock(), contents, withTools = false)
+        val resp = callApi(SUMMARY_PROMPT.replace("You are Arina, a warm female voice assistant.", personaIntro()) + memoryBlock(), contents, withTools = false, o = Opts(role = KeyRole.Research))
         val parts = resp.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
             ?: throw IOException("Gemini returned an empty answer for the research.")
         val text = (0 until parts.length()).map { parts.getJSONObject(it) }

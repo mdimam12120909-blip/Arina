@@ -47,7 +47,7 @@ object Workflow {
     private fun clean(s: String) = s.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
 
     private fun plan(goal: String, gemini: GeminiClient): List<Step> = runCatching {
-        val a = JSONObject(clean(gemini.generate(PLAN, "GOAL: $goal", json = true))).getJSONArray("steps")
+        val a = JSONObject(clean(gemini.generate(PLAN, "GOAL: $goal", json = true, role = KeyRole.Workflow))).getJSONArray("steps")
         val raw = (0 until a.length()).map {
             val o = a.getJSONObject(it)
             val needs = o.optJSONArray("needs")
@@ -84,7 +84,7 @@ object Workflow {
                         runCatching {
                             if (s.kind == "search" && tavilyKey.isNotBlank())
                                 TavilySearch.search(tavilyKey, s.task, 6).take(NOTE_CAP)
-                            else gemini.generate(WORK, "OVERALL GOAL: $goal$rules\nYOUR STEP: ${s.task}\n\n$inputs", slow = true).take(NOTE_CAP)
+                            else gemini.generate(WORK, "OVERALL GOAL: $goal$rules\nYOUR STEP: ${s.task}\n\n$inputs", slow = true, role = KeyRole.Workflow).take(NOTE_CAP)
                         }.getOrElse { "(step failed: ${it.message})" }
                     })
                 }
@@ -95,9 +95,9 @@ object Workflow {
             pool.shutdownNow()
         }
         val material = steps.joinToString("\n\n") { "## ${it.id} (${it.kind}): ${it.task}\n${out[it.id].orEmpty()}" }
-        val raw = gemini.generate(MERGE, "GOAL: $goal$rules\n\nSTEP OUTPUTS:\n${material.take(60_000)}", json = true, slow = true)
+        val raw = gemini.generate(MERGE, "GOAL: $goal$rules\n\nSTEP OUTPUTS:\n${material.take(60_000)}", json = true, slow = true, role = KeyRole.Workflow)
         // Second pass: check the draft against the goal and the rules, fix mistakes, then deliver.
-        val checked = runCatching { gemini.generate(REVIEW, "GOAL: $goal$rules\n\nDRAFT JSON:\n$raw", json = true, slow = true) }.getOrDefault(raw)
+        val checked = runCatching { gemini.generate(REVIEW, "GOAL: $goal$rules\n\nDRAFT JSON:\n$raw", json = true, slow = true, role = KeyRole.Workflow) }.getOrDefault(raw)
         val o = runCatching { JSONObject(clean(checked)) }.getOrElse { JSONObject(clean(raw)) }
         return Result(o.optString("output").ifBlank { raw }, o.optString("bn"), o.optString("en"), steps.size)
     }

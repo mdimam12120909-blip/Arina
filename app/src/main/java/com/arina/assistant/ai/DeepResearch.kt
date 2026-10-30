@@ -48,7 +48,7 @@ object DeepResearch {
         val material = StringBuilder()
         val urls = LinkedHashSet<String>()
         val done = HashSet<String>()
-        var queries = queriesOf(gemini.generate(PLAN, "TOPIC: $topic", json = true)).take(5).ifEmpty { listOf(topic) }
+        var queries = queriesOf(gemini.generate(PLAN, "TOPIC: $topic", json = true, role = KeyRole.Research)).take(5).ifEmpty { listOf(topic) }
 
         for (round in 1..ROUNDS) {
             if (cancelled()) throw InterruptedException("cancelled")
@@ -63,7 +63,7 @@ object DeepResearch {
             if (round == ROUNDS || material.isEmpty()) break
             val digest = material.toString().takeLast(12_000)
             queries = queriesOf(
-                gemini.generate(REFLECT, "TOPIC: $topic\n\nSEARCHES DONE: ${done.joinToString("; ")}\n\nFOUND SO FAR (tail):\n$digest", json = true)
+                gemini.generate(REFLECT, "TOPIC: $topic\n\nSEARCHES DONE: ${done.joinToString("; ")}\n\nFOUND SO FAR (tail):\n$digest", json = true, role = KeyRole.Research)
             ).take(4)
             if (queries.isEmpty()) break
         }
@@ -71,7 +71,7 @@ object DeepResearch {
 
         val raw = gemini.generate(
             REPORT, "TOPIC: $topic\n\nRESEARCH MATERIAL:\n${material.toString().take(MATERIAL_CAP)}",
-            json = true, slow = true
+            json = true, slow = true, role = KeyRole.Research
         )
         val o = JSONObject(raw.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim())
         return Result(o.optString("report").ifBlank { raw }, o.optString("bn"), o.optString("en"), urls.size)

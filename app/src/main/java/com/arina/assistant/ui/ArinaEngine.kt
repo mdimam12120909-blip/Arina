@@ -41,6 +41,7 @@ import com.arina.assistant.permissions.PermissionCenter
 import com.arina.assistant.voice.MicListener
 import com.arina.assistant.voice.StreamSpeaker
 import com.arina.assistant.ai.Timing
+import com.arina.assistant.ai.KeyRole
 import com.arina.assistant.voice.SoundLoop
 import com.arina.assistant.voice.SpeechInput
 import com.arina.assistant.voice.SpeechProblem
@@ -150,6 +151,20 @@ class ArinaEngine private constructor(private val app: Application) {
 
     // ---- Routines, companion talk, phone health -------------------------------------------------
     private val routineStore = RoutineStore(app)
+    /**
+     * Each Gemini key has one job: 1 Arina's conversation, 2 Aurion's conversation, 3 research, 4 workflows and
+     * skills, 5 phone agent, camera and background thoughts. A job with no key of its own uses the first key that exists.
+     */
+    fun keyForRole(role: KeyRole): String {
+        val slot = when (role) {
+            KeyRole.Talk -> if (persona.value == Persona.Aurion) 1 else 0
+            KeyRole.Research -> 2
+            KeyRole.Workflow -> 3
+            KeyRole.Agent -> 4
+        }
+        return geminiSlots.getOrNull(slot)?.takeIf { it.isNotBlank() } ?: geminiSlots.firstOrNull { it.isNotBlank() }.orEmpty()
+    }
+
     /** Where the waiting time went in the last spoken exchange; shown in Settings. */
     val lastTiming = mutableStateOf("")
 
@@ -227,7 +242,7 @@ class ArinaEngine private constructor(private val app: Application) {
             "You are speaking up on your own now; nobody asked you a question. React to the situation below like a close, caring friend: warm, a little playful, never preachy, never scolding.\n" +
             "Reply with JSON only: {\"bn\":\"...\",\"en\":\"...\"}. bn: one or two short natural spoken Bengali sentences in Bangla script, at most 22 words. en: the same in English.\n" +
             "Do not reuse any of these recent lines or their wording: ${recentLines.joinToString(" | ")}\n" + memory.promptBlock()
-        val raw = gemini.generate(system, "SITUATION: $situation", json = true)
+        val raw = gemini.generate(system, "SITUATION: $situation", json = true, role = KeyRole.Agent)
         val o = JSONObject(raw.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim())
         val bn = o.optString("bn")
         if (bn.isBlank()) throw java.io.IOException("empty nudge")
@@ -389,7 +404,7 @@ class ArinaEngine private constructor(private val app: Application) {
     }
 
     private val gemini: GeminiClient = GeminiClient(
-        { geminiKey.value },
+        { role -> keyForRole(role) },
         ToolRunner(device, memory, { scope.launch { reloadFacts() } }, hooks),
         { memory.promptBlock() },
         { persona.value.intro },
