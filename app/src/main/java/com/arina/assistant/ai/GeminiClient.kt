@@ -23,7 +23,7 @@ private class ModelUnavailable(message: String) : IOException(message)
 private class BadKey(message: String) : IOException(message)
 
 /** Per-call options: ask for JSON, or allow a slow, long answer (reports). */
-private data class Opts(val json: Boolean = false, val slow: Boolean = false)
+private data class Opts(val json: Boolean = false, val slow: Boolean = false, val stream: Boolean = false)
 
 /**
  * Talks to the Gemini API. Blocking calls: run on Dispatchers.IO.
@@ -39,6 +39,12 @@ class GeminiClient(
 
     /** True while a task is running in the background: noise and side talk are then likely, so be stricter. */
     @Volatile var busy: Boolean = false
+
+    /**
+     * When set, the answer is streamed and the Bengali (BN:) line is passed to this function piece by piece while
+     * the model is still writing, so the voice can start early. Set it only around one conversation turn.
+     */
+    @Volatile var speakSink: ((String) -> Unit)? = null
 
     companion object {
         // Tried in this order until one works for the user's key. Google retires models often.
@@ -160,6 +166,44 @@ class GeminiClient(
         throw last ?: bad ?: IOException("No Gemini key worked.")
     }
 
+    /**
+     * Reads a streamGenerateContent SSE answer (each event is a normal response with the next piece of parts) and
+     * returns it in the same shape as a plain generateContent answer. Text pieces are joined; function calls and
+     * thought signatures are kept as they came, so the rest of the code does not need to know about streaming.
+     */
+    private fun readStream(resp: okhttp3.Response): JSONObject {
+        val streamer = speakSink?.let { BnStreamer(it) }
+        val parts = JSONArray()
+        val source = resp.body?.source() ?: throw IOException("Gemini sent an empty stream.")
+        while (true) {
+            val line = source.readUtf8Line() ?: break
+            if (!line.startsWith("data:")) continue
+            val payload = line.substring(5).trim()
+            if (payload.isEmpty() || payload == "[DONE]") continue
+            val chunk = runCatching { JSONObject(payload) }.getOrNull() ?: continue
+            val ps = chunk.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts") ?: continue
+            for (i in 0 until ps.length()) {
+                val p = ps.getJSONObject(i)
+                val plainText = p.has("text") && !p.optBoolean("thought") && !p.has("functionCall")
+                if (plainText) {
+                    streamer?.feed(p.getString("text"))
+                    val last = if (parts.length() > 0) parts.getJSONObject(parts.length() - 1) else null
+                    if (last != null && last.has("text") && !last.optBoolean("thought") && !last.has("functionCall")) {
+                        last.put("text", last.getString("text") + p.getString("text"))
+                        if (p.has("thoughtSignature")) last.put("thoughtSignature", p.getString("thoughtSignature"))
+                        continue
+                    }
+                }
+                parts.put(p)
+            }
+        }
+        if (parts.length() == 0) throw IOException("Gemini returned an empty answer. Try rephrasing.")
+        return JSONObject().put(
+            "candidates",
+            JSONArray().put(JSONObject().put("content", JSONObject().put("role", "model").put("parts", parts)))
+        )
+    }
+
     private fun sendOnce(key: String, model: String, withThinking: Boolean, system: String, contents: JSONArray, withTools: Boolean, o: Opts): JSONObject {
         val generation = JSONObject().put("temperature", 0.7)
         if (o.json) generation.put("responseMimeType", "application/json")
@@ -173,13 +217,16 @@ class GeminiClient(
         if (withTools) body.put("tools", JSONArray().put(JSONObject().put("functionDeclarations", tools.declarations())))
 
         val request = Request.Builder()
-            .url("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
+            .url("https://generativelanguage.googleapis.com/v1beta/models/$model:" + if (o.stream) "streamGenerateContent?alt=sse" else "generateContent")
             .header("x-goog-api-key", key)
             .post(body.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
         val (code, raw) = try {
-            (if (o.slow) httpSlow else http).newCall(request).execute().use { it.code to it.body?.string().orEmpty() }
+            (if (o.slow) httpSlow else http).newCall(request).execute().use { resp ->
+                if (o.stream && resp.isSuccessful) return readStream(resp)
+                resp.code to resp.body?.string().orEmpty()
+            }
         } catch (e: InterruptedIOException) {
             throw ModelUnavailable("Gemini ($model) was too slow and was skipped.")
         } catch (e: IOException) {
@@ -287,7 +334,7 @@ class GeminiClient(
 
     private fun runTurns(shrink: (String) -> Unit): Reply {
         repeat(6) {
-            val resp = callApi(SYSTEM_PROMPT.replace("{INTRO}", personaIntro()) + memoryBlock() + skillsBlock() + (if (busy) BUSY_NOTE else ""), JSONArray(history), withTools = true)
+            val resp = callApi(SYSTEM_PROMPT.replace("{INTRO}", personaIntro()) + memoryBlock() + skillsBlock() + (if (busy) BUSY_NOTE else ""), JSONArray(history), withTools = true, o = Opts(stream = speakSink != null))
             val content = resp.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")
                 ?: throw IOException("Gemini returned an empty answer. Try rephrasing.")
             val parts = content.optJSONArray("parts") ?: JSONArray()

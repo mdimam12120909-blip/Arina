@@ -39,6 +39,7 @@ import com.arina.assistant.device.ArinaAccessibilityService
 import com.arina.assistant.device.DeviceActions
 import com.arina.assistant.permissions.PermissionCenter
 import com.arina.assistant.voice.MicListener
+import com.arina.assistant.voice.StreamSpeaker
 import com.arina.assistant.voice.SoundLoop
 import com.arina.assistant.voice.SpeechInput
 import com.arina.assistant.voice.SpeechProblem
@@ -952,15 +953,21 @@ class ArinaEngine private constructor(private val app: Application) {
         if (typed && text != null) messages += ChatMessage(true, text)
         status.value = Status.Thinking
         job = scope.launch {
+            // Speaks the Bengali line phrase by phrase while Gemini is still writing the rest of the answer.
+            val speaker = StreamSpeaker(voice, this, { ackJob?.join() }, { status.value = Status.Speaking })
             try {
                 gemini.busy = researchActive.value || agentActive.value
+                gemini.speakSink = { piece -> speaker.feed(piece) }
                 val reply = try {
                     withContext(Dispatchers.IO) { if (wav != null) gemini.chatAudio(wav) else gemini.chat(text.orEmpty()) }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
+                    speaker.cancel()
                     fail("Error: ${(e.message ?: e.javaClass.simpleName).take(220)}")
                     return@launch
+                } finally {
+                    gemini.speakSink = null
                 }
                 // Noise or side talk: say nothing, show nothing, and go back to listening.
                 if (!typed && reply.you.trim().lowercase().startsWith("(noise")) { agentHold = false; return@launch }
@@ -973,15 +980,20 @@ class ArinaEngine private constructor(private val app: Application) {
                 if (reply.bn.trim().length <= 1) return@launch
                 messages += ChatMessage(false, reply.en)
                 caption.value = reply.en
-                status.value = Status.Speaking
                 try {
-                    voice.speak(reply.bn)
+                    if (speaker.started) {
+                        speaker.finish()   // the rest of the phrases are already on their way
+                    } else {
+                        status.value = Status.Speaking
+                        voice.speak(reply.bn)
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
                     notice.value = (e.message ?: "Voice failed.").take(260)
                 }
             } finally {
+                speaker.cancel()
                 agentHold = false
                 status.value = Status.Idle
                 if (micOn.value) restartListening()

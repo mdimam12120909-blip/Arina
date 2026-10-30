@@ -43,11 +43,23 @@ class VoiceOutput(
         if (key.isBlank() || voiceId.isBlank()) {
             throw IOException("Cartesia API key or Voice ID is missing. Paste them in the Setup tab and tap Save.")
         }
-        val file = withContext(Dispatchers.IO) { fetch(text, key.trim(), voiceId.trim()) }
+        val file = withContext(Dispatchers.IO) { fetch(text, key.trim(), voiceId.trim(), File(ctx.cacheDir, "arina_voice.mp3")) }
         playFile(file)
     }
 
-    private fun fetch(text: String, key: String, voiceId: String): File {
+    /** Streaming speech: downloads one phrase into its own file (several can download at the same time). */
+    fun prepare(text: String, n: Int): File {
+        val (key, voiceId) = credentials()
+        if (key.isBlank() || voiceId.isBlank()) {
+            throw IOException("Cartesia API key or Voice ID is missing. Paste them in the Setup tab and tap Save.")
+        }
+        return fetch(text, key.trim(), voiceId.trim(), File(ctx.cacheDir, "arina_voice_$n.mp3"))
+    }
+
+    /** Plays a file made by [prepare] and returns when it has finished. */
+    suspend fun play(file: File) = playFile(file)
+
+    private fun fetch(text: String, key: String, voiceId: String, target: File): File {
         val body = JSONObject()
             .put("model_id", MODEL)
             .put("transcript", text)
@@ -76,9 +88,8 @@ class VoiceOutput(
             if (resp.isSuccessful) {
                 val bytes = resp.body?.bytes()
                 if (bytes == null || bytes.isEmpty()) throw IOException("Cartesia returned empty audio.")
-                val f = File(ctx.cacheDir, "arina_voice.mp3")
-                f.writeBytes(bytes)
-                return f
+                target.writeBytes(bytes)
+                return target
             }
             // The exact error JSON shape is not documented, so show what the server actually said.
             val raw = resp.body?.string().orEmpty()
