@@ -65,6 +65,7 @@ class MicListener {
             var quiet = 0
             var inSpeech = false
             var total = 0
+            var peak = -60f
             try {
                 rec.startRecording()
                 while (generation == mine) {
@@ -86,7 +87,9 @@ class MicListener {
                     }
                     val locked = strict()
                     val startThr = max(noise + 10f, -48f) + if (locked) STRICT_EXTRA_DB else 0f
-                    val endThr = max(noise + 6f, -52f)
+                    // The end of a phrase is judged against how loud this phrase was, so room hum or an echo tail
+                    // that stays above the quiet-room level no longer keeps the microphone open for seconds.
+                    val endThr = max(max(noise + 6f, -52f), peak - 24f)
 
                     if (!inSpeech) {
                         preRoll.addLast(copy)
@@ -98,10 +101,12 @@ class MicListener {
                             preRoll.clear()
                             quiet = 0
                             total = speech.size
+                            peak = db
                         }
                     } else {
                         speech.add(copy)
                         total++
+                        peak = max(db, peak - 0.02f)   // slowly forgets, so one loud syllable does not decide the end
                         if (db > endThr) quiet = 0 else quiet++
                         if (quiet >= END_SILENCE_FRAMES || total >= MAX_FRAMES) {
                             val voiced = total - quiet
@@ -111,7 +116,7 @@ class MicListener {
                                 break
                             }
                             // too short: a click or cough. Start over.
-                            speech.clear(); inSpeech = false; loud = 0; quiet = 0; total = 0
+                            speech.clear(); inSpeech = false; loud = 0; quiet = 0; total = 0; peak = -60f
                         }
                     }
                 }

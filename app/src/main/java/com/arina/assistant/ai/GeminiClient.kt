@@ -199,8 +199,8 @@ class GeminiClient(
     private fun sendOnce(key: String, model: String, withThinking: Boolean, system: String, contents: JSONArray, withTools: Boolean, o: Opts): JSONObject {
         val generation = JSONObject().put("temperature", 0.7)
         if (o.json) generation.put("responseMimeType", "application/json")
-        // Lower thinking = faster answers. "low" is the lowest level documented for every current Flash model.
-        if (withThinking) generation.put("thinkingConfig", JSONObject().put("thinkingLevel", if (o.slow) "high" else "low"))
+        // Lower thinking = faster answers. "minimal" is documented for 3.5-flash-lite and 3.6-flash; 3.8-flash and others take "low".
+        if (withThinking) generation.put("thinkingConfig", JSONObject().put("thinkingLevel", if (o.slow) "high" else if (model.contains("3.5-flash-lite") || model.contains("3.6-flash")) "minimal" else "low"))
 
         val body = JSONObject()
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
