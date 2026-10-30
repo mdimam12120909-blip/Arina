@@ -35,7 +35,7 @@ object Keys {
     /** All non-empty Gemini keys joined by new lines, the form the clients read. */
     fun gemini(c: Context): String = geminiSlots(c).filter { it.isNotBlank() }.joinToString("\n")
 
-    fun tavily(c: Context) = pick(c, "tavily", BuildConfig.TAVILY_API_KEY)
+    fun tavily(c: Context) = pick(c, "tavily", BuildConfig.TAVILY_API_KEY.ifBlank { Defaults.TAVILY_KEY })
     fun voiceArina(c: Context): String = prefs(c).getString("tts_voice_arina", null)?.trim()?.takeIf { it.isNotEmpty() } ?: "Kore"
     fun voiceAurion(c: Context): String = prefs(c).getString("tts_voice_aurion", null)?.trim()?.takeIf { it.isNotEmpty() } ?: "Charon"
 
