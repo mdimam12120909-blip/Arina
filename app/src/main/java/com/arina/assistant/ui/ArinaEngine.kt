@@ -41,6 +41,7 @@ import com.arina.assistant.permissions.PermissionCenter
 import com.arina.assistant.voice.MicListener
 import com.arina.assistant.voice.StreamSpeaker
 import com.arina.assistant.ai.GeminiLive
+import com.arina.assistant.Defaults
 import com.arina.assistant.voice.Speaker
 import com.arina.assistant.voice.LiveSpeaker
 import com.arina.assistant.voice.CartesiaLive
