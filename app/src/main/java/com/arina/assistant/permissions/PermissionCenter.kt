@@ -60,7 +60,7 @@ object PermissionCenter {
             add(Manifest.permission.WRITE_CALL_LOG)
             if (sdk >= 26) add(Manifest.permission.ANSWER_PHONE_CALLS)
         }))
-        add(PermItem("termux", "Run commands in Termux", "Lets AriAuri run shell commands in Termux; it asks you before every command", PermKind.Runtime, listOf("com.termux.permission.RUN_COMMAND")))
+        add(PermItem("termux", "Run commands in Termux", "Lets Entrion run shell commands in Termux; it asks you before every command", PermKind.Runtime, listOf("com.termux.permission.RUN_COMMAND")))
         add(PermItem("sms", "SMS", "Send and read text messages", PermKind.Runtime,
             listOf(Manifest.permission.SEND_SMS, Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS)))
         add(PermItem("calendar", "Calendar", "Read and create events", PermKind.Runtime,
@@ -73,7 +73,7 @@ object PermissionCenter {
                 PermKind.Runtime, listOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION), needs = "location"))
         }
         if (sdk >= 33) {
-            add(PermItem("notifications", "Notifications", "Show the Arina status notification", PermKind.Runtime,
+            add(PermItem("notifications", "Notifications", "Show the Entrion status notification", PermKind.Runtime,
                 listOf(Manifest.permission.POST_NOTIFICATIONS)))
         }
         add(PermItem("media", "Photos, videos and audio", "Read your media files", PermKind.Runtime, media()))
@@ -94,7 +94,7 @@ object PermissionCenter {
         add(PermItem("write_settings", "Change system settings", "Brightness, ringtone and similar", PermKind.Special))
         add(PermItem("dnd", "Do Not Disturb access", "Turn silent mode on and off", PermKind.Special))
         add(PermItem("usage", "Usage access", "See which apps you use", PermKind.Special))
-        add(PermItem("battery", "Run without battery limits", "Keeps Arina alive in the background", PermKind.Special))
+        add(PermItem("battery", "Run without battery limits", "Keeps Entrion alive in the background", PermKind.Special))
         if (sdk >= 31) add(PermItem("alarms", "Exact alarms", "Alarms and reminders on time", PermKind.Special))
     }
 

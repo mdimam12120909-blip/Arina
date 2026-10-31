@@ -107,7 +107,7 @@
         <service
             android:name=".device.ArinaAccessibilityService"
             android:exported="true"
-            android:label="AriAuri Device Control"
+            android:label="Entrion Device Control"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
@@ -120,7 +120,7 @@
         <service
             android:name=".device.ArinaNotificationListener"
             android:exported="true"
-            android:label="AriAuri Notifications"
+            android:label="Entrion Notifications"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />

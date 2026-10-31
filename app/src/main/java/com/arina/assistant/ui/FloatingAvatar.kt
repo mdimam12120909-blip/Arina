@@ -81,8 +81,8 @@ fun FloatingAvatar(
         }
         Spacer(Modifier.width(8.dp))
         Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
-            MiniButton(Icons.Outlined.OpenInNew, "Open AriAuri app", onOpenApp)
-            MiniButton(Icons.Outlined.Close, "Turn off AriAuri", onClose)
+            MiniButton(Icons.Outlined.OpenInNew, "Open Entrion app", onOpenApp)
+            MiniButton(Icons.Outlined.Close, "Turn off Entrion", onClose)
         }
         Spacer(Modifier.width(4.dp))
     }

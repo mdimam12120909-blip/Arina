@@ -96,7 +96,7 @@ object PhoneHealth {
     fun appInfoIntent(pkg: String) =
         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
-    /** Android does not let one app clear another app's cache, so this cleans AriAuri's own. Returns bytes freed. */
+    /** Android does not let one app clear another app's cache, so this cleans Entrion's own. Returns bytes freed. */
     fun clearOwnCache(ctx: Context): Long {
         var freed = 0L
         fun wipe(f: File?) {

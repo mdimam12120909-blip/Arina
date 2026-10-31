@@ -16,7 +16,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Calendar
 
-/** One routine: something AriAuri reminds the user about at a set time on chosen days. */
+/** One routine: something Entrion reminds the user about at a set time on chosen days. */
 data class Routine(
     val id: Long,
     val title: String,
@@ -97,7 +97,7 @@ object RoutineScheduler {
 
     fun notify(ctx: Context, title: String, text: String, id: Int) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(CHANNEL, "AriAuri routines", NotificationManager.IMPORTANCE_HIGH))
+        nm.createNotificationChannel(NotificationChannel(CHANNEL, "Entrion routines", NotificationManager.IMPORTANCE_HIGH))
         val open = PendingIntent.getActivity(
             ctx, 0, Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
@@ -112,7 +112,7 @@ object RoutineScheduler {
     }
 }
 
-/** An alarm went off: show the notification, let AriAuri say it, and set the next alarm. */
+/** An alarm went off: show the notification, let Entrion say it, and set the next alarm. */
 class RoutineReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val id = intent.getLongExtra("id", -1)

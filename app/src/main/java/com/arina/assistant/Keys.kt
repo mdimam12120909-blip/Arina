@@ -37,8 +37,8 @@ object Keys {
 
     fun tavily(c: Context) = pick(c, "tavily", BuildConfig.TAVILY_API_KEY.ifBlank { Defaults.TAVILY_KEY })
     fun cartesia(c: Context) = pick(c, "cartesia", BuildConfig.CARTESIA_API_KEY)
-    fun voiceArina(c: Context) = pick(c, "cartesia_voice", BuildConfig.CARTESIA_VOICE_ID.ifBlank { Defaults.VOICE_ARINA })
-    fun voiceAurion(c: Context) = pick(c, "cartesia_voice_aurion", Defaults.VOICE_AURION)
+    fun voiceArina(c: Context) = pick(c, "cartesia_voice", com.arina.assistant.cloud.Cloud.cfg(c, "voice_female", BuildConfig.CARTESIA_VOICE_ID.ifBlank { Defaults.VOICE_ARINA }))
+    fun voiceAurion(c: Context) = pick(c, "cartesia_voice_aurion", com.arina.assistant.cloud.Cloud.cfg(c, "voice_male", Defaults.VOICE_AURION))
 
     fun save(c: Context, gemini: List<String>, cartesia: String, tavily: String, voiceArina: String, voiceAurion: String) {
         val e = prefs(c).edit()

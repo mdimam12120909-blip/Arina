@@ -32,7 +32,7 @@ object Timing {
             .joinToString("\n") { "+${(it.value - t0) / 1_000_000} ms  ${it.key}" }
         val extra = notes.entries.sortedBy { it.key }.joinToString("\n") { "${it.key}: ${it.value}" }
         val text = listOf(steps, extra).filter { it.isNotBlank() }.joinToString("\n")
-        Log.i("AriAuriTiming", text)
+        Log.i("EntrionTiming", text)
         return text
     }
 }

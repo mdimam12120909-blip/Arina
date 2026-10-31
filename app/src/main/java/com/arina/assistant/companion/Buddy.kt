@@ -56,7 +56,7 @@ class Buddy(private val ctx: Context, private val engine: ArinaEngine) {
         return pkg
     }
 
-    /** Called about every 30 seconds while AriAuri runs in the background. */
+    /** Called about every 30 seconds while Entrion runs in the background. */
     fun tick() {
         val now = System.currentTimeMillis()
         val dt = (now - lastTick).coerceIn(0, 120_000)

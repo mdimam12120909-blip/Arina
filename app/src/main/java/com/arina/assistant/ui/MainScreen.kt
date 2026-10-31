@@ -539,7 +539,7 @@ private fun MemoryPanel(vm: ArinaEngine) {
     ) {
         Text("Memory", color = ArinaColors.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
         Text(
-            "Everything here stays on this phone. Arina reads it before every answer.",
+            "Everything here stays on this phone. The agent reads it before every answer.",
             color = ArinaColors.Muted, fontSize = 12.sp
         )
 
@@ -644,6 +644,82 @@ private fun PillButton(label: String, onClick: () -> Unit) {
 
 
 @Composable
+private fun LongField(label: String, value: String, onChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text(label, fontSize = 12.sp) },
+        minLines = 3,
+        shape = RoundedCornerShape(14.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = ArinaColors.Text,
+            unfocusedTextColor = ArinaColors.Text,
+            focusedBorderColor = ArinaColors.Glow,
+            unfocusedBorderColor = ArinaColors.Deep,
+            focusedLabelColor = ArinaColors.Glow,
+            unfocusedLabelColor = ArinaColors.Muted,
+            cursorColor = ArinaColors.Glow
+        )
+    )
+}
+
+/** Who is signed in, the agent's name, and sign in or out. */
+@Composable
+private fun AccountCard(vm: ArinaEngine) {
+    val activity = androidx.compose.ui.platform.LocalContext.current as android.app.Activity
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var agentName by remember { mutableStateOf(vm.agentName.value) }
+    Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (vm.signedIn.value) {
+            Text(vm.accountName.value.ifBlank { "Signed in" }, color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Text(vm.accountEmail.value, color = ArinaColors.Muted, fontSize = 12.sp)
+            Text("Your memory and chats belong to this account only.", color = ArinaColors.Muted, fontSize = 12.sp)
+        } else {
+            Text("Not signed in. Sign in to keep your data across phones.", color = ArinaColors.Muted, fontSize = 12.sp)
+        }
+        KeyField("Agent name (optional; empty: the agent has no personal name)", agentName, false) { agentName = it }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PillButton("Save name") { vm.setAgentName(agentName) }
+            if (vm.signedIn.value) PillButton("Sign out") { vm.signOut() }
+            else PillButton("Continue with Google") { startGoogleSignIn(activity, vm, scope) }
+        }
+    }
+}
+
+/** Only shown to the admin account. The database itself refuses these saves from anybody else. */
+@Composable
+private fun AdminCard(vm: ArinaEngine) {
+    var voiceFemale by remember { mutableStateOf(vm.adminValue("voice_female")) }
+    var voiceMale by remember { mutableStateOf(vm.adminValue("voice_male")) }
+    var liveFemale by remember { mutableStateOf(vm.adminValue("live_voice_female")) }
+    var liveMale by remember { mutableStateOf(vm.adminValue("live_voice_male")) }
+    var instrFemale by remember { mutableStateOf(vm.adminValue("instructions_female")) }
+    var instrMale by remember { mutableStateOf(vm.adminValue("instructions_male")) }
+    var tavily by remember { mutableStateOf("") }
+    Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Published to every user of Entrion.", color = ArinaColors.Muted, fontSize = 12.sp)
+        KeyField("Female voice ID (Cartesia)", voiceFemale, false) { voiceFemale = it }
+        KeyField("Male voice ID (Cartesia)", voiceMale, false) { voiceMale = it }
+        KeyField("Female Gemini Live voice name", liveFemale, false) { liveFemale = it }
+        KeyField("Male Gemini Live voice name", liveMale, false) { liveMale = it }
+        LongField("Female agent instructions", instrFemale) { instrFemale = it }
+        LongField("Male agent instructions", instrMale) { instrMale = it }
+        PillButton("Publish") {
+            vm.adminSave("voice_female", voiceFemale.trim())
+            vm.adminSave("voice_male", voiceMale.trim())
+            vm.adminSave("live_voice_female", liveFemale.trim())
+            vm.adminSave("live_voice_male", liveMale.trim())
+            vm.adminSave("instructions_female", instrFemale.trim())
+            vm.adminSave("instructions_male", instrMale.trim())
+        }
+        Text("Secrets (stored in the database; only you can read them; the app does not use them yet).", color = ArinaColors.Muted, fontSize = 12.sp)
+        KeyField("Tavily search key", tavily, true) { tavily = it }
+        PillButton("Save secret") { if (tavily.isNotBlank()) vm.adminSave("tavily", tavily.trim(), secret = true) }
+    }
+}
+
+@Composable
 private fun SettingsPanel(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onGrantAll: () -> Unit, onAppInfo: () -> Unit) {
     val gemini = remember { mutableStateListOf(*vm.geminiSlots.toTypedArray()) }
     var cartesia by remember { mutableStateOf(vm.cartesiaKey.value) }
@@ -655,12 +731,19 @@ private fun SettingsPanel(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onG
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        SectionTitle("ACCOUNT")
+        AccountCard(vm)
+        if (vm.isAdmin.value) {
+            SectionTitle("ADMIN")
+            AdminCard(vm)
+        }
+
         SectionTitle("CONNECTIONS")
         Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Keys are stored only on this phone.", color = ArinaColors.Muted, fontSize = 12.sp)
             val keyJobs = listOf(
-                "Gemini key 1: Arina (conversation, also the fallback)",
-                "Gemini key 2: Aurion (conversation)",
+                "Gemini key 1: female agent (conversation, also the fallback)",
+                "Gemini key 2: male agent (conversation)",
                 "Gemini key 3: research",
                 "Gemini key 4: workflows and skills",
                 "Gemini key 5: phone agent, camera, background"
@@ -668,8 +751,6 @@ private fun SettingsPanel(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onG
             Text("Each key has one job, so nothing waits for another job. An empty key uses key 1.", color = ArinaColors.Muted, fontSize = 12.sp)
             gemini.forEachIndexed { i, v -> KeyField(keyJobs.getOrElse(i) { "Gemini key ${i + 1}" }, v, true) { gemini[i] = it } }
             KeyField("Cartesia API key (voice)", cartesia, true) { cartesia = it }
-            KeyField("Arina voice ID (Cartesia)", arinaVoice, false) { arinaVoice = it }
-            KeyField("Aurion voice ID (Cartesia)", aurionVoice, false) { aurionVoice = it }
             KeyField("Tavily search key (free, for web research)", tavily, true) { tavily = it }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 PillButton("Save") { vm.saveKeys(gemini.toList(), cartesia, tavily, arinaVoice, aurionVoice) }
@@ -689,7 +770,7 @@ private fun SettingsPanel(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onG
             Column(Modifier.weight(1f)) {
                 Text("Speak up on its own", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 Text(
-                    "AriAuri notices long scrolling or non-stop phone use (needs Usage access below) and nudges you kindly, at most once every 30 minutes. Routines always remind you.",
+                    "Entrion notices long scrolling or non-stop phone use (needs Usage access below) and nudges you kindly, at most once every 30 minutes. Routines always remind you.",
                     color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 16.sp
                 )
             }
@@ -703,7 +784,7 @@ private fun SettingsPanel(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onG
         SectionTitle("SPEED (last reply)")
         Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
-                vm.lastTiming.value.ifBlank { "Talk to AriAuri once, then look here. Each line is the time since you finished speaking." },
+                vm.lastTiming.value.ifBlank { "Talk to Entrion once, then look here. Each line is the time since you finished speaking." },
                 color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp
             )
         }
@@ -775,8 +856,8 @@ private fun SettingsPanel(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onG
                         "Android blocks this for apps installed outside the Play Store. Do this once:\n" +
                             "1. Tap Open app info below.\n" +
                             "2. Tap the three dots at the top right and choose Allow restricted settings.\n" +
-                            "3. Come back and tap Device control again, then turn Arina on.\n" +
-                            "If the three dots are missing, first try to switch Arina on in Accessibility, then repeat step 1.",
+                            "3. Come back and tap Device control again, then turn Entrion on.\n" +
+                            "If the three dots are missing, first try to switch Entrion on in Accessibility, then repeat step 1.",
                         color = ArinaColors.Text, fontSize = 12.sp, lineHeight = 18.sp
                     )
                     PillButton("Open app info") { onAppInfo() }
@@ -848,7 +929,7 @@ private fun SkillsCard(vm: ArinaEngine) {
     var msg by remember { mutableStateOf("") }
     Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            "A skill is a named method with fixed steps. Say its name, or just ask for that kind of work, and AriAuri follows the steps exactly and checks the result.",
+            "A skill is a named method with fixed steps. Say its name, or just ask for that kind of work, and Entrion follows the steps exactly and checks the result.",
             color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 16.sp
         )
         vm.skills.forEach { sk ->

@@ -1,18 +1,18 @@
 package com.arina.assistant.ui
 
-/** The two assistants. Each has its own avatar model, its own Cartesia voice and its own personality line. */
+/** The two agents of Entrion: a female and a male voice. Each has its own avatar, its own voice and its own manner. The user may name them. */
 enum class Persona(
     val displayName: String,
     val avatarKey: String, // key used by assets/avatar/index.html
     val intro: String
 ) {
     Arina(
-        "Arina", "MPFB",
-        "You are Arina, a warm, friendly female AI voice assistant living on the user's Android phone. You and Aurion together are the assistant called AriAuri."
+        "Female", "MPFB",
+        "You are a warm, friendly female AI voice agent of Entrion, an app by Kashikoi, living on the user's Android phone."
     ),
     Aurion(
-        "Aurion", "AvatarSDK",
-        "You are Aurion, a calm, confident male AI voice assistant living on the user's Android phone. You and Arina together are the assistant called AriAuri. " +
+        "Male", "AvatarSDK",
+        "You are a calm, confident male AI voice agent of Entrion, an app by Kashikoi, living on the user's Android phone. " +
             "Speak Bengali in a natural, respectful masculine tone."
     )
 }

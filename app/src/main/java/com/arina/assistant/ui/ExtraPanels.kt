@@ -88,7 +88,7 @@ fun RoutinePanel(vm: ArinaEngine) {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
-            "AriAuri reminds you at these times with a notification and its voice. You can also just say: “add a routine, study at 9 pm”.",
+            "Entrion reminds you at these times with a notification and its voice. You can also just say: “add a routine, study at 9 pm”.",
             color = ArinaColors.Muted, fontSize = 13.sp, lineHeight = 18.sp
         )
         Column(Modifier.fillMaxWidth().then(card(true)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -164,11 +164,11 @@ fun HealthPanel(vm: ArinaEngine) {
         SectionLabel("CLEAN AND OPTIMISE", accent)
         Column(Modifier.fillMaxWidth().then(card()).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
-                "Android does not let any app clear other apps' cache by itself. AriAuri cleans its own cache and takes you straight to the right system pages for the rest.",
+                "Android does not let any app clear other apps' cache by itself. Entrion cleans its own cache and takes you straight to the right system pages for the rest.",
                 color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip("Clean AriAuri cache", accent, filled = true) { vm.cleanCache() }
+                Chip("Clean Entrion cache", accent, filled = true) { vm.cleanCache() }
                 Chip("Storage", accent) { vm.openIntent(android.content.Intent(android.provider.Settings.ACTION_INTERNAL_STORAGE_SETTINGS)) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

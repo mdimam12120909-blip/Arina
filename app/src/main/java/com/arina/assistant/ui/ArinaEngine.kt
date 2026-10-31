@@ -41,6 +41,8 @@ import com.arina.assistant.permissions.PermissionCenter
 import com.arina.assistant.voice.MicListener
 import com.arina.assistant.voice.StreamSpeaker
 import com.arina.assistant.ai.GeminiLive
+import com.arina.assistant.ai.Identity
+import com.arina.assistant.cloud.Cloud
 import com.arina.assistant.Defaults
 import com.arina.assistant.voice.Speaker
 import com.arina.assistant.voice.LiveSpeaker
@@ -102,7 +104,7 @@ class ArinaEngine private constructor(private val app: Application) {
             val a = JSONArray(chatPrefs.getString("m", "[]"))
             for (i in 0 until a.length()) { val o = a.getJSONObject(i); l += ChatMessage(o.getBoolean("u"), o.getString("t")) }
         }
-        if (l.isEmpty()) l += ChatMessage(false, "Hi, I'm AriAuri. Turn the mic on and give me a task.")
+        if (l.isEmpty()) l += ChatMessage(false, "Hi, I'm Entrion. Turn the mic on and give me a task.")
     }
 
     init {
@@ -237,13 +239,13 @@ class ArinaEngine private constructor(private val app: Application) {
         return "OK: routine '${r.title}' set for ${r.timeText()} (${daysText(mask)})."
     }
 
-    /** True when AriAuri may speak up by itself: nothing else is going on. */
+    /** True when Entrion may speak up by itself: nothing else is going on. */
     fun canSpeakUnprompted(): Boolean =
         status.value == Status.Idle && !agentActive.value && approval.value == null &&
             ackJob?.isActive != true && job?.isActive != true
 
     private fun proactiveLine(situation: String): Reply {
-        val system = persona.value.intro + "\n" +
+        val system = currentIntro() + "\n" +
             "You are speaking up on your own now; nobody asked you a question. React to the situation below like a close, caring friend: warm, a little playful, never preachy, never scolding.\n" +
             "Reply with JSON only: {\"bn\":\"...\",\"en\":\"...\"}. bn: one or two short natural spoken Bengali sentences in Bangla script, at most 22 words. en: the same in English.\n" +
             "Do not reuse any of these recent lines or their wording: ${recentLines.joinToString(" | ")}\n" + memory.promptBlock()
@@ -303,7 +305,7 @@ class ArinaEngine private constructor(private val app: Application) {
 
     fun cleanCache() {
         val freed = PhoneHealth.clearOwnCache(app)
-        healthMessage.value = "Cleaned %.1f MB of AriAuri's cache.".format(freed / 1_048_576f)
+        healthMessage.value = "Cleaned %.1f MB of Entrion's cache.".format(freed / 1_048_576f)
         refreshStats()
     }
 
@@ -412,10 +414,101 @@ class ArinaEngine private constructor(private val app: Application) {
         { role -> keyForRole(role) },
         ToolRunner(device, memory, { scope.launch { reloadFacts() } }, hooks),
         { memory.promptBlock() },
-        { persona.value.intro },
+        { currentIntro() },
         { skillStore.index() }
     )
     private val sound = SoundLoop()
+
+    // ---- Entrion account and cloud settings --------------------------------------------------
+
+    val cloud = Cloud(app)
+    val signedIn = mutableStateOf(cloud.signedIn)
+    val accountName = mutableStateOf(cloud.name)
+    val accountEmail = mutableStateOf(cloud.email)
+    val isAdmin = mutableStateOf(false)
+    val signInBusy = mutableStateOf(false)
+    /** The person chose to look around before signing in. */
+    val skippedSignIn = mutableStateOf(uiPrefs.getBoolean("skip_signin", false))
+    fun skipSignIn() { skippedSignIn.value = true; uiPrefs.edit().putBoolean("skip_signin", true).apply() }
+
+    /** What the user calls the agent. Empty: the agent has no personal name. */
+    val agentName = mutableStateOf(uiPrefs.getString("agent_name", "").orEmpty())
+    fun setAgentName(n: String) {
+        agentName.value = n.trim()
+        uiPrefs.edit().putString("agent_name", n.trim()).apply()
+        gemini.reset()
+    }
+
+    /** The agent's character: the admin's published text if there is one, plus the name the user gave it. */
+    private fun currentIntro(): String {
+        val male = persona.value == Persona.Aurion
+        val base = Cloud.cfg(app, if (male) "instructions_male" else "instructions_female", persona.value.intro)
+        val n = agentName.value.trim()
+        return base + if (n.isEmpty()) " You have no personal name; if the user wants, they can give you one." else " The user has named you \"$n\"; that is your name."
+    }
+
+    /** Called with Google's ID token after the account chooser. */
+    fun signInWithGoogle(idToken: String) {
+        signInBusy.value = true
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { cloud.signInWithGoogle(idToken) }
+                signedIn.value = true
+                refreshCloud()
+            } catch (e: Exception) {
+                notice.value = (e.message ?: "Sign-in failed.").take(240)
+            } finally {
+                signInBusy.value = false
+            }
+        }
+    }
+
+    fun signInProblem(message: String) { notice.value = message.take(240) }
+
+    fun signOut() {
+        cloud.signOut()
+        signedIn.value = false; isAdmin.value = false
+        accountName.value = ""; accountEmail.value = ""
+        Identity.userName = ""
+        skippedSignIn.value = false
+        uiPrefs.edit().putBoolean("skip_signin", false).apply()
+    }
+
+    /** Downloads the admin's settings and checks whether this account is the admin. Quietly does nothing offline. */
+    fun refreshCloud() {
+        scope.launch {
+            val admin = withContext(Dispatchers.IO) {
+                runCatching { cloud.fetchConfig() }
+                if (cloud.signedIn) runCatching { cloud.isAdmin() }.getOrDefault(false) else false
+            }
+            signedIn.value = cloud.signedIn
+            accountName.value = cloud.name
+            accountEmail.value = cloud.email
+            Identity.userName = cloud.name
+            isAdmin.value = admin
+            voiceArina.value = Keys.voiceArina(app)
+            voiceAurion.value = Keys.voiceAurion(app)
+            gemini.reset()
+        }
+    }
+
+    /** Admin only. Saves one published setting; the database refuses anyone else. */
+    fun adminSave(key: String, value: String, secret: Boolean = false) {
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { if (secret) cloud.saveSecret(key, value) else cloud.saveConfig(key, value) }
+                if (!secret) withContext(Dispatchers.IO) { runCatching { cloud.fetchConfig() } }
+                voiceArina.value = Keys.voiceArina(app)
+                voiceAurion.value = Keys.voiceAurion(app)
+                gemini.reset()
+                notice.value = "Saved."
+            } catch (e: Exception) {
+                notice.value = (e.message ?: "Could not save.").take(240)
+            }
+        }
+    }
+
+    fun adminValue(key: String, fallback: String = ""): String = Cloud.cfg(app, key, fallback)
 
     /** true: Gemini Live, one streaming voice conversation (fast). false: the ordinary record, think, speak path. */
     val geminiLive = mutableStateOf(uiPrefs.getBoolean("gemini_live", false))
@@ -431,7 +524,7 @@ class ArinaEngine private constructor(private val app: Application) {
             { keyForRole(KeyRole.Talk) },
             { gemini.liveSystemPrompt() },
             ToolRunner(device, memory, { scope.launch { reloadFacts() } }, hooks),
-            { if (persona.value == Persona.Aurion) Defaults.LIVE_VOICE_AURION else Defaults.LIVE_VOICE_ARINA },
+            { if (persona.value == Persona.Aurion) Cloud.cfg(app, "live_voice_male", Defaults.LIVE_VOICE_AURION) else Cloud.cfg(app, "live_voice_female", Defaults.LIVE_VOICE_ARINA) },
             object : GeminiLive.Callbacks {
                 override fun onLevel(level: Float) { scope.launch { if (status.value == Status.Listening) this@ArinaEngine.level.floatValue = level } }
                 override fun onUserSpeaking() { scope.launch { notice.value = null; caption.value = ""; status.value = Status.Thinking } }
@@ -482,7 +575,7 @@ class ArinaEngine private constructor(private val app: Application) {
         uiPrefs.edit().putString("persona", p.name).apply()
         caption.value = ""
         notice.value = null
-        messages += ChatMessage(false, "${p.displayName} here, part of AriAuri.")
+        messages += ChatMessage(false, "${p.displayName} agent here, part of Entrion by Kashikoi.")
         if (micOn.value) restartListening()
     }
 
@@ -949,7 +1042,7 @@ class ArinaEngine private constructor(private val app: Application) {
         }
         if (agentJob?.isActive == true) return "ERROR: already operating the phone. Tell him to press STOP first."
         agentJob = scope.launch {
-            val ok = ask("Let AriAuri operate your phone?", "It will tap, type and scroll by itself to:\n$goal\n\nPress STOP at any time to end it.", OPERATE_LINES)
+            val ok = ask("Let Entrion operate your phone?", "It will tap, type and scroll by itself to:\n$goal\n\nPress STOP at any time to end it.", OPERATE_LINES)
             if (!ok) {
                 announce(Reply("", fresh(listOf("ঠিক আছে, করছি না।", "আচ্ছা, থাক।", "বাদ দিলাম।")), "Okay, I won't do that."))
                 return@launch

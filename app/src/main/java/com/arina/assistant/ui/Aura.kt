@@ -47,7 +47,7 @@ import androidx.compose.runtime.withFrameNanos
 
 /**
  * The always-there layer drawn over every app (it never takes a touch):
- *  - a coloured light that runs around the screen edge while AriAuri listens, thinks, speaks or researches,
+ *  - a coloured light that runs around the screen edge while Entrion listens, thinks, speaks or researches,
  *    in the colour of its mood and growing with the voice level, and a 4 second welcome pulse when it wakes up;
  *  - a small pill at the top that shows what it is doing and the live caption.
  */

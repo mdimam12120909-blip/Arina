@@ -70,7 +70,7 @@ class ToolRunner(
         put(decl("tap_text", "Tap an on-screen item that shows the given text (needs Device Control enabled).", listOf(Triple("text", "STRING", "Visible text of the button or item."))))
         put(decl("open_settings", "Open a phone settings screen. Cannot flip switches itself.", listOf(Triple("section", "STRING", "One of: wifi, bluetooth, display, sound, battery, airplane, location, apps, mobile_data, accessibility, main."))))
         put(decl("research", "Look something up on the web in the background and announce the answer when ready. Use for news, prices, scores, current facts, comparisons or anything you are not sure about. Returns at once; the answer is spoken later.", listOf(Triple("question", "STRING", "The full question to research, in English or Bengali."))))
-        put(decl("remember", "Save one important fact about the user to long-term memory.", listOf(Triple("fact", "STRING", "One short English sentence, e.g. 'Habib prefers short answers.'"))))
+        put(decl("remember", "Save one important fact about the user to long-term memory.", listOf(Triple("fact", "STRING", "One short English sentence, e.g. 'The user prefers short answers.'"))))
         put(decl("forget", "Delete remembered facts that contain this text.", listOf(Triple("text", "STRING", "Word or phrase that identifies the fact to delete."))))
         put(decl("web_search", "Open a web search in the browser so the user can see the results himself.", listOf(Triple("query", "STRING", "Search query."))))
         put(decl("open_url", "Open a web address in the browser.", listOf(Triple("url", "STRING", "Website address."))))
@@ -101,7 +101,7 @@ class ToolRunner(
         put(decl("add_task", "Add an item to the user's to-do list shown on the home screen.", listOf(Triple("text", "STRING", "The task, short, in the user's words (English or Bengali)."))))
         put(decl("complete_task", "Mark a to-do item as done.", listOf(Triple("text", "STRING", "Part of the task text."))))
         put(decl("list_tasks", "Read the user's open to-do items."))
-        put(decl("add_routine", "Add a routine: AriAuri reminds the user (notification and voice) at this time on these days.", listOf(
+        put(decl("add_routine", "Add a routine: Entrion reminds the user (notification and voice) at this time on these days.", listOf(
             Triple("title", "STRING", "What the routine is, e.g. 'Study', 'Gym', 'Sleep'."),
             Triple("time", "STRING", "24-hour time like 21:30."),
             Triple("days", "STRING", "'daily', 'weekdays', 'weekend', or day names like 'mon,wed,fri'. Empty means daily."),
@@ -155,7 +155,7 @@ class ToolRunner(
             }
             "web_search" -> device.webSearch(args.optString("query"))
             "open_url" -> device.openUrl(args.optString("url"))
-            "set_alarm" -> device.setAlarm(args.optInt("hour"), args.optInt("minute"), args.optString("label", "Arina"))
+            "set_alarm" -> device.setAlarm(args.optInt("hour"), args.optInt("minute"), args.optString("label", "Entrion"))
             "read_notifications" -> ArinaNotificationListener.instance?.summary()
                 ?: "ERROR: Notification access is off. Ask the user to turn it on in the Settings tab."
             "get_status" -> device.status()

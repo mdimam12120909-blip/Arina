@@ -128,7 +128,7 @@ class DeviceActions(private val ctx: Context) {
 
     fun pressButton(button: String): String {
         val svc = ArinaAccessibilityService.instance
-            ?: return "ERROR: Device Control (accessibility) is not enabled. Ask the user to enable it in Arina's Setup tab."
+            ?: return "ERROR: Device Control (accessibility) is not enabled. Ask the user to enable it in Entrion's Setup tab."
         return if (svc.press(button)) "OK: pressed $button" else "ERROR: could not press $button"
     }
 

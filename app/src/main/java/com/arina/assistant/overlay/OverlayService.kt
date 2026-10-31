@@ -47,7 +47,7 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlin.math.hypot
 
-/** Keeps Arina alive in the background and shows the floating 1:1 avatar over other apps. */
+/** Keeps Entrion alive in the background and shows the floating 1:1 avatar over other apps. */
 class OverlayService : Service() {
 
     companion object {
@@ -80,7 +80,7 @@ class OverlayService : Service() {
         }
         val engine = ArinaEngine.get(this)
         if (!Settings.canDrawOverlays(this)) {
-            engine.notice.value = "Allow 'Display over other apps' for AriAuri first."
+            engine.notice.value = "Allow 'Display over other apps' for Entrion first."
             stopSelf()
             return START_NOT_STICKY
         }
@@ -110,7 +110,7 @@ class OverlayService : Service() {
     private fun promoteToForeground() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL, "AriAuri is running", NotificationManager.IMPORTANCE_LOW)
+            NotificationChannel(CHANNEL, "Entrion is running", NotificationManager.IMPORTANCE_LOW)
         )
         val open = PendingIntent.getActivity(
             this, 0,
@@ -127,7 +127,7 @@ class OverlayService : Service() {
         @Suppress("DEPRECATION")
         val notification = Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("AriAuri is on")
+            .setContentTitle("Entrion is on")
             .setContentText("Tap the floating orb to talk.")
             .setContentIntent(open)
             .addAction(Notification.Action.Builder(0, "Turn off", off).build())

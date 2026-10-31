@@ -68,7 +68,7 @@ class GeminiClient(
         private const val MAX_HISTORY = 30
 
         private val SUMMARY_PROMPT = """
-            You are Arina, a warm female voice assistant. The user asked a question and a web search was done for it.
+            You are a warm voice assistant. The user asked a question and a web search was done for it.
             Using ONLY the search material provided, write the answer to be spoken aloud: 2 to 4 short natural Bengali sentences with the key facts and numbers.
             If sources disagree or the material is thin, say so briefly. Never invent facts.
 
@@ -86,7 +86,7 @@ class GeminiClient(
         /** Instructions for the live voice conversation: Gemini hears and answers in speech, so there is no BN/EN/YOU format. */
         private val LIVE_PROMPT = """
             {INTRO}
-            The user is Habib Hossan Shahadat; call him Habib.${Identity.PROMPT}
+            {USER}${Identity.PROMPT}
             LANGUAGE: you are speaking aloud. Answer in the language he speaks to you (Bengali, English or any other); if unclear, use Bengali. Keep it natural and spoken.
             STYLE: sharp, confident, direct. Lead with the answer or the action. No greeting, no "sure/of course", no closing offer, no apologies. One or two short sentences unless he asks for detail. Never repeat an opening or filler you used before; do not say his name in every reply.
             NOISE: if what you hear is silence, noise, music, TV or people talking to each other and not to you, stay completely silent. Never ask him to repeat.
@@ -100,7 +100,7 @@ class GeminiClient(
 
         private val SYSTEM_PROMPT = """
             {INTRO}
-            The user is Habib Hossan Shahadat; call him Habib.${Identity.PROMPT}
+            {USER}${Identity.PROMPT}
             When the user asks you to do something on the phone, call the matching tool, then confirm.
             Pass app names to open_app in English exactly as they appear on the phone (WhatsApp, YouTube, Camera, Chrome, Settings...).
             Pass phone-number digits as ASCII digits. Contact names can be Bengali or English, as spoken.
@@ -308,7 +308,7 @@ class GeminiClient(
     @Synchronized
     /** The full instructions for a live voice conversation, with the persona, memory and skills at this moment. */
     fun liveSystemPrompt(): String =
-        LIVE_PROMPT.replace("{INTRO}", personaIntro()) + memoryBlock() + skillsBlock()
+        LIVE_PROMPT.replace("{INTRO}", personaIntro()).replace("{USER}", Identity.userLine()) + memoryBlock() + skillsBlock()
 
     fun chat(userText: String): Reply =
         converse(JSONArray().put(JSONObject().put("text", userText)), audio = false)
@@ -348,7 +348,7 @@ class GeminiClient(
 
     private fun runTurns(shrink: (String) -> Unit): Reply {
         repeat(6) {
-            val resp = callApi(SYSTEM_PROMPT.replace("{INTRO}", personaIntro()) + memoryBlock() + skillsBlock() + (if (busy) BUSY_NOTE else ""), JSONArray(history), withTools = true, o = Opts(stream = speakSink != null))
+            val resp = callApi(SYSTEM_PROMPT.replace("{INTRO}", personaIntro()).replace("{USER}", Identity.userLine()) + memoryBlock() + skillsBlock() + (if (busy) BUSY_NOTE else ""), JSONArray(history), withTools = true, o = Opts(stream = speakSink != null))
             val content = resp.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")
                 ?: throw IOException("Gemini returned an empty answer. Try rephrasing.")
             val parts = content.optJSONArray("parts") ?: JSONArray()
@@ -424,7 +424,7 @@ class GeminiClient(
                 JSONArray().put(JSONObject().put("text", "QUESTION: $question\n\nSEARCH MATERIAL:\n$material"))
             )
         )
-        val resp = callApi(SUMMARY_PROMPT.replace("You are Arina, a warm female voice assistant.", personaIntro()) + memoryBlock(), contents, withTools = false, o = Opts(role = KeyRole.Research))
+        val resp = callApi(SUMMARY_PROMPT.replace("You are a warm voice assistant.", personaIntro()) + memoryBlock(), contents, withTools = false, o = Opts(role = KeyRole.Research))
         val parts = resp.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
             ?: throw IOException("Gemini returned an empty answer for the research.")
         val text = (0 until parts.length()).map { parts.getJSONObject(it) }
