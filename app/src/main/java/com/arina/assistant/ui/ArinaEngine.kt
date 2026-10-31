@@ -40,6 +40,7 @@ import com.arina.assistant.device.DeviceActions
 import com.arina.assistant.permissions.PermissionCenter
 import com.arina.assistant.voice.MicListener
 import com.arina.assistant.voice.StreamSpeaker
+import com.arina.assistant.ai.GeminiLive
 import com.arina.assistant.voice.Speaker
 import com.arina.assistant.voice.LiveSpeaker
 import com.arina.assistant.voice.CartesiaLive
@@ -414,6 +415,41 @@ class ArinaEngine private constructor(private val app: Application) {
         { skillStore.index() }
     )
     private val sound = SoundLoop()
+
+    /** true: Gemini Live, one streaming voice conversation (fast). false: the ordinary record, think, speak path. */
+    val geminiLive = mutableStateOf(uiPrefs.getBoolean("gemini_live", false))
+    fun setGeminiLive(on: Boolean) {
+        geminiLive.value = on
+        uiPrefs.edit().putBoolean("gemini_live", on).apply()
+        liveSession.stop()
+        if (micOn.value) { stopEars(); startListening() }
+    }
+
+    private val liveSession: GeminiLive by lazy {
+        GeminiLive(
+            { keyForRole(KeyRole.Talk) },
+            { gemini.liveSystemPrompt() },
+            ToolRunner(device, memory, { scope.launch { reloadFacts() } }, hooks),
+            { if (persona.value == Persona.Aurion) Defaults.LIVE_VOICE_AURION else Defaults.LIVE_VOICE_ARINA },
+            object : GeminiLive.Callbacks {
+                override fun onLevel(level: Float) { scope.launch { if (status.value == Status.Listening) this@ArinaEngine.level.floatValue = level } }
+                override fun onUserSpeaking() { scope.launch { notice.value = null; caption.value = ""; status.value = Status.Thinking } }
+                override fun onModelSpeaking() { scope.launch { status.value = Status.Speaking } }
+                override fun onToolRunning(name: String) { scope.launch { status.value = Status.Thinking } }
+                override fun onTurn(user: String, model: String) {
+                    scope.launch {
+                        if (user.isNotBlank()) messages += ChatMessage(true, user)
+                        if (model.isNotBlank()) { messages += ChatMessage(false, model); caption.value = model }
+                        lastTiming.value = Timing.report()
+                        status.value = if (micOn.value) Status.Listening else Status.Idle
+                    }
+                }
+                override fun onError(message: String) {
+                    scope.launch { fail(message); turnOff() }
+                }
+            }
+        )
+    }
     private val researchJobs = mutableListOf<Job>()
     private val voice: VoiceOutput = VoiceOutput(app) { cartesiaKey.value to currentVoiceId() }
     private val live = CartesiaLive { cartesiaKey.value to currentVoiceId() }
@@ -441,6 +477,7 @@ class ArinaEngine private constructor(private val app: Application) {
         status.value = Status.Idle
         gemini.reset()
         persona.value = p
+        liveSession.stop()
         uiPrefs.edit().putString("persona", p.name).apply()
         caption.value = ""
         notice.value = null
@@ -470,6 +507,7 @@ class ArinaEngine private constructor(private val app: Application) {
     private fun stopEars() {
         ears.cancel()
         mic.stop()
+        liveSession.mute()
     }
 
     fun setGeminiEars(on: Boolean) {
@@ -556,6 +594,7 @@ class ArinaEngine private constructor(private val app: Application) {
         micOn.value = false
         job?.cancel()
         stopEars()
+        liveSession.stop()
         voice.stop()
         level.floatValue = 0f
         status.value = Status.Idle
@@ -577,6 +616,10 @@ class ArinaEngine private constructor(private val app: Application) {
         if (!micOn.value) return
         if (liveVoice.value) live.warmUp()   // open the voice connection while the user is still talking
         status.value = Status.Listening
+        if (geminiLive.value) {
+            liveSession.start()
+            return
+        }
         if (geminiEars.value) {
             mic.start(
                 onLevel = { level.floatValue = it },
@@ -935,6 +978,7 @@ class ArinaEngine private constructor(private val app: Application) {
 
     /** The STOP button: cut off whatever is being said or worked on right now, keep the mic as it is. */
     fun interrupt() {
+        liveSession.interruptPlayback()
         job?.cancel()
         ackJob?.cancel()
         voice.stop()

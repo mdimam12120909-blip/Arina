@@ -730,6 +730,22 @@ private fun SettingsPanel(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onG
 
         Row(Modifier.fillMaxWidth().glass().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
+                Text("Gemini Live (beta)", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    if (vm.geminiLive.value) "One streaming voice conversation with Gemini: it hears you and answers in its own voice."
+                    else "Off: your speech is recorded, understood, then spoken by Cartesia.",
+                    color = ArinaColors.Muted, fontSize = 12.sp
+                )
+            }
+            Switch(
+                checked = vm.geminiLive.value,
+                onCheckedChange = { vm.setGeminiLive(it) },
+                colors = SwitchDefaults.colors(checkedTrackColor = ArinaColors.Glow, checkedThumbColor = ArinaColors.Background)
+            )
+        }
+
+        Row(Modifier.fillMaxWidth().glass().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
                 Text("Live voice", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 Text(
                     if (vm.liveVoice.value) "The voice is streamed and starts while it is still being made."
