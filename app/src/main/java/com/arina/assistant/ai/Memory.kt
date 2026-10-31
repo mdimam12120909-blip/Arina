@@ -20,7 +20,7 @@ class Memory(ctx: Context) {
         const val MAX_PROFILE = 6000
     }
 
-    private val prefs = ctx.getSharedPreferences("arina_memory", Context.MODE_PRIVATE)
+    private val prefs = com.arina.assistant.cloud.Local.prefs(ctx, "arina_memory")
 
     @Synchronized
     fun profile(): String = prefs.getString("profile", "").orEmpty()

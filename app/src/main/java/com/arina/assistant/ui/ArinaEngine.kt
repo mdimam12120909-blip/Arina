@@ -43,6 +43,7 @@ import com.arina.assistant.voice.StreamSpeaker
 import com.arina.assistant.ai.GeminiLive
 import com.arina.assistant.ai.Identity
 import com.arina.assistant.cloud.Cloud
+import com.arina.assistant.cloud.Local
 import com.arina.assistant.Defaults
 import com.arina.assistant.voice.Speaker
 import com.arina.assistant.voice.LiveSpeaker
@@ -98,7 +99,7 @@ class ArinaEngine private constructor(private val app: Application) {
     val caption = mutableStateOf("")
     val notice = mutableStateOf<String?>(null)
     val overlayOn = mutableStateOf(false)
-    private val chatPrefs = app.getSharedPreferences("arina_chat", Context.MODE_PRIVATE)
+    private val chatPrefs = com.arina.assistant.cloud.Local.prefs(app, "arina_chat")
     val messages = mutableStateListOf<ChatMessage>().also { l ->
         runCatching {
             val a = JSONArray(chatPrefs.getString("m", "[]"))
@@ -140,7 +141,7 @@ class ArinaEngine private constructor(private val app: Application) {
     private val memory = Memory(app)
 
     // Which assistant is active (remembered between launches)
-    private val uiPrefs = app.getSharedPreferences("arina_ui", Context.MODE_PRIVATE)
+    private val uiPrefs = com.arina.assistant.cloud.Local.prefs(app, "arina_ui")
     val persona = mutableStateOf(
         runCatching { Persona.valueOf(uiPrefs.getString("persona", "Arina").orEmpty()) }.getOrDefault(Persona.Arina)
     )
@@ -188,11 +189,11 @@ class ArinaEngine private constructor(private val app: Application) {
     }
 
     val routines = mutableStateListOf<Routine>().also { it.addAll(routineStore.all()) }
-    val proactiveOn = mutableStateOf(app.getSharedPreferences("arina_ui", Context.MODE_PRIVATE).getBoolean("proactive", true))
+    val proactiveOn = mutableStateOf(com.arina.assistant.cloud.Local.prefs(app, "arina_ui").getBoolean("proactive", true))
 
     fun setProactive(on: Boolean) {
         proactiveOn.value = on
-        app.getSharedPreferences("arina_ui", Context.MODE_PRIVATE).edit().putBoolean("proactive", on).apply()
+        com.arina.assistant.cloud.Local.prefs(app, "arina_ui").edit().putBoolean("proactive", on).apply()
     }
 
     private fun reloadRoutines() {
@@ -453,8 +454,9 @@ class ArinaEngine private constructor(private val app: Application) {
         scope.launch {
             try {
                 withContext(Dispatchers.IO) { cloud.signInWithGoogle(idToken) }
-                signedIn.value = true
-                refreshCloud()
+                // Each account's personal data lives apart from every other account's: start fresh as this account.
+                Local.claimGuestData(app, cloud.uid)
+                Local.restartApp(app)
             } catch (e: Exception) {
                 notice.value = (e.message ?: "Sign-in failed.").take(240)
             } finally {
@@ -467,11 +469,8 @@ class ArinaEngine private constructor(private val app: Application) {
 
     fun signOut() {
         cloud.signOut()
-        signedIn.value = false; isAdmin.value = false
-        accountName.value = ""; accountEmail.value = ""
-        Identity.userName = ""
-        skippedSignIn.value = false
-        uiPrefs.edit().putBoolean("skip_signin", false).apply()
+        // Back to the signed-out (guest) data, which holds nothing of any account; restart so no old data stays in memory.
+        Local.restartApp(app)
     }
 
     /** Downloads the admin's settings and checks whether this account is the admin. Quietly does nothing offline. */

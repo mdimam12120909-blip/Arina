@@ -47,7 +47,7 @@ data class Routine(
 }
 
 class RoutineStore(ctx: Context) {
-    private val prefs = ctx.getSharedPreferences("arina_routines", Context.MODE_PRIVATE)
+    private val prefs = com.arina.assistant.cloud.Local.prefs(ctx, "arina_routines")
 
     fun all(): List<Routine> = runCatching {
         val a = JSONArray(prefs.getString("list", "[]"))

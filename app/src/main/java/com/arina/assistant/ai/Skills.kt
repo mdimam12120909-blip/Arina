@@ -10,7 +10,7 @@ class Skill(val name: String, val when_: String, val steps: String, val builtIn:
 /** Built-in skills plus the ones the user saves. Saved ones live in SharedPreferences as JSON. */
 class SkillStore(private val ctx: Context) {
 
-    private val prefs = ctx.getSharedPreferences("arina_skills", Context.MODE_PRIVATE)
+    private val prefs = com.arina.assistant.cloud.Local.prefs(ctx, "arina_skills")
 
     private val builtIn = listOf(
         Skill(

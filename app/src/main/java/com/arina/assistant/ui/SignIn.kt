@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -56,6 +57,7 @@ fun SignInScreen(vm: ArinaEngine) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            OrbMark(1f, Modifier.size(150.dp))
             Text(Brand.APP.uppercase(), color = ArinaColors.Text, fontSize = 34.sp, fontWeight = FontWeight.Bold, letterSpacing = 8.sp)
             Text("by " + Brand.COMPANY, color = ArinaColors.Muted, fontSize = 13.sp, letterSpacing = 3.sp)
             Spacer(Modifier.height(30.dp))

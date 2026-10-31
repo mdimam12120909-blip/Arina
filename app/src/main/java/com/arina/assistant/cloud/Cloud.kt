@@ -37,6 +37,7 @@ class Cloud(private val ctx: Context) {
     val signedIn: Boolean get() = prefs.getString("refresh", "").orEmpty().isNotEmpty()
     val name: String get() = prefs.getString("name", "").orEmpty()
     val email: String get() = prefs.getString("email", "").orEmpty()
+    val uid: String get() = prefs.getString("uid", "").orEmpty()
 
     // ---- account -----------------------------------------------------------------------------
 
@@ -62,6 +63,7 @@ class Cloud(private val ctx: Context) {
             .putLong("expires", System.currentTimeMillis() / 1000 + o.optLong("expires_in", 3600))
         if (user != null) {
             edit.putString("email", user.optString("email"))
+            edit.putString("uid", user.optString("id"))
             edit.putString("name", meta?.optString("full_name")?.takeIf { it.isNotBlank() } ?: meta?.optString("name").orEmpty())
         }
         edit.apply()

@@ -9,7 +9,7 @@ import android.content.Context
 object Keys {
     const val GEMINI_SLOTS = 5
 
-    private fun prefs(c: Context) = c.getSharedPreferences("arina_keys", Context.MODE_PRIVATE)
+    private fun prefs(c: Context) = com.arina.assistant.cloud.Local.prefs(c, "arina_keys")
 
     /**
      * A key typed in Settings wins over the build key, except right after a rebuild whose

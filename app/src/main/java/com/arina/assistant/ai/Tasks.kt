@@ -8,7 +8,7 @@ import org.json.JSONObject
 class Tasks(ctx: Context) {
     data class Task(val id: Long, val text: String, val done: Boolean)
 
-    private val prefs = ctx.getSharedPreferences("arina_tasks", Context.MODE_PRIVATE)
+    private val prefs = com.arina.assistant.cloud.Local.prefs(ctx, "arina_tasks")
 
     fun all(): List<Task> = runCatching {
         val a = JSONArray(prefs.getString("list", "[]"))

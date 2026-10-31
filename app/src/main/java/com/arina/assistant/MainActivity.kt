@@ -12,6 +12,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import com.arina.assistant.overlay.OverlayService
 import com.arina.assistant.ui.SignInScreen
+import com.arina.assistant.ui.IntroScreen
 import com.arina.assistant.permissions.PermItem
 import com.arina.assistant.permissions.PermKind
 import com.arina.assistant.permissions.PermissionCenter
@@ -61,6 +62,11 @@ class MainActivity : ComponentActivity() {
         engine.refreshCloud()
         setContent {
             ArinaTheme {
+                var introDone by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+                if (!introDone) {
+                    IntroScreen { introDone = true }
+                    return@ArinaTheme
+                }
                 if (!engine.signedIn.value && !engine.skippedSignIn.value) {
                     SignInScreen(engine)
                     return@ArinaTheme
