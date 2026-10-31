@@ -431,6 +431,8 @@ class ArinaEngine private constructor(private val app: Application) {
     /** The person chose to look around before signing in. */
     val skippedSignIn = mutableStateOf(uiPrefs.getBoolean("skip_signin", false))
     fun skipSignIn() { skippedSignIn.value = true; uiPrefs.edit().putBoolean("skip_signin", true).apply() }
+    /** Shows the sign-in screen again (for someone who skipped it). */
+    fun openSignIn() { skippedSignIn.value = false; uiPrefs.edit().putBoolean("skip_signin", false).apply() }
 
     /** What the user calls the agent. Empty: the agent has no personal name. */
     val agentName = mutableStateOf(uiPrefs.getString("agent_name", "").orEmpty())

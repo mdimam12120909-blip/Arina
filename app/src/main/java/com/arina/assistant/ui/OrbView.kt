@@ -75,10 +75,10 @@ private object FacePatterns {
 private fun moodColor(persona: Persona, mood: Mood): Color {
     val green = persona == Persona.Arina
     return when (mood) {
-        Mood.Standby -> if (green) Color(0xFF2FD16F) else Color(0xFF3D8BFF)
-        Mood.Listening -> if (green) Color(0xFF5BFF9A) else Color(0xFF6BB4FF)
+        Mood.Standby -> if (green) Color(0xFFEC6FAE) else Color(0xFF8B7CFF)
+        Mood.Listening -> if (green) Color(0xFFFF8FC4) else Color(0xFFA99CFF)
         Mood.Thinking -> Color(0xFFA27BFF)
-        Mood.Speaking -> if (green) Color(0xFF7DFFB0) else Color(0xFF8CC8FF)
+        Mood.Speaking -> if (green) Color(0xFFFFA8D2) else Color(0xFFC2B8FF)
         Mood.Researching -> Color(0xFFFFB84D)
         Mood.Alert -> Color(0xFFFF5C6C)
     }
@@ -88,7 +88,7 @@ private fun moodColor(persona: Persona, mood: Mood): Color {
 fun moodTint(persona: Persona, mood: Mood): Color = moodColor(persona, mood)
 
 /** The persona's signature colour (green for Arina, blue for Aurion), used across the app. */
-fun accentOf(persona: Persona): Color = if (persona == Persona.Arina) Color(0xFF2FD16F) else Color(0xFF3D8BFF)
+fun accentOf(persona: Persona): Color = if (persona == Persona.Arina) Color(0xFFE0488F) else Color(0xFF7C5CFF)
 
 private const val PARTICLES = 900
 

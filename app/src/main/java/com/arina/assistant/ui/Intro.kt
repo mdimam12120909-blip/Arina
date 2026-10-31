@@ -48,7 +48,7 @@ fun OrbMark(reveal: Float, modifier: Modifier = Modifier) {
         val r = size.minDimension / 2
         // soft halo
         drawCircle(
-            Brush.radialGradient(listOf(ArinaColors.Glow.copy(alpha = 0.40f * reveal), Color.Transparent), center = c, radius = r),
+            Brush.radialGradient(listOf(ArinaColors.Pink.copy(alpha = 0.35f * reveal), Color.Transparent), center = c, radius = r),
             radius = r, center = c
         )
         // three rings, each a third of a cycle apart, growing and fading
@@ -63,7 +63,7 @@ fun OrbMark(reveal: Float, modifier: Modifier = Modifier) {
         // the core
         val core = r * 0.22f * breath * reveal
         drawCircle(
-            Brush.radialGradient(listOf(Color.White, ArinaColors.Glow, ArinaColors.Deep), center = c, radius = core.coerceAtLeast(1f)),
+            Brush.radialGradient(listOf(Color.White, ArinaColors.Glow, ArinaColors.Pink), center = c, radius = core.coerceAtLeast(1f)),
             radius = core, center = c
         )
     }
@@ -82,7 +82,7 @@ fun IntroScreen(onFinished: () -> Unit) {
     val name = Brand.APP.uppercase()
     Box(
         Modifier.fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color(0xFF020817), Color(0xFF031428), Color(0xFF020817))))
+            .background(Brush.verticalGradient(listOf(ArinaColors.Background, ArinaColors.Background, ArinaColors.Surface)))
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onFinished() },
         contentAlignment = Alignment.Center
     ) {
