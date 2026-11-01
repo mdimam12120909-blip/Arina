@@ -111,14 +111,18 @@ class GeminiLive(
         track = null
         userText.setLength(0); modelText.setLength(0)
         turnDonePending = false
+        waiting.clear()
     }
 
     /** The STOP button: silence whatever is being said. */
     fun interruptPlayback() = clearPlayback()
 
+    private val waiting = java.util.concurrent.ConcurrentLinkedQueue<String>()
+
+    /** Says something to the model as text. If the conversation is still opening, it is sent as soon as it is ready. */
     fun sendText(text: String) {
         val ws = socket ?: return
-        if (!ready) return
+        if (!ready) { waiting.add(text); return }
         ws.send(JSONObject().put("realtimeInput", JSONObject().put("text", text)).toString())
     }
 
@@ -182,6 +186,7 @@ class GeminiLive(
         if (msg.has("setupComplete")) {
             ready = true
             Timing.mark("live ready")
+            while (true) { val t = waiting.poll() ?: break; socket?.send(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) }
             startMic(mine)
             return
         }

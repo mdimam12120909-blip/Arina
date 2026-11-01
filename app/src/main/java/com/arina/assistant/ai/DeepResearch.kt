@@ -40,7 +40,6 @@ object DeepResearch {
 
     fun run(
         topic: String,
-        tavilyKey: String,
         gemini: GeminiClient,
         onProgress: (round: Int, total: Int, sources: Int) -> Unit,
         cancelled: () -> Boolean
@@ -55,7 +54,7 @@ object DeepResearch {
             for (q in queries) {
                 if (!done.add(q.lowercase())) continue
                 if (cancelled()) throw InterruptedException("cancelled")
-                val text = runCatching { TavilySearch.search(tavilyKey, q, 6) }.getOrNull() ?: continue
+                val text = runCatching { TavilySearch.search(q, 6) }.getOrNull() ?: continue
                 Regex("\\((https?://[^)\\s]+)\\)").findAll(text).forEach { urls += it.groupValues[1] }
                 material.append("### SEARCH: ").append(q).append('\n').append(text.take(5000)).append("\n\n")
             }

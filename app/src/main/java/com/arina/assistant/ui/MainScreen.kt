@@ -106,12 +106,12 @@ import com.arina.assistant.permissions.PermissionCenter
 
 private enum class Page(val title: String) {
     Home("Home"), Chat("Chat"), Memory("Memory"), Routine("Routine"), Health("Phone health"), Soul("Soul"),
-    Settings("Settings"), Account("Account"), Permissions("Permissions"), Voice("Voice and keys"),
+    Settings("Settings"), Account("Account"), Permissions("Permissions"), Keys("Gemini keys"),
     Assistant("Assistant"), Admin("Admin")
 }
 
 /** Pages that open from Settings: they show a back arrow that returns to Settings. */
-private val SETTINGS_SUB = setOf(Page.Account, Page.Permissions, Page.Voice, Page.Assistant, Page.Admin)
+private val SETTINGS_SUB = setOf(Page.Account, Page.Permissions, Page.Keys, Page.Assistant, Page.Admin)
 
 private val Good = Color(0xFF3DDC97)
 private val Warn = Color(0xFFFFB84D)
@@ -165,7 +165,7 @@ fun MainScreen(
                         Page.Settings -> SettingsHome(vm) { page = it }
                         Page.Account -> AccountPage(vm)
                         Page.Permissions -> PermissionsPage(vm, onPermission, onGrantAll, onAppInfo)
-                        Page.Voice -> VoicePage(vm)
+                        Page.Keys -> KeysPage(vm)
                         Page.Assistant -> AssistantPage(vm)
                         Page.Admin -> AdminPage(vm)
                     }
@@ -301,7 +301,7 @@ private fun HomePanel(vm: ArinaEngine, onMicClick: () -> Unit) {
     val accent = accentOf(persona)
     val problem = vm.notice.value != null
     val mood = moodOf(vm.status.value, vm.researchActive.value, problem)
-    LaunchedEffect(vm.tavilyKey.value) { vm.refreshHeadlines() }
+    LaunchedEffect(vm.signedIn.value) { vm.refreshHeadlines() }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
@@ -410,7 +410,7 @@ private fun HeadlinesCard(vm: ArinaEngine, accent: Color, modifier: Modifier) {
             )
         }
         when {
-            !vm.tavilyKeySet -> Text("Add a free Tavily key in Settings to see headlines.", color = ArinaColors.Muted, fontSize = 12.sp)
+            !vm.signedIn.value -> Text("Sign in to see today's headlines.", color = ArinaColors.Muted, fontSize = 12.sp)
             vm.headlines.isEmpty() -> Text(if (vm.headlinesBusy.value) "Loading…" else "No headlines yet.", color = ArinaColors.Muted, fontSize = 12.sp)
             else -> vm.headlines.take(5).forEach { (title, url) ->
                 Row(Modifier.fillMaxWidth().clickable { vm.openLink(url, title) }) {
@@ -736,38 +736,6 @@ private fun AccountCard(vm: ArinaEngine) {
     }
 }
 
-/** Only shown to the admin account. The database itself refuses these saves from anybody else. */
-@Composable
-private fun AdminCard(vm: ArinaEngine) {
-    var voiceFemale by remember { mutableStateOf(vm.adminValue("voice_female")) }
-    var voiceMale by remember { mutableStateOf(vm.adminValue("voice_male")) }
-    var liveFemale by remember { mutableStateOf(vm.adminValue("live_voice_female")) }
-    var liveMale by remember { mutableStateOf(vm.adminValue("live_voice_male")) }
-    var instrFemale by remember { mutableStateOf(vm.adminValue("instructions_female")) }
-    var instrMale by remember { mutableStateOf(vm.adminValue("instructions_male")) }
-    var tavily by remember { mutableStateOf("") }
-    Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Published to every user of Entrion.", color = ArinaColors.Muted, fontSize = 12.sp)
-        KeyField("Female voice ID (Cartesia)", voiceFemale, false) { voiceFemale = it }
-        KeyField("Male voice ID (Cartesia)", voiceMale, false) { voiceMale = it }
-        KeyField("Female Gemini Live voice name", liveFemale, false) { liveFemale = it }
-        KeyField("Male Gemini Live voice name", liveMale, false) { liveMale = it }
-        LongField("Female agent instructions", instrFemale) { instrFemale = it }
-        LongField("Male agent instructions", instrMale) { instrMale = it }
-        PillButton("Publish") {
-            vm.adminSave("voice_female", voiceFemale.trim())
-            vm.adminSave("voice_male", voiceMale.trim())
-            vm.adminSave("live_voice_female", liveFemale.trim())
-            vm.adminSave("live_voice_male", liveMale.trim())
-            vm.adminSave("instructions_female", instrFemale.trim())
-            vm.adminSave("instructions_male", instrMale.trim())
-        }
-        Text("Secrets (stored in the database; only you can read them; the app does not use them yet).", color = ArinaColors.Muted, fontSize = 12.sp)
-        KeyField("Tavily search key", tavily, true) { tavily = it }
-        PillButton("Save secret") { if (tavily.isNotBlank()) vm.adminSave("tavily", tavily.trim(), secret = true) }
-    }
-}
-
 @Composable
 private fun PageColumn(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
     Column(
@@ -803,7 +771,7 @@ private fun SettingsHome(vm: ArinaEngine, go: (Page) -> Unit) {
     PageColumn {
         NavRow("Account", if (vm.signedIn.value) vm.accountEmail.value else "Sign in to keep your data", Icons.Filled.Person) { go(Page.Account) }
         NavRow("Permissions", "Choose what the agent may do on this phone", Icons.Filled.Lock) { go(Page.Permissions) }
-        NavRow("Voice and keys", "How it listens and speaks, and your Gemini keys", Icons.Outlined.GraphicEq) { go(Page.Voice) }
+        NavRow("Gemini keys", "Your five keys, one for each job", Icons.Outlined.GraphicEq) { go(Page.Keys) }
         NavRow("Assistant", "Companion, skills and speed report", Icons.Filled.Build) { go(Page.Assistant) }
         if (vm.isAdmin.value) NavRow("Admin", "Settings published to every user", Icons.Filled.Info) { go(Page.Admin) }
     }
@@ -818,7 +786,111 @@ private fun AccountPage(vm: ArinaEngine) {
 
 @Composable
 private fun AdminPage(vm: ArinaEngine) {
-    PageColumn { AdminCard(vm) }
+    var section by rememberSaveable { mutableStateOf("Agent") }
+    PageColumn {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("Agent", "Facts", "Users", "Secrets").forEach { name ->
+                val on = section == name
+                Text(
+                    name,
+                    color = if (on) ArinaColors.Background else ArinaColors.Text,
+                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clip(RoundedCornerShape(50))
+                        .background(if (on) ArinaColors.Glow else ArinaColors.Glow.copy(alpha = 0.12f))
+                        .clickable { section = name }
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
+        }
+        when (section) {
+            "Agent" -> AdminAgent(vm)
+            "Facts" -> AdminFacts(vm)
+            "Users" -> AdminUsers(vm)
+            else -> AdminSecrets(vm)
+        }
+        vm.notice.value?.let { Text(it, color = Warn, fontSize = 12.sp, lineHeight = 17.sp) }
+    }
+}
+
+@Composable
+private fun AdminAgent(vm: ArinaEngine) {
+    var liveFemale by remember { mutableStateOf(vm.adminValue("live_voice_female")) }
+    var liveMale by remember { mutableStateOf(vm.adminValue("live_voice_male")) }
+    var instrFemale by remember { mutableStateOf(vm.adminValue("instructions_female")) }
+    var instrMale by remember { mutableStateOf(vm.adminValue("instructions_male")) }
+    var style by remember { mutableStateOf(vm.adminValue("speaking_style").removeSurrounding("\"")) }
+    Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Published to every user of Entrion. It applies the next time someone starts talking.", color = ArinaColors.Muted, fontSize = 12.sp)
+        KeyField("Female voice name", liveFemale, false) { liveFemale = it }
+        KeyField("Male voice name", liveMale, false) { liveMale = it }
+        LongField("Female agent: character and instructions", instrFemale) { instrFemale = it }
+        LongField("Male agent: character and instructions", instrMale) { instrMale = it }
+        LongField("How to speak (tone, length, manners, languages), for both agents", style) { style = it }
+        PillButton("Publish") {
+            vm.adminSave("live_voice_female", liveFemale.trim())
+            vm.adminSave("live_voice_male", liveMale.trim())
+            vm.adminSave("instructions_female", instrFemale.trim())
+            vm.adminSave("instructions_male", instrMale.trim())
+            vm.adminSave("speaking_style", style.trim())
+        }
+    }
+}
+
+@Composable
+private fun AdminFacts(vm: ArinaEngine) {
+    var text by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) { vm.loadFacts() }
+    Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Facts every agent knows for every user (about Entrion, Kashikoi, products, rules). Short and true.", color = ArinaColors.Muted, fontSize = 12.sp)
+        LongField("New fact", text) { text = it }
+        PillButton("Add fact") { vm.addGlobalFact(text); text = "" }
+    }
+    if (vm.adminFacts.isEmpty()) Text(if (vm.adminBusy.value) "Loading…" else "No facts yet.", color = ArinaColors.Muted, fontSize = 13.sp)
+    vm.adminFacts.forEach { f ->
+        Row(Modifier.fillMaxWidth().glass().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(f.text, color = ArinaColors.Text, fontSize = 14.sp, lineHeight = 19.sp, modifier = Modifier.weight(1f))
+            Spacer(Modifier.width(10.dp))
+            Text("Delete", color = Warn, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { vm.deleteGlobalFact(f.id) }.padding(6.dp))
+        }
+    }
+}
+
+@Composable
+private fun AdminUsers(vm: ArinaEngine) {
+    var confirm by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) { vm.loadUsers() }
+    Row(Modifier.fillMaxWidth().glass().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(vm.adminStatsText.value.ifBlank { if (vm.adminBusy.value) "Loading…" else "No data yet." }, color = ArinaColors.Text, fontSize = 13.sp, lineHeight = 19.sp, modifier = Modifier.weight(1f))
+        Icon(Icons.Outlined.Refresh, "Refresh", tint = ArinaColors.Glow, modifier = Modifier.size(20.dp).clickable { vm.loadUsers() })
+    }
+    vm.adminUsers.forEach { u ->
+        val me = u.email.equals(vm.accountEmail.value, ignoreCase = true)
+        Column(Modifier.fillMaxWidth().glass().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(u.name.ifBlank { u.email }, color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Text(u.email, color = ArinaColors.Muted, fontSize = 12.sp)
+            Text("Joined ${u.created}" + (if (u.lastSeen.isNotBlank()) "  |  last seen ${u.lastSeen}" else "") + (if (u.banned) "  |  BANNED" else ""), color = if (u.banned) Warn else ArinaColors.Muted, fontSize = 12.sp)
+            if (!me) {
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text(if (u.banned) "Allow again" else "Ban", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { vm.banUser(u.id, !u.banned) }.padding(vertical = 4.dp))
+                    if (confirm == u.id) {
+                        Text("Tap again to remove for good", color = Warn, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { confirm = ""; vm.removeUser(u.id) }.padding(vertical = 4.dp))
+                    } else {
+                        Text("Remove", color = Warn, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { confirm = u.id }.padding(vertical = 4.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdminSecrets(vm: ArinaEngine) {
+    var tavily by remember { mutableStateOf("") }
+    Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Stored in the database where only you can read them. The web search service uses this key on the server; it never reaches users' phones.", color = ArinaColors.Muted, fontSize = 12.sp)
+        KeyField("Web search key", tavily, true) { tavily = it }
+        PillButton("Save") { if (tavily.isNotBlank()) { vm.adminSave("tavily", tavily.trim(), secret = true); tavily = "" } }
+    }
 }
 
 @Composable
@@ -879,56 +951,23 @@ private fun ToggleCard(title: String, detail: String, checked: Boolean, onChange
 }
 
 @Composable
-private fun VoicePage(vm: ArinaEngine) {
+private fun KeysPage(vm: ArinaEngine) {
     val gemini = remember { mutableStateListOf(*vm.geminiSlots.toTypedArray()) }
-    var cartesia by remember { mutableStateOf(vm.cartesiaKey.value) }
-    var arinaVoice by remember { mutableStateOf(vm.voiceArina.value) }
-    var tavily by remember { mutableStateOf(vm.tavilyKey.value) }
-    var aurionVoice by remember { mutableStateOf(vm.voiceAurion.value) }
     PageColumn {
-        SectionTitle("HOW IT LISTENS AND SPEAKS")
-        ToggleCard(
-            "Gemini Live (beta)",
-            if (vm.geminiLive.value) "One streaming voice conversation with Gemini: it hears you and answers in its own voice."
-            else "Off: your speech is recorded, understood, then spoken by Cartesia.",
-            vm.geminiLive.value
-        ) { vm.setGeminiLive(it) }
-        ToggleCard(
-            "Gemini hears me",
-            if (vm.geminiEars.value) "Silent listening, no beep. Gemini understands the audio." else "Uses Android's speech recognizer (it makes a start sound).",
-            vm.geminiEars.value
-        ) { vm.setGeminiEars(it) }
-        ToggleCard(
-            "Live voice",
-            if (vm.liveVoice.value) "The voice is streamed and starts while it is still being made." else "The voice is made phrase by phrase, then played.",
-            vm.liveVoice.value
-        ) { vm.setLiveVoice(it) }
-
-        SectionTitle("YOUR KEYS")
         Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Keys are stored only on this phone, under your account.", color = ArinaColors.Muted, fontSize = 12.sp)
+            Text("Your keys are stored only on this phone, under your account.", color = ArinaColors.Muted, fontSize = 12.sp)
             val keyJobs = listOf(
-                "Gemini key 1: female agent (conversation, also the fallback)",
-                "Gemini key 2: male agent (conversation)",
-                "Gemini key 3: research",
-                "Gemini key 4: workflows and skills",
-                "Gemini key 5: phone agent, camera, background"
+                "Key 1: female agent (conversation, also the fallback)",
+                "Key 2: male agent (conversation)",
+                "Key 3: research",
+                "Key 4: workflows and skills",
+                "Key 5: phone agent, camera, background"
             )
             Text("Each key has one job, so nothing waits for another job. An empty key uses key 1.", color = ArinaColors.Muted, fontSize = 12.sp)
-            gemini.forEachIndexed { i, v -> KeyField(keyJobs.getOrElse(i) { "Gemini key ${i + 1}" }, v, true) { gemini[i] = it } }
-            KeyField("Cartesia API key (voice)", cartesia, true) { cartesia = it }
-            KeyField("Tavily search key (free, for web research)", tavily, true) { tavily = it }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PillButton("Save") { vm.saveKeys(gemini.toList(), cartesia, tavily, arinaVoice, aurionVoice) }
-                PillButton("Test voice") {
-                    vm.saveKeys(gemini.toList(), cartesia, tavily, arinaVoice, aurionVoice)
-                    vm.testVoice()
-                }
-            }
+            gemini.forEachIndexed { i, v -> KeyField(keyJobs.getOrElse(i) { "Key ${i + 1}" }, v, true) { gemini[i] = it } }
+            PillButton("Save") { vm.saveKeys(gemini.toList()) }
             vm.notice.value?.let { Text(it, color = Warn, fontSize = 12.sp, lineHeight = 17.sp) }
-            StatusLine("Gemini brain (" + vm.geminiKeyCount + " of 5 keys set)", vm.geminiKeySet)
-            StatusLine("Cartesia voice", vm.cartesiaKeySet)
-            StatusLine("Web research", vm.tavilyKeySet)
+            StatusLine("Keys set: " + vm.geminiKeyCount + " of 5", vm.geminiKeySet)
         }
     }
 }

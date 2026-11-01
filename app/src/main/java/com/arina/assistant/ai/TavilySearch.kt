@@ -1,5 +1,6 @@
 package com.arina.assistant.ai
 
+import com.arina.assistant.Defaults
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -8,8 +9,14 @@ import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-/** Web search through Tavily (free plan: 1,000 searches a month, no card). Blocking: call on Dispatchers.IO. */
+/**
+ * Web search. The request goes to Entrion's own cloud function, which holds the search key (the admin sets it);
+ * the key never reaches the phone. Needs a signed-in account. Blocking: call on Dispatchers.IO.
+ */
 object TavilySearch {
+
+    /** Gives a fresh sign-in token, or null when nobody is signed in. Set by the app. */
+    @Volatile var token: () -> String? = { null }
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -18,12 +25,12 @@ object TavilySearch {
         .build()
 
     /** Returns the search results as plain text for the model to summarise. */
-    fun search(key: String, query: String, results: Int = 6): String =
-        text(call(key, query, results, images = false))
+    fun search(query: String, results: Int = 6): String =
+        text(call(query, results, images = false))
 
     /** Image addresses for a query (Tavily include_images). */
-    fun images(key: String, query: String): List<String> {
-        val json = call(key, query, 5, images = true)
+    fun images(query: String): List<String> {
+        val json = call(query, 5, images = true)
         val out = LinkedHashSet<String>()
         val top = json.optJSONArray("images")
         if (top != null) for (i in 0 until top.length()) {
@@ -35,8 +42,8 @@ object TavilySearch {
     }
 
     /** Today's top headlines as (title, address) pairs. One search. */
-    fun headlines(key: String, query: String = "top world news today", count: Int = 8): List<Pair<String, String>> {
-        val json = call(key, query, count, images = false, news = true)
+    fun headlines(query: String = "top world news today", count: Int = 8): List<Pair<String, String>> {
+        val json = call(query, count, images = false, news = true)
         val a = json.optJSONArray("results") ?: return emptyList()
         return (0 until a.length()).mapNotNull {
             val r = a.getJSONObject(it)
@@ -46,19 +53,20 @@ object TavilySearch {
         }
     }
 
-    private fun call(key: String, query: String, results: Int, images: Boolean, news: Boolean = false): JSONObject {
+    private fun call(query: String, results: Int, images: Boolean, news: Boolean = false): JSONObject {
+        val jwt = token() ?: throw IOException("Sign in to use web search.")
         val body = JSONObject()
             .put("query", query)
-            .put("search_depth", "basic")
-            .put("max_results", results)
+                        .put("max_results", results)
             .put("include_answer", !images)
             .put("include_images", images)
-            .apply { if (news) put("topic", "news").put("time_range", "day") }
+            .apply { if (news) put("topic", "news") }
             .toString()
             .toRequestBody("application/json".toMediaType())
         val request = Request.Builder()
-            .url("https://api.tavily.com/search")
-            .header("Authorization", "Bearer ${key.trim()}")
+            .url(Defaults.SUPABASE_URL + "/functions/v1/search")
+            .header("apikey", Defaults.SUPABASE_KEY)
+            .header("Authorization", "Bearer $jwt")
             .post(body)
             .build()
 
@@ -68,7 +76,7 @@ object TavilySearch {
             throw IOException("Web search failed: ${e.message ?: "no internet?"}")
         }
         if (code !in 200..299) {
-            throw IOException("Tavily error $code: ${raw.take(200)}")
+            throw IOException("Web search error $code: ${raw.take(200)}")
         }
         return JSONObject(raw)
     }

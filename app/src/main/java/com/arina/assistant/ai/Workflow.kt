@@ -62,7 +62,6 @@ object Workflow {
 
     fun run(
         goal: String,
-        tavilyKey: String,
         gemini: GeminiClient,
         skill: Skill? = null,
         onProgress: (done: Int, total: Int, line: String) -> Unit,
@@ -82,8 +81,8 @@ object Workflow {
                     s to pool.submit(Callable {
                         val inputs = s.needs.joinToString("\n\n") { "RESULT ${it}:\n${out[it].orEmpty()}" }
                         runCatching {
-                            if (s.kind == "search" && tavilyKey.isNotBlank())
-                                TavilySearch.search(tavilyKey, s.task, 6).take(NOTE_CAP)
+                            if (s.kind == "search")
+                                TavilySearch.search(s.task, 6).take(NOTE_CAP)
                             else gemini.generate(WORK, "OVERALL GOAL: $goal$rules\nYOUR STEP: ${s.task}\n\n$inputs", slow = true, role = KeyRole.Workflow).take(NOTE_CAP)
                         }.getOrElse { "(step failed: ${it.message})" }
                     })

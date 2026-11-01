@@ -70,6 +70,8 @@ class Cloud(private val ctx: Context) {
     }
 
     /** A valid access token, refreshed first if it is about to expire. Null when nobody is signed in. */
+    fun accessToken(): String? = runCatching { token() }.getOrNull()
+
     private fun token(): String? {
         val refresh = prefs.getString("refresh", "").orEmpty()
         if (refresh.isEmpty()) return null
@@ -91,6 +93,14 @@ class Cloud(private val ctx: Context) {
         for (i in 0 until rows.length()) {
             val r = rows.getJSONObject(i)
             edit.putString(r.getString("key"), r.get("value").toString())
+        }
+        // Facts the admin added for every user; kept as one text for the system prompt. The table may not exist yet.
+        runCatching {
+            val (c2, t2) = raw("GET", "/rest/v1/global_facts?select=fact&order=id", null, bearer = token())
+            if (c2 in 200..299) {
+                val a = JSONArray(t2)
+                edit.putString("global_facts", (0 until a.length()).joinToString("\n") { "- " + a.getJSONObject(it).getString("fact") })
+            }
         }
         edit.apply()
     }
@@ -121,6 +131,43 @@ class Cloud(private val ctx: Context) {
         val (code, text) = raw("POST", "/rest/v1/$table?on_conflict=key", row.toString(), bearer = t, prefer = "resolution=merge-duplicates,return=minimal")
         if (code !in 200..299) throw IOException("Could not save (HTTP $code): ${message(text)}")
     }
+
+    // ---- admin tools (the database refuses all of these for anyone who is not the admin) ------------
+
+    class Fact(val id: Long, val text: String)
+    class User(val id: String, val email: String, val name: String, val created: String, val lastSeen: String, val banned: Boolean)
+
+    private fun adminCall(method: String, path: String, body: String? = null, prefer: String? = null): String {
+        val t = token() ?: throw IOException("Sign in first.")
+        val (code, text) = raw(method, path, body, bearer = t, prefer = prefer)
+        if (code !in 200..299) throw IOException("Not done (HTTP $code): ${message(text)}")
+        return text
+    }
+
+    fun facts(): List<Fact> {
+        val a = JSONArray(adminCall("GET", "/rest/v1/global_facts?select=id,fact&order=id.desc"))
+        return (0 until a.length()).map { a.getJSONObject(it).let { o -> Fact(o.getLong("id"), o.getString("fact")) } }
+    }
+
+    fun addFact(text: String) { adminCall("POST", "/rest/v1/global_facts", JSONObject().put("fact", text.trim()).toString(), "return=minimal") }
+
+    fun deleteFact(id: Long) { adminCall("DELETE", "/rest/v1/global_facts?id=eq.$id") }
+
+    fun users(): List<User> {
+        val a = JSONArray(adminCall("POST", "/rest/v1/rpc/admin_list_users", "{}"))
+        return (0 until a.length()).map {
+            val o = a.getJSONObject(it)
+            User(o.getString("id"), o.optString("email"), o.optString("name"), o.optString("created_at").take(10),
+                o.optString("last_sign_in_at").takeIf { s -> s != "null" }.orEmpty().take(10), o.optBoolean("banned"))
+        }
+    }
+
+    fun setBan(id: String, ban: Boolean) { adminCall("POST", "/rest/v1/rpc/admin_set_ban", JSONObject().put("target", id).put("ban", ban).toString()) }
+
+    fun deleteUser(id: String) { adminCall("POST", "/rest/v1/rpc/admin_delete_user", JSONObject().put("target", id).toString()) }
+
+    /** total, today, week, active_week, banned */
+    fun stats(): JSONObject = JSONObject(adminCall("POST", "/rest/v1/rpc/admin_stats", "{}"))
 
     // ---- plumbing ----------------------------------------------------------------------------
 

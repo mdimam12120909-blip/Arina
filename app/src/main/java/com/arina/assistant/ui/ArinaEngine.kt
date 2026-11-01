@@ -38,22 +38,14 @@ import com.arina.assistant.ai.ToolRunner
 import com.arina.assistant.device.ArinaAccessibilityService
 import com.arina.assistant.device.DeviceActions
 import com.arina.assistant.permissions.PermissionCenter
-import com.arina.assistant.voice.MicListener
-import com.arina.assistant.voice.StreamSpeaker
 import com.arina.assistant.ai.GeminiLive
 import com.arina.assistant.ai.Identity
 import com.arina.assistant.cloud.Cloud
 import com.arina.assistant.cloud.Local
 import com.arina.assistant.Defaults
-import com.arina.assistant.voice.Speaker
-import com.arina.assistant.voice.LiveSpeaker
-import com.arina.assistant.voice.CartesiaLive
 import com.arina.assistant.ai.Timing
 import com.arina.assistant.ai.KeyRole
 import com.arina.assistant.voice.SoundLoop
-import com.arina.assistant.voice.SpeechInput
-import com.arina.assistant.voice.SpeechProblem
-import com.arina.assistant.voice.VoiceOutput
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.CompletableDeferred
@@ -129,14 +121,8 @@ class ArinaEngine private constructor(private val app: Application) {
     // Keys (editable in the Setup tab)
     val geminiKey: MutableState<String> = mutableStateOf(Keys.gemini(app))
     val geminiSlots = mutableStateListOf<String>().also { it.addAll(Keys.geminiSlots(app)) }
-    val cartesiaKey: MutableState<String> = mutableStateOf(Keys.cartesia(app))
-    val voiceArina: MutableState<String> = mutableStateOf(Keys.voiceArina(app))
-    val tavilyKey: MutableState<String> = mutableStateOf(Keys.tavily(app))
-    val voiceAurion: MutableState<String> = mutableStateOf(Keys.voiceAurion(app))
-    val tavilyKeySet: Boolean get() = tavilyKey.value.isNotBlank()
     val geminiKeySet: Boolean get() = geminiKey.value.isNotBlank()
     val geminiKeyCount: Int get() = geminiSlots.count { it.isNotBlank() }
-    val cartesiaKeySet: Boolean get() = cartesiaKey.value.isNotBlank() && voiceArina.value.isNotBlank()
 
     // Permissions
     val micGranted = mutableStateOf(false)
@@ -338,14 +324,13 @@ class ArinaEngine private constructor(private val app: Application) {
 
     /** Fetches today's top headlines (one Tavily search) and keeps them for three hours. */
     fun refreshHeadlines(force: Boolean = false) {
-        val key = tavilyKey.value
-        if (key.isBlank() || headlinesBusy.value) return
+        if (!cloud.signedIn || headlinesBusy.value) return
         val last = uiPrefs.getLong("headlines_at", 0L)
         if (!force && headlines.isNotEmpty() && System.currentTimeMillis() - last < 3 * 3600_000L) return
         headlinesBusy.value = true
         scope.launch {
             try {
-                val list = withContext(Dispatchers.IO) { TavilySearch.headlines(key) }
+                val list = withContext(Dispatchers.IO) { TavilySearch.headlines() }
                 if (list.isNotEmpty()) {
                     headlines.clear(); headlines.addAll(list)
                     uiPrefs.edit().putLong("headlines_at", System.currentTimeMillis()).apply()
@@ -431,6 +416,7 @@ class ArinaEngine private constructor(private val app: Application) {
 
     val cloud = Cloud(app)
     val signedIn = mutableStateOf(cloud.signedIn)
+    init { TavilySearch.token = { cloud.accessToken() } }
     val accountName = mutableStateOf(cloud.name)
     val accountEmail = mutableStateOf(cloud.email)
     val isAdmin = mutableStateOf(false)
@@ -454,7 +440,11 @@ class ArinaEngine private constructor(private val app: Application) {
         val male = persona.value == Persona.Aurion
         val base = Cloud.cfg(app, if (male) "instructions_male" else "instructions_female", persona.value.intro)
         val n = agentName.value.trim()
-        return base + if (n.isEmpty()) " You have no personal name; if the user wants, they can give you one." else " The user has named you \"$n\"; that is your name."
+        val style = Cloud.cfg(app, "speaking_style", "").trim().removeSurrounding("\"")
+        val facts = Cloud.cfg(app, "global_facts", "").trim()
+        val extra = (if (style.isNotEmpty()) "\nHOW TO SPEAK (set by Entrion): $style" else "") +
+            (if (facts.isNotEmpty()) "\nFACTS YOU KNOW (set by Entrion; treat as true):\n$facts" else "")
+        return base + extra + if (n.isEmpty()) " You have no personal name; if the user wants, they can give you one." else " The user has named you \"$n\"; that is your name."
     }
 
     /** Called with Google's ID token after the account chooser. */
@@ -501,8 +491,6 @@ class ArinaEngine private constructor(private val app: Application) {
             accountEmail.value = cloud.email
             Identity.userName = cloud.name
             isAdmin.value = admin
-            voiceArina.value = Keys.voiceArina(app)
-            voiceAurion.value = Keys.voiceAurion(app)
             gemini.reset()
         }
     }
@@ -513,8 +501,6 @@ class ArinaEngine private constructor(private val app: Application) {
             try {
                 withContext(Dispatchers.IO) { if (secret) cloud.saveSecret(key, value) else cloud.saveConfig(key, value) }
                 if (!secret) withContext(Dispatchers.IO) { runCatching { cloud.fetchConfig() } }
-                voiceArina.value = Keys.voiceArina(app)
-                voiceAurion.value = Keys.voiceAurion(app)
                 gemini.reset()
                 notice.value = "Saved."
             } catch (e: Exception) {
@@ -525,13 +511,56 @@ class ArinaEngine private constructor(private val app: Application) {
 
     fun adminValue(key: String, fallback: String = ""): String = Cloud.cfg(app, key, fallback)
 
-    /** true: Gemini Live, one streaming voice conversation (fast). false: the ordinary record, think, speak path. */
-    val geminiLive = mutableStateOf(uiPrefs.getBoolean("gemini_live", true))
-    fun setGeminiLive(on: Boolean) {
-        geminiLive.value = on
-        uiPrefs.edit().putBoolean("gemini_live", on).apply()
-        liveSession.stop()
-        if (micOn.value) { stopEars(); startListening() }
+    // ---- Admin tools (the database refuses all of these for anyone but the admin) -------------------
+    val adminFacts = mutableStateListOf<Cloud.Fact>()
+    val adminUsers = mutableStateListOf<Cloud.User>()
+    val adminStatsText = mutableStateOf("")
+    val adminBusy = mutableStateOf(false)
+
+    private fun adminRun(block: suspend () -> Unit) {
+        scope.launch {
+            adminBusy.value = true
+            try { block() } catch (e: CancellationException) { throw e } catch (e: Exception) { notice.value = (e.message ?: "Not done.").take(240) } finally { adminBusy.value = false }
+        }
+    }
+
+    fun loadFacts() = adminRun {
+        val l = withContext(Dispatchers.IO) { cloud.facts() }
+        adminFacts.clear(); adminFacts.addAll(l)
+    }
+
+    fun addGlobalFact(text: String) {
+        if (text.isBlank()) return
+        adminRun {
+            withContext(Dispatchers.IO) { cloud.addFact(text); runCatching { cloud.fetchConfig() } }
+            val l = withContext(Dispatchers.IO) { cloud.facts() }
+            adminFacts.clear(); adminFacts.addAll(l)
+            notice.value = "Fact added for every user."
+        }
+    }
+
+    fun deleteGlobalFact(id: Long) = adminRun {
+        withContext(Dispatchers.IO) { cloud.deleteFact(id); runCatching { cloud.fetchConfig() } }
+        adminFacts.removeAll { it.id == id }
+    }
+
+    fun loadUsers() = adminRun {
+        val (list, st) = withContext(Dispatchers.IO) { cloud.users() to cloud.stats() }
+        adminUsers.clear(); adminUsers.addAll(list)
+        adminStatsText.value = "${st.optInt("total")} signed up  |  ${st.optInt("today")} today  |  ${st.optInt("week")} this week  |  ${st.optInt("active_week")} active this week  |  ${st.optInt("banned")} banned"
+    }
+
+    fun banUser(id: String, ban: Boolean) = adminRun {
+        withContext(Dispatchers.IO) { cloud.setBan(id, ban) }
+        notice.value = if (ban) "User banned. They are signed out." else "User allowed again."
+        val list = withContext(Dispatchers.IO) { cloud.users() }
+        adminUsers.clear(); adminUsers.addAll(list)
+    }
+
+    fun removeUser(id: String) = adminRun {
+        withContext(Dispatchers.IO) { cloud.deleteUser(id) }
+        adminUsers.removeAll { it.id == id }
+        notice.value = "User and their data removed."
     }
 
     private val liveSession: GeminiLive by lazy {
@@ -560,28 +589,14 @@ class ArinaEngine private constructor(private val app: Application) {
         )
     }
     private val researchJobs = mutableListOf<Job>()
-    private val voice: VoiceOutput = VoiceOutput(app) { cartesiaKey.value to currentVoiceId() }
-    private val live = CartesiaLive { cartesiaKey.value to currentVoiceId() }
-
-    /** true: the voice is streamed and plays while it is generated. false: phrase files, played one after the other. */
-    val liveVoice = mutableStateOf(uiPrefs.getBoolean("live_voice", true))
-    fun setLiveVoice(on: Boolean) {
-        liveVoice.value = on
-        uiPrefs.edit().putBoolean("live_voice", on).apply()
-    }
-    private val ears: SpeechInput = SpeechInput(app)
     private var job: Job? = null
     private var failStreak = 0
-
-    private fun currentVoiceId(): String =
-        if (persona.value == Persona.Aurion) voiceAurion.value else voiceArina.value
 
     /** Switches between Arina (female) and Aurion (male): voice, avatar and personality change together. */
     fun switchPersona(p: Persona) {
         if (p == persona.value) return
         job?.cancel()
         stopEars()
-        voice.stop()
         level.floatValue = 0f
         status.value = Status.Idle
         gemini.reset()
@@ -609,23 +624,8 @@ class ArinaEngine private constructor(private val app: Application) {
 
     // ---- Listening ---------------------------------------------------------------------------
 
-    /** true: our own microphone capture and Gemini hears the audio (no beep). false: Android's speech recognizer. */
-    val geminiEars = mutableStateOf(uiPrefs.getBoolean("gemini_ears", true))
-    private val mic = MicListener()
-
     private fun stopEars() {
-        ears.cancel()
-        mic.stop()
         liveSession.mute()
-    }
-
-    fun setGeminiEars(on: Boolean) {
-        geminiEars.value = on
-        uiPrefs.edit().putBoolean("gemini_ears", on).apply()
-        if (micOn.value && status.value == Status.Listening) {
-            stopEars()
-            startListening()
-        }
     }
 
     fun notificationsGranted(): Boolean =
@@ -653,35 +653,13 @@ class ArinaEngine private constructor(private val app: Application) {
         reloadFacts()
     }
 
-    fun saveKeys(gemini: List<String>, cartesia: String, tavily: String, arinaVoice: String, aurionVoice: String) {
-        Keys.save(app, gemini, cartesia, tavily, arinaVoice, aurionVoice)
-        cartesiaKey.value = Keys.cartesia(app)
-        voiceAurion.value = Keys.voiceAurion(app)
-        voiceArina.value = Keys.voiceArina(app)
-        tavilyKey.value = Keys.tavily(app)
+    fun saveKeys(gemini: List<String>) {
+        Keys.save(app, gemini)
         geminiKey.value = Keys.gemini(app)
         geminiSlots.clear(); geminiSlots.addAll(Keys.geminiSlots(app))
+        liveSession.stop()
+        if (micOn.value) restartListening()
         notice.value = "Saved."
-    }
-
-    /** Speaks a short test line so the Cartesia key and voice can be checked. */
-    fun testVoice() {
-        if (status.value != Status.Idle) return
-        notice.value = null
-        status.value = Status.Speaking
-        job = scope.launch {
-            try {
-                voice.speak("আমি অ্যারিনা। আমার কণ্ঠ ঠিকমতো কাজ করছে।")
-                notice.value = "Voice test OK."
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                notice.value = (e.message ?: "Voice test failed.").take(260)
-            } finally {
-                status.value = Status.Idle
-                if (micOn.value) restartListening()
-            }
-        }
     }
 
     // ---- Mic switch -------------------------------------------------------------------------
@@ -704,7 +682,6 @@ class ArinaEngine private constructor(private val app: Application) {
         job?.cancel()
         stopEars()
         liveSession.stop()
-        voice.stop()
         level.floatValue = 0f
         status.value = Status.Idle
     }
@@ -730,57 +707,8 @@ class ArinaEngine private constructor(private val app: Application) {
 
     private fun startListening() {
         if (!micOn.value) return
-        if (liveVoice.value) live.warmUp()   // open the voice connection while the user is still talking
         status.value = Status.Listening
-        if (geminiLive.value) {
-            liveSession.start()
-            return
-        }
-        if (geminiEars.value) {
-            mic.start(
-                onLevel = { level.floatValue = it },
-                onSpeech = { wav ->
-                    level.floatValue = 0f
-                    failStreak = 0
-                    handle(null, wav, typed = false)
-                },
-                onError = { msg ->
-                    level.floatValue = 0f
-                    notice.value = msg
-                    turnOff()
-                },
-                // While a task runs, only a clear, longer phrase counts, so room noise cannot interrupt the work.
-                strict = { researchActive.value || agentActive.value }
-            )
-            return
-        }
-        ears.listen(
-            onLevel = { level.floatValue = it },
-            onFinal = { text ->
-                level.floatValue = 0f
-                if (text.isBlank()) restartListening()
-                else {
-                    failStreak = 0
-                    handle(text, null, typed = false)
-                }
-            },
-            onProblem = { kind, message ->
-                level.floatValue = 0f
-                when (kind) {
-                    SpeechProblem.Silence -> restartListening()
-                    SpeechProblem.Transient ->
-                        if (++failStreak <= 6) restartListening()
-                        else {
-                            notice.value = message
-                            turnOff()
-                        }
-                    SpeechProblem.Fatal -> {
-                        notice.value = message
-                        turnOff()
-                    }
-                }
-            }
-        )
+        liveSession.start()
     }
 
     private fun restartListening() {
@@ -798,8 +726,13 @@ class ArinaEngine private constructor(private val app: Application) {
         val t = text.trim()
         if (t.isEmpty()) return
         if (status.value == Status.Thinking || status.value == Status.Speaking) return
-        stopEars()
-        handle(t, null, typed = true)
+        notice.value = null
+        caption.value = ""
+        messages += ChatMessage(true, t)
+        status.value = Status.Thinking
+        liveSession.start()
+        if (!micOn.value) liveSession.mute()
+        liveSession.sendText(t)
     }
 
     private fun fail(msg: String) {
@@ -818,10 +751,7 @@ class ArinaEngine private constructor(private val app: Application) {
     private fun startResearch(question: String): String {
         val q = question.trim()
         if (q.isEmpty()) return "ERROR: no question given."
-        val key = tavilyKey.value
-        if (key.isBlank()) {
-            return "ERROR: the web search key is missing. Tell the user to paste a free Tavily key in the Setup tab."
-        }
+        if (!cloud.signedIn) return "ERROR: web search needs a signed-in account. Tell him to sign in from Settings."
         scope.launch {
             val me = coroutineContext[Job]!!
             researchJobs += me
@@ -834,7 +764,7 @@ class ArinaEngine private constructor(private val app: Application) {
             }
             try {
                 val reply = withContext(Dispatchers.IO) {
-                    val material = TavilySearch.search(key, q)
+                    val material = TavilySearch.search(q)
                     gemini.summarize(q, material)
                 }
                 hum.cancel()
@@ -863,13 +793,13 @@ class ArinaEngine private constructor(private val app: Application) {
 
     // ---- Spoken lines, approvals, cards -------------------------------------------------------
 
-    private val TOLD = "OK: started. The user was ALREADY told by voice, so say nothing more: reply with BN: - and EN: - (a single dash each)."
-    private val SEARCH_LINES = listOf("একটু খুঁজে দেখছি।", "দেখছি, একটু সময় দিন।", "এখনই খুঁজছি।", "ইন্টারনেটে দেখে নিচ্ছি।", "এক মিনিট, জেনে নিচ্ছি।", "খুঁজে দেখি।")
-    private val DEEP_LINES = listOf("গভীর গবেষণা শুরু করলাম, কয়েক মিনিট লাগবে।", "বড় কাজ, অনেক সূত্র ঘেঁটে দেখব।", "শুরু করলাম, শেষ হলে জানাব।", "ধীরে ধীরে সব খুঁজে দেখছি, একটু সময় লাগবে।")
-    private val SHOW_LINES = listOf("এই যে।", "দেখাচ্ছি।", "এনেছি, দেখুন।", "এই নিন।", "পর্দায় দিলাম।")
-    private val OPERATE_LINES = listOf("স্ক্রিনে অনুমতি দিন, তারপর শুরু করছি।", "আপনার অনুমতি পেলেই কাজ শুরু।", "অনুমতি দিন, ফোনটা আমি চালাব।")
-    private val ASK_LINES = listOf("স্ক্রিনে দেখুন, অনুমতি লাগবে।", "অনুমতি দিলেই চালাব।", "আপনার হ্যাঁ দরকার, স্ক্রিনে দেখুন।")
-    private val PROGRESS_LINES = listOf("অনেকটা এগিয়েছি, আরও কিছু সূত্র দেখছি।", "কাজ চলছে, এখন তথ্য মিলিয়ে দেখছি।", "প্রায় শেষের দিকে, আর একটু।", "বেশ কিছু তথ্য পেয়েছি, যাচাই করছি।")
+    private val TOLD = "OK: started. The user was ALREADY told, so say nothing more now."
+    private val SEARCH_LINES = listOf("I am looking it up.", "Give me a moment, checking.", "Searching right now.", "Let me look that up online.", "One minute, finding out.")
+    private val DEEP_LINES = listOf("Starting the deep work, it will take a few minutes.", "This is a big job, I will go through many sources.", "Started, I will tell you when it is done.", "Working through it step by step, it takes a little time.")
+    private val SHOW_LINES = listOf("Here it is.", "Showing it now.", "Got it, take a look.", "On the screen now.")
+    private val OPERATE_LINES = listOf("Allow it on the screen and I will start.", "As soon as you allow it, I begin.", "Give permission and I will run the phone.")
+    private val PROGRESS_LINES = listOf("Making good progress, checking more sources.", "Still working, cross-checking the facts.", "Nearly there, a little more.", "Found quite a lot, verifying it now.")
+    private val ASK_LINES = listOf("Look at the screen, I need your permission.", "I will go ahead once you allow it.", "I need a yes from you, see the screen.")
 
     /** Picks a line that was not used recently, so the same sentence is never repeated back to back. */
     private fun fresh(options: List<String>): String {
@@ -879,18 +809,12 @@ class ArinaEngine private constructor(private val app: Application) {
         return pick
     }
 
-    /** Says a short line right now (before the slow work starts). [handle] waits for it before listening again. */
+    /** Has the agent say a short line right now (before the slow work starts). Only works while a voice conversation is open. */
     private fun ack(options: List<String>) {
         val line = fresh(options)
-        ackJob = scope.launch {
-            try {
-                status.value = Status.Speaking
-                voice.speak(line)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                notice.value = (e.message ?: "Voice failed.").take(200)
-            }
+        if (liveSession.active) {
+            status.value = Status.Speaking
+            liveSession.sendText("Say this to the user now in one short sentence, in the language he speaks, in your own words: $line")
         }
     }
 
@@ -923,9 +847,8 @@ class ArinaEngine private constructor(private val app: Application) {
     }
 
     private fun doShowImage(query: String): String {
-        val key = tavilyKey.value
-        if (key.isBlank()) return "ERROR: the web search key is missing. Tell the user to paste a free Tavily key in Settings."
-        val files = show.downloadImages(TavilySearch.images(key, query), 4)
+        if (!cloud.signedIn) return "ERROR: picture search needs a signed-in account. Tell him to sign in from Settings."
+        val files = show.downloadImages(TavilySearch.images(query), 4)
         if (files.isEmpty()) return "ERROR: no picture could be loaded for '$query'. Tell him briefly."
         ack(SHOW_LINES)
         scope.launch { openCard(Card(CardKind.Images, query.take(40), files)) }
@@ -993,7 +916,7 @@ class ArinaEngine private constructor(private val app: Application) {
             try {
                 val result = withContext(Dispatchers.IO) {
                     Workflow.run(
-                        goal = g, tavilyKey = tavilyKey.value, gemini = gemini, skill = skill,
+                        goal = g, gemini = gemini, skill = skill,
                         onProgress = { done, total, line -> scope.launch { caption.value = "Working: step $done of $total, $line" } },
                         cancelled = { !me.isActive }
                     )
@@ -1016,8 +939,7 @@ class ArinaEngine private constructor(private val app: Application) {
     private fun startDeepResearch(topic: String): String {
         val t = topic.trim()
         if (t.isEmpty()) return "ERROR: no topic given."
-        val key = tavilyKey.value
-        if (key.isBlank()) return "ERROR: the web search key is missing. Tell the user to paste a free Tavily key in Settings."
+        if (!cloud.signedIn) return "ERROR: web search needs a signed-in account. Tell him to sign in from Settings."
         ack(DEEP_LINES)
         scope.launch {
             val me = coroutineContext[Job]!!
@@ -1031,10 +953,10 @@ class ArinaEngine private constructor(private val app: Application) {
             }
             try {
                 val result = withContext(Dispatchers.IO) {
-                    DeepResearch.run(t, key, gemini, { round, total, sources ->
+                    DeepResearch.run(t, gemini, { round, total, sources ->
                         scope.launch {
                             caption.value = "Deep research: round $round of $total, $sources sources"
-                            if (round == 2 || round == 3) announce(Reply("", fresh(PROGRESS_LINES), "Still researching: $sources sources so far."))
+                            if (round == 2 || round == 3) announce(Reply("", "", fresh(PROGRESS_LINES) + " ($sources sources so far)"))
                         }
                     }, { !me.isActive })
                 }
@@ -1097,7 +1019,6 @@ class ArinaEngine private constructor(private val app: Application) {
         liveSession.interruptPlayback()
         job?.cancel()
         ackJob?.cancel()
-        voice.stop()
         stopAgent()
         level.floatValue = 0f
         status.value = Status.Idle
@@ -1112,89 +1033,15 @@ class ArinaEngine private constructor(private val app: Application) {
         agentLine.value = ""
     }
 
-    /** Speaks a finished research result once nothing else is being said. */
+    /** Tells the user a finished result. Spoken by the agent while a voice conversation is open; otherwise shown as text. */
     private suspend fun announce(r: Reply) {
         while (status.value == Status.Thinking || status.value == Status.Speaking) delay(400)
-        stopEars()
         level.floatValue = 0f
         messages += ChatMessage(false, r.en)
         caption.value = r.en
-        status.value = Status.Speaking
-        try {
-            voice.speak(r.bn)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            notice.value = (e.message ?: "Voice failed.").take(260)
-        } finally {
-            status.value = Status.Idle
-            if (micOn.value) restartListening()
-        }
-    }
-
-    private fun handle(text: String?, wav: ByteArray?, typed: Boolean) {
-        // The user said something new (for example "come out"): a running phone task must not keep going and undo it.
-        // Typed text is certainly meant for us: stop at once. Heard audio might be noise: only pause the phone task
-        // until the reply shows whether it was a real command.
-        val agentBefore = agentJob
-        val agentRunning = agentActive.value || agentJob?.isActive == true
-        if (agentRunning) { if (wav == null) stopAgent() else agentHold = true }
-        Timing.start()
-        notice.value = null
-        caption.value = ""
-        if (typed && text != null) messages += ChatMessage(true, text)
-        status.value = Status.Thinking
-        job = scope.launch {
-            // Speaks the Bengali line phrase by phrase while Gemini is still writing the rest of the answer.
-            val speaker: Speaker = if (liveVoice.value)
-                LiveSpeaker(live, voice, currentVoiceId(), this, { ackJob?.join() }, { status.value = Status.Speaking })
-            else
-                StreamSpeaker(voice, this, { ackJob?.join() }, { status.value = Status.Speaking })
-            try {
-                gemini.busy = researchActive.value || agentActive.value
-                gemini.speakSink = { piece -> speaker.feed(piece) }
-                val reply = try {
-                    withContext(Dispatchers.IO) { if (wav != null) gemini.chatAudio(wav) else gemini.chat(text.orEmpty()) }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    speaker.cancel()
-                    fail("Error: ${(e.message ?: e.javaClass.simpleName).take(220)}")
-                    return@launch
-                } finally {
-                    gemini.speakSink = null
-                }
-                // Noise or side talk: say nothing, show nothing, and go back to listening.
-                if (!typed && reply.you.trim().lowercase().startsWith("(noise")) { agentHold = false; return@launch }
-                if (agentHold) {
-                    agentHold = false
-                    if (agentJob === agentBefore && (agentActive.value || agentJob?.isActive == true)) stopAgent()
-                }
-                if (!typed) messages += ChatMessage(true, reply.you.ifBlank { "(voice request)" })
-                ackJob?.join()
-                if (reply.bn.trim().length <= 1) return@launch
-                messages += ChatMessage(false, reply.en)
-                caption.value = reply.en
-                try {
-                    if (speaker.started) {
-                        speaker.finish()   // the rest of the phrases are already on their way
-                    } else {
-                        status.value = Status.Speaking
-                        voice.speak(reply.bn)
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    notice.value = (e.message ?: "Voice failed.").take(260)
-                }
-            } finally {
-                Timing.mark("all done")
-                lastTiming.value = Timing.report()
-                speaker.cancel()
-                agentHold = false
-                status.value = Status.Idle
-                if (micOn.value) restartListening()
-            }
+        if (liveSession.active) {
+            status.value = Status.Speaking
+            liveSession.sendText("Tell the user this now, briefly, in the language he speaks and in your own words: ${r.en}")
         }
     }
 }
