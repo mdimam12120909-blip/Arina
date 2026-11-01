@@ -267,7 +267,9 @@ private fun Header(vm: ArinaEngine, page: Page, onPower: () -> Unit, onMenu: () 
             IconButton(onClick = onMenu) { Icon(Icons.Filled.Menu, "Menu", tint = ArinaColors.Text) }
         }
         if (page == Page.Home) {
-            Column(Modifier.padding(start = 2.dp)) {
+            LogoTile(Modifier.size(30.dp))
+            Spacer(Modifier.width(10.dp))
+            Column {
                 Text(Brand.APP, color = ArinaColors.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Text(
                     vm.agentName.value.ifBlank { vm.persona.value.displayName + " agent" },
@@ -288,17 +290,6 @@ private fun Header(vm: ArinaEngine, page: Page, onPower: () -> Unit, onMenu: () 
             Text(if (on) "Orb on" else "Orb off", color = ArinaColors.Text, fontSize = 12.sp, fontWeight = FontWeight.Medium)
         }
         Spacer(Modifier.width(8.dp))
-    }
-}
-
-@Composable
-private fun LogoMark(modifier: Modifier = Modifier, accent: Color = ArinaColors.Glow) {
-    Canvas(modifier) {
-        val r = size.minDimension * 0.30f
-        val brush = Brush.linearGradient(listOf(ArinaColors.Glow, ArinaColors.Pink))
-        drawCircle(brush, radius = r, center = Offset(size.width * 0.36f, size.height / 2f), style = Stroke(2.6.dp.toPx()))
-        drawCircle(brush, radius = r, center = Offset(size.width * 0.64f, size.height / 2f), style = Stroke(2.6.dp.toPx()))
-        drawCircle(accent, radius = 2.6.dp.toPx(), center = center)
     }
 }
 
@@ -384,27 +375,26 @@ private fun TranscriptCard(vm: ArinaEngine, accent: Color) {
 @Composable
 private fun MicSwitch(micOn: Boolean, level: Float, accent: Color, onClick: () -> Unit) {
     val inf = rememberInfiniteTransition(label = "mic")
-    val ring by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(1800, easing = LinearEasing), RepeatMode.Restart), label = "ring")
-    Box(Modifier.size(84.dp), contentAlignment = Alignment.Center) {
+    val ring by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(1900, easing = LinearEasing), RepeatMode.Restart), label = "ring")
+    Box(Modifier.size(92.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
-            val base = size.minDimension * 0.34f
-            drawCircle(
-                Brush.radialGradient(listOf(accent.copy(alpha = if (micOn) 0.30f + level * 0.4f else 0.10f), Color.Transparent), center = center, radius = base * 1.9f),
-                radius = base * 1.9f, center = center
-            )
+            val base = size.minDimension * 0.31f
             if (micOn) for (i in 0..1) {
                 val p = (ring + i * 0.5f) % 1f
-                drawCircle(accent.copy(alpha = (1f - p) * 0.55f), radius = base + p * base * 0.7f, center = center, style = Stroke(2.dp.toPx()))
+                drawCircle(ArinaColors.Glow.copy(alpha = (1f - p) * 0.35f), radius = base + p * base * (0.55f + level * 0.5f), center = center, style = Stroke(2.dp.toPx()))
             }
         }
         Box(
-            Modifier.size(54.dp).clip(CircleShape)
-                .background(Brush.radialGradient(listOf(if (micOn) Color(0xFF0A3A7A) else Color(0xFF0A1B38), Color(0xFF031230))))
-                .border(2.dp, accent, CircleShape)
+            Modifier.size(62.dp).clip(CircleShape)
+                .background(if (micOn) Brush.linearGradient(listOf(Color(0xFF4F8DF7), Color(0xFF1D4ED8))) else Brush.linearGradient(listOf(ArinaColors.Surface, ArinaColors.Surface)))
+                .border(1.5.dp, if (micOn) Color.Transparent else ArinaColors.Deep, CircleShape)
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
-            Icon(if (micOn) Icons.Filled.Mic else Icons.Filled.MicOff, "Microphone", tint = if (micOn) accent else ArinaColors.Muted, modifier = Modifier.size(26.dp))
+            Icon(
+                if (micOn) Icons.Filled.Mic else Icons.Filled.MicOff, "Microphone",
+                tint = if (micOn) Color.White else ArinaColors.Muted, modifier = Modifier.size(28.dp)
+            )
         }
     }
 }

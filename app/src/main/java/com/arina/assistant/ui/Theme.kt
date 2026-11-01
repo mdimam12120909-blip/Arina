@@ -9,23 +9,23 @@ import androidx.compose.runtime.key
 import androidx.compose.ui.graphics.Color
 
 /**
- * Entrion's palette: warm violet and rose. Light by day, deep aubergine (not black) by night, following the phone.
+ * Entrion's palette: white and blue only. White by day, deep navy (not black) by night, following the phone.
  * [dark] is set by [ArinaTheme] before anything is drawn, so every colour below is the right one for the current theme.
  */
 object ArinaColors {
     @Volatile var dark: Boolean = true
 
-    val Background: Color get() = if (dark) Color(0xFF15111F) else Color(0xFFFBF8FE)
-    val Surface: Color get() = if (dark) Color(0xFF221A33) else Color(0xFFFFFFFF)
-    val Primary: Color get() = if (dark) Color(0xFFB794F6) else Color(0xFF7C3AED)
-    /** The accent used for highlights, icons, buttons. */
-    val Glow: Color get() = if (dark) Color(0xFFC9A8FF) else Color(0xFF7C3AED)
+    val Background: Color get() = if (dark) Color(0xFF0B1220) else Color(0xFFFFFFFF)
+    val Surface: Color get() = if (dark) Color(0xFF131E33) else Color(0xFFF3F7FF)
+    val Primary: Color get() = if (dark) Color(0xFF6EA8FF) else Color(0xFF2563EB)
+    /** The one accent: buttons, icons, highlights. */
+    val Glow: Color get() = if (dark) Color(0xFF6EA8FF) else Color(0xFF2563EB)
     /** Borders and dividers. */
-    val Deep: Color get() = if (dark) Color(0xFF3B2F59) else Color(0xFFE6DCF6)
-    val Text: Color get() = if (dark) Color(0xFFF5EFFF) else Color(0xFF2A1F3D)
-    val Muted: Color get() = if (dark) Color(0xFFB2A5CC) else Color(0xFF6B5F80)
-    /** The warm second colour. */
-    val Pink: Color get() = if (dark) Color(0xFFF58FC0) else Color(0xFFDB2777)
+    val Deep: Color get() = if (dark) Color(0xFF263754) else Color(0xFFD9E4F8)
+    val Text: Color get() = if (dark) Color(0xFFEAF1FF) else Color(0xFF0F1B33)
+    val Muted: Color get() = if (dark) Color(0xFF93A4C3) else Color(0xFF5B6B87)
+    /** A lighter blue for the second colour of gradients. */
+    val Pink: Color get() = if (dark) Color(0xFF9CC4FF) else Color(0xFF60A5FA)
 }
 
 private fun scheme(dark: Boolean) =

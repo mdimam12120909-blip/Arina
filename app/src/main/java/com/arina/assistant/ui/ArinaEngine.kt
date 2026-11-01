@@ -55,6 +55,7 @@ import com.arina.assistant.voice.SpeechInput
 import com.arina.assistant.voice.SpeechProblem
 import com.arina.assistant.voice.VoiceOutput
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.isActive
@@ -89,6 +90,12 @@ class ArinaEngine private constructor(private val app: Application) {
             instance ?: synchronized(this) {
                 instance ?: ArinaEngine(context.applicationContext as Application).also { instance = it }
             }
+
+        /** Forgets the running engine so the next [get] builds a fresh one (used when the account changes). */
+        fun discard() {
+            val old = synchronized(this) { instance.also { instance = null } } ?: return
+            old.shutdown()
+        }
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -458,7 +465,7 @@ class ArinaEngine private constructor(private val app: Application) {
                 withContext(Dispatchers.IO) { cloud.signInWithGoogle(idToken) }
                 // Each account's personal data lives apart from every other account's: start fresh as this account.
                 Local.claimGuestData(app, cloud.uid)
-                Local.restartApp(app)
+                switchAccount()
             } catch (e: Exception) {
                 notice.value = (e.message ?: "Sign-in failed.").take(240)
             } finally {
@@ -467,12 +474,19 @@ class ArinaEngine private constructor(private val app: Application) {
         }
     }
 
+    /**
+     * Set by the screen: rebuilds the screen with a fresh engine. The app stays open; only the account's
+     * data is swapped, so nothing of the previous account remains in memory.
+     */
+    var onAccountSwitched: (() -> Unit)? = null
+    private fun switchAccount() { onAccountSwitched?.invoke() }
+
     fun signInProblem(message: String) { notice.value = message.take(240) }
 
     fun signOut() {
         cloud.signOut()
-        // Back to the signed-out (guest) data, which holds nothing of any account; restart so no old data stays in memory.
-        Local.restartApp(app)
+        // Back to the signed-out (guest) data, which holds nothing of any account.
+        switchAccount()
     }
 
     /** Downloads the admin's settings and checks whether this account is the admin. Quietly does nothing offline. */
@@ -512,7 +526,7 @@ class ArinaEngine private constructor(private val app: Application) {
     fun adminValue(key: String, fallback: String = ""): String = Cloud.cfg(app, key, fallback)
 
     /** true: Gemini Live, one streaming voice conversation (fast). false: the ordinary record, think, speak path. */
-    val geminiLive = mutableStateOf(uiPrefs.getBoolean("gemini_live", false))
+    val geminiLive = mutableStateOf(uiPrefs.getBoolean("gemini_live", true))
     fun setGeminiLive(on: Boolean) {
         geminiLive.value = on
         uiPrefs.edit().putBoolean("gemini_live", on).apply()
@@ -693,6 +707,13 @@ class ArinaEngine private constructor(private val app: Application) {
         voice.stop()
         level.floatValue = 0f
         status.value = Status.Idle
+    }
+
+    /** Ends everything this engine started; it is not used again afterwards. */
+    fun shutdown() {
+        stopAll()
+        liveSession.stop()
+        scope.cancel()
     }
 
     /** Called when the floating avatar is closed. */

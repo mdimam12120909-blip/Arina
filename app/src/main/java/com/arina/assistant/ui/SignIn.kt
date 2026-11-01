@@ -64,8 +64,8 @@ fun SignInScreen(vm: ArinaEngine) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(Modifier.height(36.dp))
-            OrbMark(1f, Modifier.size(170.dp))
-            Spacer(Modifier.height(8.dp))
+            LogoTile(Modifier.size(96.dp))
+            Spacer(Modifier.height(22.dp))
             Text("Welcome to " + Brand.APP, color = ArinaColors.Text, fontSize = 26.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
             Spacer(Modifier.height(6.dp))
             Text("A voice agent that lives on your phone, speaks your language and gets things done.", color = ArinaColors.Muted, fontSize = 15.sp, lineHeight = 21.sp, textAlign = TextAlign.Center)
@@ -92,7 +92,7 @@ fun SignInScreen(vm: ArinaEngine) {
             }
             vm.notice.value?.let {
                 Spacer(Modifier.height(12.dp))
-                Text(it, color = Color(0xFFE5484D), fontSize = 13.sp, lineHeight = 18.sp, textAlign = TextAlign.Center)
+                Text(it, color = Color(0xFFD93A3A), fontSize = 13.sp, lineHeight = 18.sp, textAlign = TextAlign.Center)
             }
             Spacer(Modifier.height(10.dp))
             Text(

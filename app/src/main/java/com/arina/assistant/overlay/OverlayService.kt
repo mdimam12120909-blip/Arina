@@ -33,9 +33,8 @@ import com.arina.assistant.MainActivity
 import com.arina.assistant.ui.ArinaEngine
 import com.arina.assistant.R
 import com.arina.assistant.ui.ArinaTheme
-import com.arina.assistant.ui.Aura
 import com.arina.assistant.companion.Buddy
-import com.arina.assistant.ui.FloatingAvatar
+import com.arina.assistant.ui.BottomOrb
 import com.arina.assistant.ui.Stage
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.CoroutineScope
@@ -65,10 +64,10 @@ class OverlayService : Service() {
     }
 
     private val owner = OverlayOwner()
-    private var container: DragLayout? = null
+    private var orbView: ComposeView? = null
+    private var container: ComposeView? = null
     private var windowManager: WindowManager? = null
     private var stageView: ComposeView? = null
-    private var glowView: ComposeView? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -147,7 +146,6 @@ class OverlayService : Service() {
     private fun addOverlay(engine: ArinaEngine) {
         val wm = getSystemService(WindowManager::class.java)
         windowManager = wm
-        val density = resources.displayMetrics.density
         val lp = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -155,40 +153,25 @@ class OverlayService : Service() {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = (24 * density).toInt()
-            y = (160 * density).toInt()
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            y = 0
         }
-
         owner.create()
-        val compose = ComposeView(this).apply {
-            setViewTreeLifecycleOwner(owner)
-            setViewTreeViewModelStoreOwner(owner)
-            setViewTreeSavedStateRegistryOwner(owner)
-            setContent {
-                ArinaTheme {
-                    FloatingAvatar(
-                        engine = engine,
-                        onTap = { engine.onMicTap() },
-                        onOpenApp = {
-                            startActivity(
-                                Intent(this@OverlayService, MainActivity::class.java)
-                                    .putExtra(MainActivity.EXTRA_FROM_OVERLAY, true)
-                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                            )
-                        },
-                        onClose = { stopSelf() }
+        val view = composeView {
+            BottomOrb(
+                engine = engine,
+                onOpenApp = {
+                    startActivity(
+                        Intent(this@OverlayService, MainActivity::class.java)
+                            .putExtra(MainActivity.EXTRA_FROM_OVERLAY, true)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                     )
                 }
-            }
+            )
         }
-        val layout = DragLayout(this, wm, lp)
-        layout.setViewTreeLifecycleOwner(owner)
-        layout.setViewTreeViewModelStoreOwner(owner)
-        layout.setViewTreeSavedStateRegistryOwner(owner)
-        layout.addView(compose)
-        wm.addView(layout, lp)
-        container = layout
+        wm.addView(view, lp)
+        orbView = view
+        container = view
     }
 
     private fun composeView(content: @androidx.compose.runtime.Composable () -> Unit): ComposeView =
@@ -222,27 +205,12 @@ class OverlayService : Service() {
                     }
                 }
         }
-
-        // The aura (edge light and top pill) lives in its own window that never takes a touch.
-        val lp = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT
-        )
-        if (Build.VERSION.SDK_INT >= 28) lp.layoutInDisplayCutoutMode =
-            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-        val v = composeView { Aura(engine) }
-        runCatching { wm.addView(v, lp); glowView = v }
     }
 
     override fun onDestroy() {
         scope.cancel()
         stageView?.let { runCatching { windowManager?.removeView(it) } }
-        glowView?.let { runCatching { windowManager?.removeView(it) } }
         stageView = null
-        glowView = null
         container?.let { runCatching { windowManager?.removeView(it) } }
         container = null
         owner.destroy()
@@ -270,47 +238,5 @@ private class OverlayOwner : LifecycleOwner, SavedStateRegistryOwner, ViewModelS
     fun destroy() {
         registry.currentState = Lifecycle.State.DESTROYED
         viewModelStore.clear()
-    }
-}
-
-/** Moves the whole floating window when dragged; plain taps still reach the Compose buttons inside. */
-private class DragLayout(
-    context: Context,
-    private val wm: WindowManager,
-    private val lp: WindowManager.LayoutParams
-) : FrameLayout(context) {
-
-    private val slop = ViewConfiguration.get(context).scaledTouchSlop
-    private var downX = 0f
-    private var downY = 0f
-    private var startX = 0
-    private var startY = 0
-    private var dragging = false
-
-    override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
-        when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                downX = e.rawX
-                downY = e.rawY
-                startX = lp.x
-                startY = lp.y
-                dragging = false
-            }
-            MotionEvent.ACTION_MOVE ->
-                if (!dragging && hypot(e.rawX - downX, e.rawY - downY) > slop) dragging = true
-        }
-        return dragging
-    }
-
-    override fun onTouchEvent(e: MotionEvent): Boolean {
-        when (e.actionMasked) {
-            MotionEvent.ACTION_MOVE -> if (dragging) {
-                lp.x = startX + (e.rawX - downX).toInt()
-                lp.y = startY + (e.rawY - downY).toInt()
-                wm.updateViewLayout(this, lp)
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> dragging = false
-        }
-        return true
     }
 }

@@ -62,6 +62,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         engine.refreshSetup()
         engine.refreshCloud()
+        // Signing in, signing out or switching account: swap to a fresh engine and redraw, without leaving the app.
+        engine.onAccountSwitched = {
+            runOnUiThread {
+                OverlayService.stop(this)
+                ArinaEngine.discard()
+                recreate()
+            }
+        }
         setContent {
             ArinaTheme {
                 var introDone by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
