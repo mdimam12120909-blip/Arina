@@ -112,6 +112,8 @@ class ArinaEngine private constructor(private val app: Application) {
     val caption = mutableStateOf("")
     val notice = mutableStateOf<String?>(null)
     val overlayOn = mutableStateOf(false)
+    /** True while the floating orb is on screen (the small touch window grows to cover it). */
+    val orbVisible = mutableStateOf(false)
     private val chatPrefs = com.arina.assistant.cloud.Local.prefs(app, "arina_chat")
     val messages = mutableStateListOf<ChatMessage>().also { l ->
         runCatching {
@@ -326,6 +328,7 @@ class ArinaEngine private constructor(private val app: Application) {
     val taskList = mutableStateListOf<Tasks.Task>().also { it.addAll(tasks.all()) }
     val headlines = mutableStateListOf<Pair<String, String>>()
     val headlinesBusy = mutableStateOf(false)
+    val headlinesError = mutableStateOf("")
 
     private fun reloadTasks() {
         taskList.clear()
@@ -345,6 +348,7 @@ class ArinaEngine private constructor(private val app: Application) {
         scope.launch {
             try {
                 val list = withContext(Dispatchers.IO) { TavilySearch.headlines() }
+                headlinesError.value = ""
                 if (list.isNotEmpty()) {
                     headlines.clear(); headlines.addAll(list)
                     uiPrefs.edit().putLong("headlines_at", System.currentTimeMillis()).apply()
@@ -352,7 +356,7 @@ class ArinaEngine private constructor(private val app: Application) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                notice.value = "Headlines failed: ${(e.message ?: "unknown").take(120)}"
+                headlinesError.value = (e.message ?: "unknown").take(140)
             } finally {
                 headlinesBusy.value = false
             }

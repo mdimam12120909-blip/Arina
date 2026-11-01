@@ -411,7 +411,7 @@ private fun HeadlinesCard(vm: ArinaEngine, accent: Color, modifier: Modifier) {
         }
         when {
             !vm.signedIn.value -> Text("Sign in to see today's headlines.", color = ArinaColors.Muted, fontSize = 12.sp)
-            vm.headlines.isEmpty() -> Text(if (vm.headlinesBusy.value) "Loading…" else "No headlines yet.", color = ArinaColors.Muted, fontSize = 12.sp)
+            vm.headlines.isEmpty() -> Text(if (vm.headlinesBusy.value) "Loading…" else if (vm.headlinesError.value.isNotBlank()) "Headlines are not available: ${vm.headlinesError.value}" else "No headlines yet.", color = ArinaColors.Muted, fontSize = 12.sp)
             else -> vm.headlines.take(5).forEach { (title, url) ->
                 Row(Modifier.fillMaxWidth().clickable { vm.openLink(url, title) }) {
                     Box(Modifier.width(3.dp).height(30.dp).background(accent))

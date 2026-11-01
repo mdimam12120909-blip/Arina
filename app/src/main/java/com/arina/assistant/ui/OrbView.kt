@@ -10,23 +10,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.runtime.withFrameNanos
 import kotlin.math.PI
 import kotlin.math.cos
-import kotlin.math.exp
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -50,95 +47,131 @@ fun moodOf(status: Status, researching: Boolean, problem: Boolean): Mood = when 
     else -> Mood.Standby
 }
 
-private fun moodColor(persona: Persona, mood: Mood): Color {
-    val female = persona == Persona.Arina
-    return when (mood) {
-        Mood.Standby -> if (female) Color(0xFF3B82F6) else Color(0xFF2563EB)
-        Mood.Listening -> if (female) Color(0xFF38BDF8) else Color(0xFF3B82F6)
-        Mood.Thinking -> Color(0xFF6366F1)
-        Mood.Speaking -> if (female) Color(0xFF0EA5E9) else Color(0xFF2F6BFF)
-        Mood.Researching -> Color(0xFF06B6D4)
-        Mood.Alert -> Color(0xFFEF4444)
-    }
+/** The colour the orb shows for a mood (used for small accents). */
+fun moodTint(persona: Persona, mood: Mood): Color = when (mood) {
+    Mood.Alert -> Color(0xFFEF4444)
+    Mood.Thinking -> Color(0xFF6366F1)
+    Mood.Researching -> Color(0xFF06B6D4)
+    else -> if (persona == Persona.Arina) Color(0xFFEC4899) else Color(0xFF2F8BFF)
 }
-
-/** The colour the orb shows for a mood. */
-fun moodTint(persona: Persona, mood: Mood): Color = moodColor(persona, mood)
 
 /** The persona's signature colour: pink for the female agent, blue for the male agent. */
 fun accentOf(persona: Persona): Color = if (persona == Persona.Arina) Color(0xFFEC4899) else Color(0xFF2563EB)
 
-/** Colours of one orb: glow, mid, deep, and the near-white of the core. */
+/** Colours of one orb: the white-hot core, a light tone, a mid tone and a deep tone. */
 private class OrbPalette(val core: Color, val light: Color, val mid: Color, val deep: Color)
 
 private fun paletteOf(persona: Persona, mood: Mood): OrbPalette {
     val base = if (persona == Persona.Arina)
-        OrbPalette(Color(0xFFFFF1F9), Color(0xFFFF9AD5), Color(0xFFEC4899), Color(0xFF7A1D8C))
+        OrbPalette(Color(0xFFFFF4FA), Color(0xFFFF9AD5), Color(0xFFF0449F), Color(0xFF9D4EDD))
     else
-        OrbPalette(Color(0xFFF2FBFF), Color(0xFF7FDBFF), Color(0xFF2F8BFF), Color(0xFF0B2A9E))
+        OrbPalette(Color(0xFFFFFFFF), Color(0xFF9BE7FF), Color(0xFF3AA0FF), Color(0xFF1B4FE0))
     return when (mood) {
-        Mood.Alert -> OrbPalette(base.core, lerp(base.light, Color(0xFFFF8A8A), 0.55f), lerp(base.mid, Color(0xFFEF4444), 0.6f), lerp(base.deep, Color(0xFF7F1D1D), 0.5f))
-        Mood.Thinking -> OrbPalette(base.core, lerp(base.light, Color(0xFFC4B5FD), 0.35f), lerp(base.mid, Color(0xFF7C6CF5), 0.35f), base.deep)
+        Mood.Alert -> OrbPalette(base.core, lerp(base.light, Color(0xFFFF9A9A), 0.6f), lerp(base.mid, Color(0xFFEF4444), 0.65f), lerp(base.deep, Color(0xFF9B1C1C), 0.6f))
+        Mood.Thinking -> OrbPalette(base.core, lerp(base.light, Color(0xFFC4B5FD), 0.4f), lerp(base.mid, Color(0xFF7C6CF5), 0.4f), base.deep)
         else -> base
     }
 }
 
-/** One speck of the orb. [kind]: 0 body, 1 ring/arm, 2 sparkle. */
-private class Specks(val n: Int) {
-    val x = FloatArray(n); val y = FloatArray(n); val z = FloatArray(n)
-    val r = FloatArray(n); val seed = FloatArray(n); val kind = IntArray(n); val ring = IntArray(n)
-}
-
-private fun buildSpecks(persona: Persona): Specks {
-    val rnd = java.util.Random(if (persona == Persona.Arina) 7L else 11L)
-    if (persona == Persona.Aurion) {
-        // Swirling energy sphere: a body of specks plus three tilted rings of bright streaks.
-        val body = 230; val per = 46
-        val sp = Specks(body + per * 3)
-        for (i in 0 until body) {
-            val u = rnd.nextFloat() * 2f - 1f
-            val a = rnd.nextFloat() * 2f * PI.toFloat()
-            val q = sqrt(1f - u * u)
-            val rad = 0.5f + 0.5f * sqrt(rnd.nextFloat())
-            sp.x[i] = q * cos(a) * rad; sp.y[i] = u * rad; sp.z[i] = q * sin(a) * rad
-            sp.r[i] = rad; sp.seed[i] = rnd.nextFloat() * 6.28f; sp.kind[i] = 0
-        }
-        for (k in 0 until 3) for (j in 0 until per) {
-            val i = body + k * per + j
-            val a = j.toFloat() / per * 2f * PI.toFloat()
-            sp.x[i] = cos(a) * 0.92f; sp.y[i] = 0f; sp.z[i] = sin(a) * 0.92f
-            sp.r[i] = 1f; sp.seed[i] = rnd.nextFloat() * 6.28f; sp.kind[i] = 1; sp.ring[i] = k
-        }
-        return sp
-    }
-    // Pink: a galaxy of two spiral arms inside a twinkling shell of sparkles.
-    val arm = 120; val shell = 150
-    val sp = Specks(arm * 2 + shell)
-    for (k in 0 until 2) for (j in 0 until arm) {
-        val i = k * arm + j
-        val s = (j + 1).toFloat() / arm
-        val a = s * 5.6f + k * PI.toFloat() + (rnd.nextFloat() - 0.5f) * 0.28f
-        val rad = 0.08f + 0.86f * s
-        sp.x[i] = cos(a) * rad; sp.y[i] = (rnd.nextFloat() - 0.5f) * 0.10f * (1f - s * 0.4f); sp.z[i] = sin(a) * rad
-        sp.r[i] = s; sp.seed[i] = rnd.nextFloat() * 6.28f; sp.kind[i] = 1; sp.ring[i] = k
-    }
-    for (j in 0 until shell) {
-        val i = arm * 2 + j
-        val u = rnd.nextFloat() * 2f - 1f
-        val a = rnd.nextFloat() * 2f * PI.toFloat()
-        val q = sqrt(1f - u * u)
-        val rad = 0.7f + 0.3f * rnd.nextFloat()
-        sp.x[i] = q * cos(a) * rad; sp.y[i] = u * rad; sp.z[i] = q * sin(a) * rad
-        sp.r[i] = rad; sp.seed[i] = rnd.nextFloat() * 6.28f; sp.kind[i] = 2
-    }
-    return sp
-}
+private const val TWO_PI = (2.0 * PI).toFloat()
 
 /**
- * The agent's orb, made of thousands of tiny lights. Blue (male): a swirling energy sphere, a bright core with
- * streaks spinning around it. Pink (female): a small galaxy with two spiral arms inside a twinkling shell.
- * [mood] sets speed and brightness, [level] is the microphone loudness. [dissolve] (0 to 1) scatters the specks
- * and fades the orb away, so it can melt into the screen.
+ * The cloud of tiny lights an orb is made of. [kind] means a different thing per orb (see the builders);
+ * [tone] is 0 white-hot, 1 light, 2 mid colour. dx/dy/dz are the way a particle drifts when the orb dissolves.
+ */
+private class Cloud(val n: Int) {
+    val a = FloatArray(n); val u = FloatArray(n); val rad = FloatArray(n); val seed = FloatArray(n)
+    val kind = IntArray(n); val tone = IntArray(n); val arm = IntArray(n)
+    val dx = FloatArray(n); val dy = FloatArray(n); val dz = FloatArray(n)
+    fun scatter(i: Int, rnd: java.util.Random) {
+        val uu = rnd.nextFloat() * 2f - 1f
+        val aa = rnd.nextFloat() * TWO_PI
+        val q = sqrt(1f - uu * uu)
+        val s = 0.5f + rnd.nextFloat()
+        dx[i] = q * cos(aa) * s; dy[i] = uu * s; dz[i] = q * sin(aa) * s
+        seed[i] = rnd.nextFloat() * TWO_PI
+    }
+}
+
+/** Blue "Rasengan": a swirling sphere of light. Kinds: 0 swirl body, 1 orbiting ring, 2 white-hot core, 3 outer mist. */
+private fun buildRasengan(): Cloud {
+    val rnd = java.util.Random(11L)
+    val body = 820; val ring = 2 * 64; val core = 170; val mist = 140
+    val c = Cloud(body + ring + core + mist)
+    var i = 0
+    for (j in 0 until body) {
+        val k = rnd.nextInt(8)
+        val u = rnd.nextFloat() * 2f - 1f
+        val rad = 0.52f + 0.48f * sqrt(rnd.nextFloat())
+        c.u[i] = u; c.rad[i] = rad; c.kind[i] = 0; c.arm[i] = k
+        c.a[i] = k * TWO_PI / 8f + u * 2.4f + (rnd.nextFloat() - 0.5f) * 0.20f   // lines up the specks into curved streams
+        c.tone[i] = if (rad < 0.72f) 1 else 2
+        c.scatter(i, rnd); i++
+    }
+    for (k in 0 until 2) for (j in 0 until 64) {
+        c.a[i] = j / 64f * TWO_PI; c.rad[i] = 1.0f + (rnd.nextFloat() - 0.5f) * 0.03f
+        c.kind[i] = 1; c.arm[i] = k; c.tone[i] = 0
+        c.scatter(i, rnd); i++
+    }
+    for (j in 0 until core) {
+        c.u[i] = rnd.nextFloat() * 2f - 1f; c.a[i] = rnd.nextFloat() * TWO_PI
+        c.rad[i] = 0.30f * rnd.nextFloat() * rnd.nextFloat() + 0.02f
+        c.kind[i] = 2; c.tone[i] = 0
+        c.scatter(i, rnd); i++
+    }
+    for (j in 0 until mist) {
+        c.u[i] = rnd.nextFloat() * 2f - 1f; c.a[i] = rnd.nextFloat() * TWO_PI
+        c.rad[i] = 1.05f + 0.30f * rnd.nextFloat()
+        c.kind[i] = 3; c.tone[i] = 1
+        c.scatter(i, rnd); i++
+    }
+    return c
+}
+
+/** Pink galaxy: three spiral arms, a glowing bulge, a faint halo and twinkling sparkles. Kinds: 0 arm, 1 bulge, 2 halo, 3 sparkle. */
+private fun buildGalaxy(): Cloud {
+    val rnd = java.util.Random(7L)
+    val per = 330; val arms = 3; val bulge = 170; val halo = 230; val spark = 110
+    val c = Cloud(per * arms + bulge + halo + spark)
+    var i = 0
+    for (k in 0 until arms) for (j in 0 until per) {
+        val s = (j + 1) / per.toFloat()
+        c.rad[i] = 0.07f + 0.90f * s
+        c.a[i] = k * TWO_PI / arms + s * 6.0f + (rnd.nextFloat() - 0.5f) * (0.15f + 0.55f * s)
+        c.u[i] = (rnd.nextFloat() + rnd.nextFloat() - 1f) * 0.12f * (1f - 0.5f * s)
+        c.kind[i] = 0; c.arm[i] = k
+        c.tone[i] = if (s < 0.30f) 0 else if (s < 0.68f) 1 else 2
+        c.scatter(i, rnd); i++
+    }
+    for (j in 0 until bulge) {
+        c.u[i] = rnd.nextFloat() * 2f - 1f; c.a[i] = rnd.nextFloat() * TWO_PI
+        c.rad[i] = 0.28f * rnd.nextFloat() + 0.02f
+        c.kind[i] = 1; c.tone[i] = 0
+        c.scatter(i, rnd); i++
+    }
+    for (j in 0 until halo) {
+        c.u[i] = rnd.nextFloat() * 2f - 1f; c.a[i] = rnd.nextFloat() * TWO_PI
+        c.rad[i] = 0.55f + 0.45f * rnd.nextFloat()
+        c.kind[i] = 2; c.tone[i] = 2
+        c.scatter(i, rnd); i++
+    }
+    for (j in 0 until spark) {
+        c.u[i] = rnd.nextFloat() * 2f - 1f; c.a[i] = rnd.nextFloat() * TWO_PI
+        c.rad[i] = 0.85f + 0.30f * rnd.nextFloat()
+        c.kind[i] = 3; c.tone[i] = 1
+        c.scatter(i, rnd); i++
+    }
+    return c
+}
+
+private const val BUCKETS = 15   // 4 depths x 3 tones, then 3 sparkle levels
+
+/**
+ * The agent's orb, made of about fifteen hundred tiny lights.
+ * Blue (male): a Rasengan, a swirling ball of light with a white-hot heart and two orbiting rings.
+ * Pink (female): a small galaxy with three spiral arms and twinkling sparkles.
+ * [mood] sets speed and brightness, [level] is the microphone loudness. [dissolve] (0 to 1) lets the specks drift
+ * apart and fade, so the orb melts into the screen.
  */
 @Composable
 fun OrbView(persona: Persona, mood: Mood, level: Float, modifier: Modifier = Modifier, dissolve: Float = 0f) {
@@ -147,7 +180,16 @@ fun OrbView(persona: Persona, mood: Mood, level: Float, modifier: Modifier = Mod
         val start = withFrameNanos { it }
         while (true) withFrameNanos { time = (it - start) / 1_000_000_000f }
     }
-    val specks = remember(persona) { buildSpecks(persona) }
+    val male = persona == Persona.Aurion
+    val cloud = remember(persona) { if (male) buildRasengan() else buildGalaxy() }
+    val pts = remember(cloud) { Array(BUCKETS) { FloatArray(cloud.n * 2) } }
+    val cnt = remember(cloud) { IntArray(BUCKETS) }
+    val paint = remember {
+        android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.STROKE
+            strokeCap = android.graphics.Paint.Cap.ROUND
+        }
+    }
     val pal = paletteOf(persona, mood)
     val tintMid by animateColorAsState(pal.mid, tween(600), label = "mid")
     val tintLight by animateColorAsState(pal.light, tween(600), label = "light")
@@ -156,7 +198,7 @@ fun OrbView(persona: Persona, mood: Mood, level: Float, modifier: Modifier = Mod
         when (mood) {
             Mood.Standby -> 0.25f
             Mood.Listening -> 0.6f
-            Mood.Thinking -> 0.85f
+            Mood.Thinking -> 0.9f
             Mood.Speaking -> 0.95f
             Mood.Researching -> 0.85f
             Mood.Alert -> 0.9f
@@ -172,86 +214,128 @@ fun OrbView(persona: Persona, mood: Mood, level: Float, modifier: Modifier = Mod
         val talk = if (mood == Mood.Speaking) (0.5f + 0.5f * sin(t * 9f) * sin(t * 5.3f + 1f)).coerceIn(0f, 1f) else 0f
         val d = dissolve.coerceIn(0f, 1f)
         val fade = (1f - d) * (1f - d)
-        val r = base * 0.60f * (1f + 0.012f * sin(t * 1.3f) + level * 0.12f + talk * 0.07f) * (1f - 0.25f * d)
-        val male = persona == Persona.Aurion
-        val spin = t * (0.35f + 1.5f * energy)
-
-        // halo
-        drawCircle(
-            Brush.radialGradient(listOf(tintMid.copy(alpha = (0.20f + 0.22f * energy) * fade), Color.Transparent), center = c, radius = r * 1.75f),
-            radius = r * 1.75f, center = c
-        )
-        // body of the sphere
-        drawCircle(
-            Brush.radialGradient(
-                listOf(tintLight.copy(alpha = 0.95f * fade), tintMid.copy(alpha = 0.92f * fade), tintDeep.copy(alpha = 0.96f * fade)),
-                center = Offset(c.x - r * 0.15f, c.y - r * 0.2f), radius = r * 1.25f
-            ),
-            radius = r, center = c
-        )
-
-        // specks, back half first and front half after, so near ones sit on top
-        val tilt = 0.45f + 0.18f * sin(t * 0.35f)
+        val r = base * 0.60f * (1f + 0.015f * sin(t * 1.3f) + level * 0.14f + talk * 0.06f)
+        val spin = t * (0.30f + 1.35f * energy)
+        val tilt = (if (male) 0.40f else 1.02f) + 0.12f * sin(t * 0.37f)
         val ct = cos(tilt); val st = sin(tilt)
-        val spread = 1f + d * 1.5f
-        for (pass in 0..1) for (i in 0 until specks.n) {
-            val k = specks.kind[i]
-            var x = specks.x[i]; val y0 = specks.y[i]; var z = specks.z[i]
-            val a: Float = if (male) {
-                when (k) {
-                    1 -> spin * (1.6f + specks.ring[i] * 0.55f) * (if (specks.ring[i] % 2 == 0) 1f else -1f)
-                    else -> spin + y0 * 2.3f          // the twist that makes the body swirl
+        val spreadK = d * 1.5f * r
+
+        // soft glow behind the specks (so the white-hot parts show on a light screen too)
+        drawCircle(
+            Brush.radialGradient(listOf(tintMid.copy(alpha = (0.24f + 0.26f * energy) * fade), Color.Transparent), center = c, radius = r * 1.9f),
+            radius = r * 1.9f, center = c
+        )
+        drawCircle(
+            Brush.radialGradient(listOf(tintLight.copy(alpha = (0.30f + 0.20f * energy) * fade), Color.Transparent), center = c, radius = r * 0.85f),
+            radius = r * 0.85f, center = c
+        )
+
+        java.util.Arrays.fill(cnt, 0)
+        for (i in 0 until cloud.n) {
+            val kd = cloud.kind[i]
+            val u = cloud.u[i]; val rad = cloud.rad[i]; val a0 = cloud.a[i]; val sd = cloud.seed[i]
+            var x: Float; var y: Float; var z: Float
+            if (male) {
+                when (kd) {
+                    0 -> {
+                        val q = sqrt(max(0f, 1f - u * u))
+                        val ang = a0 + spin * (0.5f + 1.5f * q)          // the equator turns faster: the swirl
+                        val rr = rad * (1f + 0.06f * talk * sin(rad * 9f - t * 11f) + 0.02f * sin(t * 2f + sd))
+                        x = q * rr * cos(ang); z = q * rr * sin(ang); y = u * rr
+                    }
+                    1 -> {
+                        val k = cloud.arm[i]
+                        val ang = a0 + spin * 2.4f * (if (k == 0) 1f else -1f)
+                        val tl = 0.55f + k * 1.2f
+                        val px = cos(ang) * rad; val pz = sin(ang) * rad
+                        x = px; y = -pz * sin(tl); z = pz * cos(tl)
+                    }
+                    2 -> {
+                        val q = sqrt(max(0f, 1f - u * u))
+                        val ang = a0 + spin * 1.3f
+                        val rr = rad * (1f + 0.18f * sin(t * 3.1f + sd) + 0.25f * energy * talk)
+                        x = q * rr * cos(ang); z = q * rr * sin(ang); y = u * rr
+                    }
+                    else -> {
+                        val q = sqrt(max(0f, 1f - u * u))
+                        val ang = a0 + spin * 0.3f
+                        val rr = rad * (1f + 0.05f * sin(t * 1.7f + sd))
+                        x = q * rr * cos(ang); z = q * rr * sin(ang); y = u * rr
+                    }
                 }
             } else {
-                if (k == 1) spin * 0.8f else spin * 0.25f
+                when (kd) {
+                    0 -> {
+                        val ang = a0 + spin * 0.9f / (0.30f + rad)       // the middle turns faster than the rim
+                        x = rad * cos(ang); z = rad * sin(ang)
+                        y = u * (1f + 0.25f * sin(t * 1.4f + sd))
+                    }
+                    1 -> {
+                        val q = sqrt(max(0f, 1f - u * u))
+                        val ang = a0 + spin * 1.1f
+                        val rr = rad * (1f + 0.14f * sin(t * 2.6f + sd) + 0.20f * talk)
+                        x = q * rr * cos(ang); z = q * rr * sin(ang); y = u * rr
+                    }
+                    else -> {
+                        val q = sqrt(max(0f, 1f - u * u))
+                        val ang = a0 + spin * (if (kd == 2) 0.25f else 0.12f)
+                        x = q * rad * cos(ang); z = q * rad * sin(ang); y = u * rad
+                    }
+                }
             }
-            val ca = cos(a); val sa = sin(a)
-            val x1 = x * ca + z * sa
-            val z1 = -x * sa + z * ca
-            // rings of the blue orb are tilted differently; the pink galaxy is seen from an angle
-            val tl = if (male && k == 1) tilt + specks.ring[i] * 1.05f else if (!male && k == 1) 0.95f else tilt
-            val cl = cos(tl); val sl = sin(tl)
-            val y1 = y0 * cl - z1 * sl
-            val z2 = y0 * sl + z1 * cl
-            val depth = (z2 + 1f) * 0.5f
-            if ((pass == 0) != (depth < 0.5f)) continue
-            val px = c.x + x1 * r * spread
-            val py = c.y + y1 * r * spread
-            var alpha = (0.30f + 0.70f * depth) * fade
-            var sz = base * 0.028f * (0.55f + depth) * (1f + 0.5f * energy)
-            val col: Color
-            if (k == 2) {
-                val tw = 0.5f + 0.5f * sin(t * 3.2f + specks.seed[i])
-                alpha *= 0.25f + 0.75f * tw
-                sz *= 0.7f + 0.8f * tw
-                col = lerp(tintLight, pal.core, 0.7f)
-            } else if (k == 1) {
-                col = lerp(tintLight, pal.core, if (male) 0.65f else 0.35f + 0.5f * (1f - specks.r[i]))
-                sz *= if (male) 1.35f else 1.1f
-            } else {
-                col = lerp(pal.core, tintLight, (specks.r[i] * 1.2f).coerceIn(0f, 1f))
-                alpha *= 0.85f
+            // tilt the whole thing toward the viewer
+            val y1 = y * ct - z * st
+            val z1 = y * st + z * ct
+            var px = c.x + x * r
+            var py = c.y + y1 * r
+            if (d > 0f) {   // melting: every speck drifts its own way
+                val s = spreadK * (0.4f + 0.6f * ((sd / TWO_PI)))
+                px += cloud.dx[i] * s; py += cloud.dy[i] * s
             }
-            drawCircle(col.copy(alpha = alpha.coerceIn(0f, 1f)), radius = sz.coerceAtLeast(0.6f * density), center = Offset(px, py))
+            val depth = ((z1 + 1.3f) / 2.6f).coerceIn(0f, 0.999f)
+            val dc = (depth * 4f).toInt()
+            val b: Int = if (!male && kd == 3) {
+                val tw = sin(t * 3.4f + sd)
+                12 + (if (tw > 0.55f) 2 else if (tw > -0.2f) 1 else 0)
+            } else dc * 3 + cloud.tone[i]
+            val n = cnt[b]
+            val arr = pts[b]
+            arr[n * 2] = px; arr[n * 2 + 1] = py
+            cnt[b] = n + 1
         }
 
-        // bright core
-        val coreR = r * (0.42f + 0.10f * energy + 0.08f * talk)
+        val bright = 0.80f + 0.30f * energy
+        drawIntoCanvas { canvas ->
+            val nc = canvas.nativeCanvas
+            for (b in 0 until BUCKETS) {
+                if (cnt[b] == 0) continue
+                val col: Color; val dAlpha: Float; val w: Float
+                if (b >= 12) {
+                    col = lerp(tintLight, pal.core, 0.7f)
+                    dAlpha = when (b) { 12 -> 0.18f; 13 -> 0.55f; else -> 1f }
+                    w = base * (0.010f + 0.020f * (b - 11) / 3f)
+                } else {
+                    val dc = b / 3; val tone = b % 3
+                    col = when (tone) { 0 -> pal.core; 1 -> tintLight; else -> lerp(tintMid, tintDeep, 0.45f * (1f - dc / 3f)) }
+                    dAlpha = 0.20f + 0.80f * (dc + 0.5f) / 4f
+                    w = base * (0.008f + 0.013f * (dc + 0.5f) / 4f) * (if (tone == 0) 1.3f else if (tone == 1) 1.05f else 0.9f)
+                }
+                paint.color = col.copy(alpha = (dAlpha * bright * fade).coerceIn(0f, 1f)).toArgb()
+                paint.strokeWidth = max(w, 0.8f * density)
+                nc.drawPoints(pts[b], 0, cnt[b] * 2, paint)
+            }
+        }
+
+        // the bright heart
+        val coreR = r * (0.40f + 0.10f * energy + 0.07f * talk)
         drawCircle(
-            Brush.radialGradient(listOf(pal.core.copy(alpha = 0.95f * fade), pal.light.copy(alpha = 0.45f * fade), Color.Transparent), center = c, radius = coreR),
+            Brush.radialGradient(listOf(pal.core.copy(alpha = 0.92f * fade), tintLight.copy(alpha = 0.40f * fade), Color.Transparent), center = c, radius = coreR),
             radius = coreR, center = c
         )
-        // glossy edge
-        drawArc(
-            Color.White.copy(alpha = 0.50f * fade), startAngle = 205f, sweepAngle = 58f, useCenter = false,
-            topLeft = Offset(c.x - r * 0.84f, c.y - r * 0.84f), size = Size(r * 1.68f, r * 1.68f),
-            style = Stroke(width = 2f * density, cap = StrokeCap.Round)
-        )
-        drawCircle(Color.White.copy(alpha = 0.22f * fade), radius = r, center = c, style = Stroke(1f * density))
         // rings spreading out while listening or speaking
         if (mood == Mood.Listening || mood == Mood.Speaking) for (i in 0..1) {
             val p = (t * 0.5f + i * 0.5f) % 1f
-            drawCircle(tintMid.copy(alpha = (1f - p) * 0.28f * fade), radius = r * (1.04f + 0.45f * p), center = c, style = Stroke(1.5f * density))
+            drawCircle(tintMid.copy(alpha = (1f - p) * 0.30f * fade), radius = r * (1.04f + 0.50f * p), center = c, style = Stroke(1.5f * density))
         }
     }
 }

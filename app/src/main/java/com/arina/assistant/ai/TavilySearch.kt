@@ -76,7 +76,7 @@ object TavilySearch {
             throw IOException("Web search failed: ${e.message ?: "no internet?"}")
         }
         if (code !in 200..299) {
-            throw IOException("Web search error $code: ${raw.take(200)}")
+            throw IOException("Web search: " + (runCatching { JSONObject(raw).optString("error") }.getOrNull()?.takeIf { it.isNotBlank() } ?: "error $code"))
         }
         return JSONObject(raw)
     }

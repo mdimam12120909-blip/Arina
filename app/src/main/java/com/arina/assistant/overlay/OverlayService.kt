@@ -34,7 +34,6 @@ import com.arina.assistant.ui.ArinaEngine
 import com.arina.assistant.R
 import com.arina.assistant.ui.ArinaTheme
 import com.arina.assistant.companion.Buddy
-import com.arina.assistant.ui.BottomOrb
 import com.arina.assistant.ui.Stage
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.CoroutineScope
@@ -158,8 +157,32 @@ class OverlayService : Service() {
             y = 0
         }
         owner.create()
-        val view = composeView {
-            BottomOrb(
+        // The picture: orb and edge light across the whole screen. It never takes touches.
+        val fullLp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        )
+        val picture = composeView { com.arina.assistant.ui.AgentOverlay(engine) }
+        wm.addView(picture, fullLp)
+        lineView = picture
+
+        // The small window that takes touches at the bottom centre.
+        val touchLp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            y = 0
+        }
+        val touch = composeView {
+            com.arina.assistant.ui.OrbTouch(
                 engine = engine,
                 onOpenApp = {
                     startActivity(
@@ -170,20 +193,9 @@ class OverlayService : Service() {
                 }
             )
         }
-        wm.addView(view, lp)
-        orbView = view
-        container = view
-
-        // A thin line along the bottom edge shows that the agent is working. It never takes touches.
-        val lineLp = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
-            PixelFormat.TRANSLUCENT
-        ).apply { gravity = Gravity.BOTTOM }
-        val lineV = composeView { com.arina.assistant.ui.AgentLine(engine) }
-        runCatching { wm.addView(lineV, lineLp); lineView = lineV }
+        wm.addView(touch, touchLp)
+        orbView = touch
+        container = touch
     }
 
     private fun composeView(content: @androidx.compose.runtime.Composable () -> Unit): ComposeView =
@@ -230,6 +242,7 @@ class OverlayService : Service() {
         owner.destroy()
         val engine = ArinaEngine.get(this)
         engine.overlayOn.value = false
+        engine.orbVisible.value = false
         engine.stopAll()
         super.onDestroy()
     }

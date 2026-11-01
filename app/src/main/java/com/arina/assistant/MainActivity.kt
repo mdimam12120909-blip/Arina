@@ -66,6 +66,7 @@ class MainActivity : ComponentActivity() {
         engine.onAccountSwitched = {
             runOnUiThread {
                 OverlayService.stop(this)
+                runCatching { java.io.File(cacheDir, "cards").deleteRecursively() }   // pictures shown for the previous account
                 ArinaEngine.discard()
                 recreate()
             }
