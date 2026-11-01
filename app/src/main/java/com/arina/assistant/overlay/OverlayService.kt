@@ -68,6 +68,7 @@ class OverlayService : Service() {
     private var container: ComposeView? = null
     private var windowManager: WindowManager? = null
     private var stageView: ComposeView? = null
+    private var lineView: ComposeView? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -172,6 +173,17 @@ class OverlayService : Service() {
         wm.addView(view, lp)
         orbView = view
         container = view
+
+        // A thin line along the bottom edge shows that the agent is working. It never takes touches.
+        val lineLp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply { gravity = Gravity.BOTTOM }
+        val lineV = composeView { com.arina.assistant.ui.AgentLine(engine) }
+        runCatching { wm.addView(lineV, lineLp); lineView = lineV }
     }
 
     private fun composeView(content: @androidx.compose.runtime.Composable () -> Unit): ComposeView =
@@ -211,6 +223,8 @@ class OverlayService : Service() {
         scope.cancel()
         stageView?.let { runCatching { windowManager?.removeView(it) } }
         stageView = null
+        lineView?.let { runCatching { windowManager?.removeView(it) } }
+        lineView = null
         container?.let { runCatching { windowManager?.removeView(it) } }
         container = null
         owner.destroy()

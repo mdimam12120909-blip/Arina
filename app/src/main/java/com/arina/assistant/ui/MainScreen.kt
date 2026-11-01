@@ -490,7 +490,7 @@ private fun SoulPanel(vm: ArinaEngine) {
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(p.displayName.uppercase(), color = ArinaColors.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
-                    Text(if (p == Persona.Arina) "Female voice · green" else "Male voice · blue", color = color, fontSize = 12.sp)
+                    Text(if (p == Persona.Arina) "Female voice · pink" else "Male voice · blue", color = color, fontSize = 12.sp)
                     Text(if (sel) "ACTIVE" else "Tap to switch", color = if (sel) Good else ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 2.sp)
                 }
             }
@@ -886,10 +886,15 @@ private fun AdminUsers(vm: ArinaEngine) {
 @Composable
 private fun AdminSecrets(vm: ArinaEngine) {
     var tavily by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) { vm.checkSearch() }
     Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Stored in the database where only you can read them. The web search service uses this key on the server; it never reaches users' phones.", color = ArinaColors.Muted, fontSize = 12.sp)
-        KeyField("Web search key", tavily, true) { tavily = it }
-        PillButton("Save") { if (tavily.isNotBlank()) { vm.adminSave("tavily", tavily.trim(), secret = true); tavily = "" } }
+        KeyField("New web search key", tavily, false) { tavily = it }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PillButton("Save") { if (tavily.isNotBlank()) { vm.saveSearchKey(tavily); tavily = "" } }
+            PillButton("Test") { vm.checkSearch() }
+        }
+        Text(vm.searchStatus.value, color = ArinaColors.Text, fontSize = 13.sp, lineHeight = 18.sp)
     }
 }
 

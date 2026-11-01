@@ -28,8 +28,7 @@ object Keys {
 
     /** The five Gemini key slots, in order; empty strings for unused slots. Slot 1 can come from the build. */
     fun geminiSlots(c: Context): List<String> = List(GEMINI_SLOTS) { i ->
-        if (i == 0) pick(c, "gemini", BuildConfig.GEMINI_API_KEY)
-        else prefs(c).getString(slotName(i), "")?.trim().orEmpty()
+        prefs(c).getString(slotName(i), "")?.trim().orEmpty()   // only what this account typed; no key is shared between accounts
     }
 
     /** All non-empty Gemini keys joined by new lines, the form the clients read. */

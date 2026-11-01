@@ -125,6 +125,16 @@ class Cloud(private val ctx: Context) {
         return (0 until rows.length()).map { rows.getJSONObject(it).getString("key") }.toSet()
     }
 
+    /** Admin only: the last four characters of a stored secret, or null if there is none. */
+    fun secretTail(key: String): String? {
+        val t = token() ?: return null
+        val (code, text) = raw("GET", "/rest/v1/app_secrets?select=value&key=eq.$key", null, bearer = t)
+        if (code !in 200..299) throw IOException("HTTP $code: ${message(text)}")
+        val a = JSONArray(text)
+        if (a.length() == 0) return null
+        return a.getJSONObject(0).getString("value").takeLast(4)
+    }
+
     private fun upsert(table: String, key: String, value: String) {
         val t = token() ?: throw IOException("Sign in first.")
         val row = JSONArray().put(JSONObject().put("key", key).put("value", value))

@@ -12,6 +12,9 @@ import android.content.SharedPreferences
 object Local {
     private val PERSONAL = listOf("arina_tasks", "arina_skills", "arina_memory", "arina_chat", "arina_routines", "arina_keys", "arina_ui")
 
+    /** The id of the signed-in account, or empty for a guest. */
+    fun currentUid(c: Context): String = uid(c)
+
     private fun uid(c: Context): String =
         c.applicationContext.getSharedPreferences("cloud", Context.MODE_PRIVATE).getString("uid", "").orEmpty()
 

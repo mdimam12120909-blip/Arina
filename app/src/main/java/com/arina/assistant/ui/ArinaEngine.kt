@@ -78,10 +78,21 @@ class ArinaEngine private constructor(private val app: Application) {
         @Volatile
         private var instance: ArinaEngine? = null
 
-        fun get(context: Context): ArinaEngine =
-            instance ?: synchronized(this) {
+        /** The engine of whoever is signed in now. If the account changed since it was built, it is replaced, never reused. */
+        fun get(context: Context): ArinaEngine {
+            val who = Local.currentUid(context)
+            instance?.let { if (it.ownerId == who) return it }
+            val stale = synchronized(this) {
+                val cur = instance
+                if (cur != null && cur.ownerId == who) return cur
+                instance = null
+                cur
+            }
+            runCatching { stale?.shutdown() }
+            return synchronized(this) {
                 instance ?: ArinaEngine(context.applicationContext as Application).also { instance = it }
             }
+        }
 
         /** Forgets the running engine so the next [get] builds a fresh one (used when the account changes). */
         fun discard() {
@@ -89,6 +100,9 @@ class ArinaEngine private constructor(private val app: Application) {
             old.shutdown()
         }
     }
+
+    /** The account this engine was built for. Everything it stores belongs to that account only. */
+    private val ownerId: String = Local.currentUid(app)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -453,8 +467,7 @@ class ArinaEngine private constructor(private val app: Application) {
         scope.launch {
             try {
                 withContext(Dispatchers.IO) { cloud.signInWithGoogle(idToken) }
-                // Each account's personal data lives apart from every other account's: start fresh as this account.
-                Local.claimGuestData(app, cloud.uid)
+                // Each account's personal data lives apart from every other account's. Nothing is ever moved between them.
                 switchAccount()
             } catch (e: Exception) {
                 notice.value = (e.message ?: "Sign-in failed.").take(240)
@@ -475,6 +488,7 @@ class ArinaEngine private constructor(private val app: Application) {
 
     fun signOut() {
         cloud.signOut()
+        Identity.userName = ""
         // Back to the signed-out (guest) data, which holds nothing of any account.
         switchAccount()
     }
@@ -505,6 +519,36 @@ class ArinaEngine private constructor(private val app: Application) {
                 notice.value = "Saved."
             } catch (e: Exception) {
                 notice.value = (e.message ?: "Could not save.").take(240)
+            }
+        }
+    }
+
+    val searchStatus = mutableStateOf("")
+
+    /** Admin: shows whether the web search key is stored (last 4 characters) and whether a real search works. */
+    fun checkSearch() {
+        scope.launch {
+            searchStatus.value = "Checking…"
+            val msg = withContext(Dispatchers.IO) {
+                val tail = runCatching { cloud.secretTail("tavily") }.getOrElse { return@withContext "Could not read the key: ${it.message}" }
+                if (tail == null) return@withContext "No search key is stored yet."
+                runCatching { TavilySearch.search("today", 1); "Key stored (ends with $tail). Search works." }
+                    .getOrElse { "Key stored (ends with $tail), but search failed: ${(it.message ?: "unknown").take(200)}" }
+            }
+            searchStatus.value = msg
+        }
+    }
+
+    fun saveSearchKey(key: String) {
+        scope.launch {
+            searchStatus.value = "Saving…"
+            try {
+                withContext(Dispatchers.IO) { cloud.saveSecret("tavily", key.trim()) }
+                checkSearch()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                searchStatus.value = "Not saved: ${(e.message ?: "unknown error").take(200)}"
             }
         }
     }
