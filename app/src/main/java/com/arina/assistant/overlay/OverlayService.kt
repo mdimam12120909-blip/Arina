@@ -127,7 +127,7 @@ class OverlayService : Service() {
         val notification = Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("Entrion is on")
-            .setContentText("Tap the floating orb to talk.")
+            .setContentText("Ready when you are.")
             .setContentIntent(open)
             .addAction(Notification.Action.Builder(0, "Turn off", off).build())
             .setOngoing(true)

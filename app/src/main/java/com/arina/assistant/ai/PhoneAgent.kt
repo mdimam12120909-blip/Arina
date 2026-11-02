@@ -9,11 +9,26 @@ import org.json.JSONObject
  * single action, do it, repeat. Blocking: run on Dispatchers.IO. Stops when Gemini says done or fail,
  * after [MAX_STEPS], or when [cancelled] turns true.
  */
-class PhoneAgent(private val gemini: GeminiClient, private val device: DeviceActions) {
+class PhoneAgent(
+    private val gemini: GeminiClient,
+    private val device: DeviceActions,
+    /** Asked before a risky tap (send, pay, delete...) the user did not ask for. Returns true to go on. */
+    private val confirm: (String) -> Boolean = { true }
+) {
 
     class Outcome(val bn: String, val en: String, val report: String = "")
 
     private companion object {
+        val RISKY = listOf(
+            Regex("\\b(send|post|publish|submit)\\b|পাঠ|সেন্ড|পোস্ট", RegexOption.IGNORE_CASE) to
+                Regex("send|post|publish|submit|message|msg|reply|text|পাঠ|মেসেজ|পোস্ট|লিখ|বল|জানা", RegexOption.IGNORE_CASE),
+            Regex("\\b(pay|buy|purchase|order|checkout|place order)\\b|কিন|পেমেন্ট|অর্ডার", RegexOption.IGNORE_CASE) to
+                Regex("pay|buy|purchase|order|checkout|কিন|পেমেন্ট|অর্ডার", RegexOption.IGNORE_CASE),
+            Regex("\\b(delete|remove|erase|uninstall|clear all)\\b|ডিলিট|মুছ", RegexOption.IGNORE_CASE) to
+                Regex("delete|remove|erase|uninstall|clear|ডিলিট|মুছ", RegexOption.IGNORE_CASE),
+            Regex("\\b(install|transfer|sign out|log out|logout|factory reset)\\b|ইনস্টল|ট্রান্সফার", RegexOption.IGNORE_CASE) to
+                Regex("install|transfer|sign out|log out|logout|reset|ইনস্টল|ট্রান্সফার", RegexOption.IGNORE_CASE)
+        )
         const val MAX_STEPS = 30
         const val MAX_STEPS_CHAT = 70
 
@@ -89,12 +104,18 @@ class PhoneAgent(private val gemini: GeminiClient, private val device: DeviceAct
             if (desc == last) { if (++repeats >= 3) return Outcome("এই ধাপে আটকে গেছি, থামলাম।", "I got stuck, so I stopped.") } else { repeats = 0; last = desc }
 
             var ok = true
+            var denied = false
             val before = snap.text.hashCode()
             when (action) {
                 "done", "fail" -> return Outcome(a.optString("bn").ifBlank { "শেষ।" }, a.optString("en").ifBlank { "Done." }, a.optString("report"))
                 "note" -> a.optString("text").takeIf { it.isNotBlank() }?.let { notes += it.take(600) }
                 "wait_reply" -> waitForStable(svc, cancelled)
-                "click" -> ok = node != null && svc.click(node)
+                "click" -> {
+                    val label = listOfNotNull(node?.text?.toString(), node?.contentDescription?.toString()).joinToString(" ").trim()
+                    val risky = label.isNotEmpty() && RISKY.any { (what, allowed) -> what.containsMatchIn(label) && !allowed.containsMatchIn(goal) }
+                    if (risky && !confirm("Tap \"${label.take(60)}\" in ${snap.app.substringAfterLast('.')}?")) { denied = true; ok = false }
+                    else ok = node != null && svc.click(node)
+                }
                 "type" -> {
                     ok = node != null && svc.typeInto(node, a.optString("text"))
                     if (ok && a.optBoolean("submit")) { Thread.sleep(400); svc.pressEnter() }
@@ -107,7 +128,7 @@ class PhoneAgent(private val gemini: GeminiClient, private val device: DeviceAct
                 "wait" -> Thread.sleep(1500)
                 else -> ok = false
             }
-            history += "$desc -> ${if (ok) "done" else "FAILED"}"
+            history += "$desc -> ${if (denied) "the user did NOT allow this: choose another way or use fail" else if (ok) "done" else "FAILED"}"
             if (action != "wait" && action != "wait_reply") settle(svc, before)
         }
         return Outcome("অনেক ধাপ হয়ে গেল, এখানেই থামলাম।", "I reached my step limit and stopped.", notes.joinToString("\n") { "- $it" })

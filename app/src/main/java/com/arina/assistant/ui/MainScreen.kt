@@ -157,7 +157,7 @@ fun MainScreen(
                 )
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     when (page) {
-                        Page.Home -> HomePanel(vm, onMicClick)
+                        Page.Home -> HomePanel(vm, onMicClick, onPermission)
                         Page.Chat -> ChatPanel(vm)
                         Page.Memory -> MemoryPanel(vm)
                         Page.Routine -> RoutinePanel(vm)
@@ -297,7 +297,7 @@ private fun Header(vm: ArinaEngine, page: Page, onPower: () -> Unit, onMenu: () 
 // ---- Home ---------------------------------------------------------------------------------------
 
 @Composable
-private fun HomePanel(vm: ArinaEngine, onMicClick: () -> Unit) {
+private fun HomePanel(vm: ArinaEngine, onMicClick: () -> Unit, onPermission: (PermItem) -> Unit) {
     val persona = vm.persona.value
     val accent = accentOf(persona)
     val problem = vm.notice.value != null
@@ -308,6 +308,16 @@ private fun HomePanel(vm: ArinaEngine, onMicClick: () -> Unit) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        if (vm.phoneControlLost.value) {
+            Row(Modifier.fillMaxWidth().glass(strong = true).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Phone control switched itself off", color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Some phones turn it off to save battery. Turn it on again. The keep-alive steps in Permissions stop this from happening.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 16.sp)
+                }
+                Spacer(Modifier.width(10.dp))
+                PillButton("Turn on") { PermissionCenter.special.firstOrNull { it.id == "accessibility" }?.let(onPermission) }
+            }
+        }
         TranscriptCard(vm, accent)
 
         // The agent
@@ -943,6 +953,32 @@ private fun PermissionsPage(vm: ArinaEngine, onPermission: (PermItem) -> Unit, o
                 }
             }
         }
+        Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Keep Entrion alive (Realme, Oppo, Xiaomi)", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                "These phones close background apps and switch phone control off. To stop that, open App info and:\n" +
+                    "1. Turn Autostart on.\n" +
+                    "2. Battery: set Background usage to Allow, and turn battery optimization off.\n" +
+                    "3. In the recent apps screen, lock Entrion (pull the card down or tap the lock).\n" +
+                    "If phone control still switches itself off, the Home screen shows a Turn on button.",
+                color = ArinaColors.Text, fontSize = 12.sp, lineHeight = 18.sp
+            )
+            PillButton("Open app info") { onAppInfo() }
+        }
+    }
+}
+
+@Composable
+private fun ChoiceCard(title: String, detail: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().glass(strong = selected).clickable(onClick = onClick).padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Text(detail, color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 16.sp)
+        }
+        if (selected) Text("\u2713", color = ArinaColors.Glow, fontSize = 20.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -991,6 +1027,16 @@ private fun AssistantPage(vm: ArinaEngine) {
             "Notices long scrolling or non-stop phone use (needs Usage access) and nudges you kindly, at most once every 30 minutes. Routines always remind you.",
             vm.proactiveOn.value
         ) { vm.setProactive(it) }
+
+        SectionTitle("WHEN IT OPERATES YOUR PHONE")
+        ChoiceCard("Smart (recommended)", "Starts at once. Asks only before a risky tap you did not ask for: send, pay, buy, delete, install.", vm.operateMode.value == "smart") { vm.setOperateMode("smart") }
+        ChoiceCard("Ask me every time", "Shows a question before every phone task.", vm.operateMode.value == "ask") { vm.setOperateMode("ask") }
+        ChoiceCard("Never ask", "Does everything without asking. Only use this if you fully trust your commands.", vm.operateMode.value == "auto") { vm.setOperateMode("auto") }
+
+        SectionTitle("WHILE IT RUNS IN THE BACKGROUND")
+        ChoiceCard("Quiet (recommended)", "Nothing on screen while it waits. A small status pill and a thin edge light show only while it speaks or works.", vm.bgStyle.value == "quiet") { vm.setBgStyle("quiet") }
+        ChoiceCard("Orb", "The orb rises from the bottom when it wakes, then melts away, with a soft sound.", vm.bgStyle.value == "orb") { vm.setBgStyle("orb") }
+        ChoiceCard("Nothing", "No picture at all. Only the notification shows it is on.", vm.bgStyle.value == "off") { vm.setBgStyle("off") }
 
         SectionTitle("SKILLS")
         SkillsCard(vm)

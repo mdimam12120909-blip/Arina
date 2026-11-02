@@ -15,7 +15,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -62,6 +64,41 @@ fun AgentOverlay(engine: ArinaEngine) {
     val mood = moodOf(engine.status.value, engine.researchActive.value || engine.agentActive.value, problem)
     val busy = mood == Mood.Speaking || mood == Mood.Thinking || mood == Mood.Researching || mood == Mood.Alert
     val wake = engine.glow.intValue   // changes whenever the floating orb is switched on or tapped awake
+    val style = engine.bgStyle.value
+    if (style != "orb") {
+        LaunchedEffect(Unit) { engine.orbVisible.value = false }
+        if (style == "off") return
+        val working = busy || engine.agentActive.value
+        Box(Modifier.fillMaxSize()) {
+            AgentAura(engine, mood, onlyWhenWorking = true)
+            if (working) {
+                val line = engine.notice.value ?: if (engine.agentActive.value) engine.agentLine.value else ""
+                val label = line.ifBlank {
+                    when (mood) {
+                        Mood.Speaking -> "Speaking"
+                        Mood.Researching -> "Looking it up"
+                        Mood.Alert -> "Needs you"
+                        else -> "Thinking"
+                    }
+                }
+                val pulse by rememberInfiniteTransition(label = "dot").animateFloat(
+                    0.35f, 1f, infiniteRepeatable(tween(800), RepeatMode.Reverse), label = "p"
+                )
+                Row(
+                    Modifier.align(Alignment.TopCenter).padding(top = 38.dp)
+                        .clip(RoundedCornerShape(50)).background(ArinaColors.Surface)
+                        .border(1.dp, ArinaColors.Deep, RoundedCornerShape(50))
+                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(Modifier.size(8.dp).graphicsLayer { alpha = pulse }.clip(RoundedCornerShape(50)).background(accentOf(engine.persona.value)))
+                    Spacer(Modifier.width(8.dp))
+                    Text(label, color = ArinaColors.Text, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 260.dp))
+                }
+            }
+        }
+        return
+    }
 
     // 0 hidden, 1 showing, 2 melting away
     var phase by remember { mutableIntStateOf(1) }
@@ -123,14 +160,15 @@ fun AgentOverlay(engine: ArinaEngine) {
 @Composable
 fun OrbTouch(engine: ArinaEngine, onOpenApp: () -> Unit) {
     val up = engine.orbVisible.value
+    val hidden = engine.bgStyle.value == "off"
     Box(
-        Modifier.size(width = if (up) 220.dp else 90.dp, height = if (up) 220.dp else 22.dp)
+        Modifier.size(width = if (up) 220.dp else if (hidden) 1.dp else 90.dp, height = if (up) 220.dp else if (hidden) 1.dp else 22.dp)
             .pointerInput(Unit) {
                 detectTapGestures(onTap = { engine.onMicTap(); engine.glow.intValue++ }, onLongPress = { onOpenApp() })
             },
         contentAlignment = Alignment.BottomCenter
     ) {
-        if (!up) {
+        if (!up && !hidden) {
             Box(
                 Modifier.padding(bottom = 5.dp).size(width = 38.dp, height = 4.dp).clip(RoundedCornerShape(50))
                     .background(Brush.horizontalGradient(listOf(Color(0x552F8BFF), Color(0xCC7FDBFF), Color(0x55EC4899))))
@@ -144,8 +182,9 @@ fun OrbTouch(engine: ArinaEngine, onOpenApp: () -> Unit) {
  * it listens, talks or works on the phone. It never takes touches.
  */
 @Composable
-private fun AgentAura(engine: ArinaEngine, mood: Mood) {
-    val on = engine.micOn.value || mood != Mood.Standby
+private fun AgentAura(engine: ArinaEngine, mood: Mood, onlyWhenWorking: Boolean = false) {
+    val working = mood == Mood.Speaking || mood == Mood.Thinking || mood == Mood.Researching || mood == Mood.Alert || engine.agentActive.value
+    val on = if (onlyWhenWorking) working else engine.micOn.value || mood != Mood.Standby
     val female = engine.persona.value == Persona.Arina
     val a = if (female) Color(0xFFFF9AD5) else Color(0xFF9BE7FF)
     val b = if (female) Color(0xFFF0449F) else Color(0xFF3AA0FF)

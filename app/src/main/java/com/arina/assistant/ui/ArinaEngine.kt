@@ -114,6 +114,14 @@ class ArinaEngine private constructor(private val app: Application) {
     val overlayOn = mutableStateOf(false)
     /** True while the floating orb is on screen (the small touch window grows to cover it). */
     val orbVisible = mutableStateOf(false)
+    /** How the agent shows itself over other apps: "quiet" (a small status pill and edge light only while it works), "orb", or "off". */
+    val bgStyle = mutableStateOf(com.arina.assistant.cloud.Local.prefs(app, "arina_ui").getString("bg_style", "quiet") ?: "quiet")
+    fun setBgStyle(v: String) { bgStyle.value = v; uiPrefs.edit().putString("bg_style", v).apply() }
+    /** Phone control permission: "ask" every time, "smart" (ask only before risky taps), or "auto" (never ask). */
+    val operateMode = mutableStateOf(com.arina.assistant.cloud.Local.prefs(app, "arina_ui").getString("operate_mode", "smart") ?: "smart")
+    fun setOperateMode(v: String) { operateMode.value = v; uiPrefs.edit().putString("operate_mode", v).apply() }
+    /** True when Device control worked before but is off now (phones switch it off to save battery). */
+    val phoneControlLost = mutableStateOf(false)
     private val chatPrefs = com.arina.assistant.cloud.Local.prefs(app, "arina_chat")
     val messages = mutableStateListOf<ChatMessage>().also { l ->
         runCatching {
@@ -668,6 +676,8 @@ class ArinaEngine private constructor(private val app: Application) {
         overlayGranted.value = perms["overlay"] == true
         phoneGranted.value = perms["phone"] == true
         accessibilityOn.value = perms["accessibility"] == true
+        if (accessibilityOn.value) uiPrefs.edit().putBoolean("a11y_seen", true).apply()
+        phoneControlLost.value = !accessibilityOn.value && uiPrefs.getBoolean("a11y_seen", false)
     }
 
     // ---- Listening ---------------------------------------------------------------------------
@@ -847,6 +857,7 @@ class ArinaEngine private constructor(private val app: Application) {
     private val SHOW_LINES = listOf("Here it is.", "Showing it now.", "Got it, take a look.", "On the screen now.")
     private val OPERATE_LINES = listOf("Allow it on the screen and I will start.", "As soon as you allow it, I begin.", "Give permission and I will run the phone.")
     private val PROGRESS_LINES = listOf("Making good progress, checking more sources.", "Still working, cross-checking the facts.", "Nearly there, a little more.", "Found quite a lot, verifying it now.")
+    private val ON_IT_LINES = listOf("On it.", "Doing it now.", "Starting.", "Right away.")
     private val ASK_LINES = listOf("Look at the screen, I need your permission.", "I will go ahead once you allow it.", "I need a yes from you, see the screen.")
 
     /** Picks a line that was not used recently, so the same sentence is never repeated back to back. */
@@ -1034,16 +1045,19 @@ class ArinaEngine private constructor(private val app: Application) {
         }
         if (agentJob?.isActive == true) return "ERROR: already operating the phone. Tell him to press STOP first."
         agentJob = scope.launch {
-            val ok = ask("Let Entrion operate your phone?", "It will tap, type and scroll by itself to:\n$goal\n\nPress STOP at any time to end it.", OPERATE_LINES)
-            if (!ok) {
-                announce(Reply("", fresh(listOf("ঠিক আছে, করছি না।", "আচ্ছা, থাক।", "বাদ দিলাম।")), "Okay, I won't do that."))
-                return@launch
-            }
+            val mode = operateMode.value
+            if (mode == "ask") {
+                val ok = ask("Let Entrion operate your phone?", "It will tap, type and scroll by itself to:\n$goal\n\nPress STOP at any time to end it.", OPERATE_LINES)
+                if (!ok) {
+                    announce(Reply("", "", "Okay, I won't do that."))
+                    return@launch
+                }
+            } else ack(ON_IT_LINES)
             agentActive.value = true
             agentLine.value = "Starting…"
             try {
                 val outcome = withContext(Dispatchers.IO) {
-                    PhoneAgent(gemini, device).run(goal, chat, { line -> agentLine.value = line }, {
+                    PhoneAgent(gemini, device, confirm = { what -> if (operateMode.value == "auto") true else runBlocking { ask("Allow this?", what, ASK_LINES) } }).run(goal, chat, { line -> agentLine.value = line }, {
                         while (agentHold && agentJob?.isActive == true) Thread.sleep(100)
                         agentJob?.isActive != true
                     })
