@@ -583,7 +583,6 @@ class ArinaEngine private constructor(private val app: Application) {
     val updateError = mutableStateOf("")
     val updateDismissed = mutableStateOf(false)
     val adminReleases = mutableStateListOf<Cloud.Release>()
-    val adminBuilds = mutableStateListOf<Cloud.Build>()
     val adminAudit = mutableStateListOf<Cloud.AuditRow>()
 
     fun checkUpdate() {
@@ -615,15 +614,41 @@ class ArinaEngine private constructor(private val app: Application) {
         adminAudit.clear(); adminAudit.addAll(aud)
     }
 
-    fun findBuilds() = adminRun {
-        val b = withContext(Dispatchers.IO) { cloud.githubBuilds() }
-        adminBuilds.clear(); adminBuilds.addAll(b)
-        if (b.isEmpty()) notice.value = "No build with an Entrion.apk file was found on GitHub yet."
+    /** An Entrion.apk the admin picked from the phone's Downloads, checked and ready to publish. */
+    class Picked(val file: java.io.File, val build: Int, val version: String)
+    val adminPicked = mutableStateOf<Picked?>(null)
+
+    fun pickApk(uri: android.net.Uri) = adminRun {
+        adminPicked.value = null
+        val p = withContext(Dispatchers.IO) {
+            val name = app.contentResolver.query(uri, null, null, null, null)?.use { c ->
+                val i = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (c.moveToFirst() && i >= 0) c.getString(i) else ""
+            }.orEmpty()
+            if (!Regex("""Entrion( ?\(\d+\))?\.apk""", RegexOption.IGNORE_CASE).matches(name)) throw IllegalStateException("Only a file named Entrion.apk can be published. This one is \"$name\".")
+            val dir = java.io.File(app.cacheDir, "updates").apply { mkdirs() }
+            val f = java.io.File(dir, "pick.apk")
+            app.contentResolver.openInputStream(uri)?.use { i -> f.outputStream().use { o -> i.copyTo(o) } } ?: throw IllegalStateException("Could not read that file.")
+            val pm = app.packageManager
+            val flags = if (android.os.Build.VERSION.SDK_INT >= 28) android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES else 0
+            val info = pm.getPackageArchiveInfo(f.absolutePath, flags) ?: throw IllegalStateException("This file is not a valid app.")
+            if (info.packageName != app.packageName) throw IllegalStateException("This is not the Entrion app.")
+            if (android.os.Build.VERSION.SDK_INT >= 28) {
+                val mine = pm.getPackageInfo(app.packageName, android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES).signingInfo?.apkContentsSigners?.map { it.toCharsString() }?.toSet().orEmpty()
+                val theirs = info.signingInfo?.apkContentsSigners?.map { it.toCharsString() }?.toSet().orEmpty()
+                if (mine.isEmpty() || theirs != mine) throw IllegalStateException("This file is signed with a different key. Phones could not update from it, so it was not accepted.")
+            }
+            Picked(f, info.longVersionCode.toInt(), info.versionName.orEmpty())
+        }
+        adminPicked.value = p
     }
 
-    fun publishBuild(b: Cloud.Build, notes: String, force: Boolean) = adminRun {
-        withContext(Dispatchers.IO) { cloud.publishRelease(b.build, "build ${b.build}", b.url, notes, force) }
-        notice.value = "Published build ${b.build}. Users will see the update next time they open the app."
+    fun publishPicked(notes: String, force: Boolean) = adminRun {
+        val p = adminPicked.value ?: return@adminRun
+        val url = withContext(Dispatchers.IO) { cloud.uploadApk(p.file, p.build) }
+        withContext(Dispatchers.IO) { cloud.publishRelease(p.build, "build ${p.build}", url, notes, force) }
+        adminPicked.value = null
+        notice.value = "Published build ${p.build}. Users will see the update next time they open the app."
         val (rel, aud) = withContext(Dispatchers.IO) { cloud.releases() to cloud.auditLog() }
         adminReleases.clear(); adminReleases.addAll(rel)
         adminAudit.clear(); adminAudit.addAll(aud)

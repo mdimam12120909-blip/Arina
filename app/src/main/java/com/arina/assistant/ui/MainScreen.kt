@@ -924,36 +924,33 @@ private fun AdminUpdates(vm: ArinaEngine) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     var notes by remember { mutableStateOf("") }
     var force by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { vm.loadReleases(); vm.findBuilds() }
+    LaunchedEffect(Unit) { vm.loadReleases() }
+    val picker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.pickApk(uri)
+    }
     Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Update App", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-        Text("Installed here: build ${com.arina.assistant.BuildConfig.VERSION_CODE}. Only a file named Entrion.apk from the project's GitHub releases can be published.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
-        LongField("What is new (shown to users)", notes) { notes = it }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Must update", color = ArinaColors.Text, fontSize = 14.sp)
-                Text("Users cannot skip it. Use only for urgent fixes.", color = ArinaColors.Muted, fontSize = 12.sp)
-            }
-            Switch(checked = force, onCheckedChange = { force = it }, colors = SwitchDefaults.colors())
-        }
+        Text("Installed here: build ${com.arina.assistant.BuildConfig.VERSION_CODE}. Download Entrion.apk from GitHub in Chrome, then choose it here from your Downloads. Only a genuine, correctly signed Entrion.apk is accepted.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PillButton("Choose Entrion.apk") { picker.launch(arrayOf("application/vnd.android.package-archive", "application/octet-stream", "*/*")) }
             PillButton("Open GitHub in Chrome") {
                 runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/mdimam12120909-blip/Arina/releases")).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
             }
-            PillButton("Find builds") { vm.findBuilds() }
         }
     }
-    SectionTitle("READY TO PUBLISH")
-    val published = vm.adminReleases.map { it.build }.toSet()
-    val fresh = vm.adminBuilds.filter { it.build !in published }
-    if (fresh.isEmpty()) Text(if (vm.adminBusy.value) "Loading…" else "Nothing new on GitHub.", color = ArinaColors.Muted, fontSize = 13.sp)
-    fresh.forEach { b ->
-        Row(Modifier.fillMaxWidth().glass().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Entrion.apk  |  build ${b.build}", color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                Text(b.date, color = ArinaColors.Muted, fontSize = 12.sp)
+    vm.adminPicked.value?.let { p ->
+        Column(Modifier.fillMaxWidth().glass(strong = true).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Ready: build ${p.build}", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text("This is the real Entrion app with the right signature.", color = ArinaColors.Muted, fontSize = 12.sp)
+            LongField("What is new (shown to users)", notes) { notes = it }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Must update", color = ArinaColors.Text, fontSize = 14.sp)
+                    Text("Users cannot skip it. Use only for urgent fixes.", color = ArinaColors.Muted, fontSize = 12.sp)
+                }
+                Switch(checked = force, onCheckedChange = { force = it }, colors = SwitchDefaults.colors())
             }
-            PillButton("Publish") { vm.publishBuild(b, notes, force); notes = ""; force = false }
+            PillButton(if (vm.adminBusy.value) "Publishing…" else "Publish update") { if (!vm.adminBusy.value) { vm.publishPicked(notes, force); notes = ""; force = false } }
         }
     }
     SectionTitle("HISTORY")

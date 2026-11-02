@@ -35,7 +35,7 @@ fun AdminGate(vm: ArinaEngine, onUnlock: () -> Unit) {
     ) {
         Text("Admin Console is locked", color = ArinaColors.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
         Spacer(Modifier.height(8.dp))
-        Text("Confirm it is you with your face or screen lock.", color = ArinaColors.Muted, fontSize = 14.sp, textAlign = TextAlign.Center)
+        Text("Confirm it is you with your face or fingerprint.", color = ArinaColors.Muted, fontSize = 14.sp, textAlign = TextAlign.Center)
         vm.notice.value?.let { Spacer(Modifier.height(8.dp)); Text(it, color = ArinaColors.Pink, fontSize = 12.sp, textAlign = TextAlign.Center) }
         Spacer(Modifier.height(20.dp))
         Text(

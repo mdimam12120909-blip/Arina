@@ -127,13 +127,10 @@ class MainActivity : FragmentActivity() {
 
     /** Face (or fingerprint, or screen lock) check before the Admin Console opens. The server still decides who is an admin. */
     private fun unlockAdmin() {
-        val strong = BiometricManager.Authenticators.BIOMETRIC_WEAK
-        val auth = if (Build.VERSION.SDK_INT >= 30) strong or BiometricManager.Authenticators.DEVICE_CREDENTIAL else strong
-        val can = BiometricManager.from(this).canAuthenticate(auth)
-        if (can != BiometricManager.BIOMETRIC_SUCCESS) {
-            // The phone has no face / fingerprint / screen lock set up, so there is nothing to check against.
-            engine.notice.value = "Set a screen lock on this phone to protect the Admin Console."
-            engine.adminUnlocked.value = true
+        // Face or fingerprint only: no PIN or pattern fallback.
+        val auth = BiometricManager.Authenticators.BIOMETRIC_WEAK
+        if (BiometricManager.from(this).canAuthenticate(auth) != BiometricManager.BIOMETRIC_SUCCESS) {
+            engine.notice.value = "Add a fingerprint or face in your phone's Settings first. The Admin Console stays locked until you do."
             return
         }
         val prompt = BiometricPrompt(this, ContextCompat.getMainExecutor(this), object : BiometricPrompt.AuthenticationCallback() {
@@ -147,9 +144,9 @@ class MainActivity : FragmentActivity() {
         })
         val info = BiometricPrompt.PromptInfo.Builder()
             .setTitle("Unlock Admin Console")
-            .setSubtitle("Look at the phone or use your screen lock")
+            .setSubtitle("Use your face or fingerprint")
             .setAllowedAuthenticators(auth)
-            .apply { if (Build.VERSION.SDK_INT < 30) setNegativeButtonText("Cancel") }
+            .setNegativeButtonText("Cancel")
             .build()
         prompt.authenticate(info)
     }

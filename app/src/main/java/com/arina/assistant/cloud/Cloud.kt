@@ -6,6 +6,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -214,28 +215,21 @@ class Cloud(private val ctx: Context) {
         audit(if (active) "restore_update" else "withdraw_update", "build $build")
     }
 
-    /** Builds on GitHub that carry an Entrion.apk file: (build number, tag, download link, date). */
-    class Build(val build: Int, val tag: String, val url: String, val date: String)
-
-    fun githubBuilds(): List<Build> {
-        val req = Request.Builder().url("https://api.github.com/repos/mdimam12120909-blip/Arina/releases?per_page=30")
-            .header("Accept", "application/vnd.github+json").build()
-        val text = try {
-            http.newCall(req).execute().use { if (!it.isSuccessful) throw IOException("GitHub said HTTP ${it.code}"); it.body?.string().orEmpty() }
-        } catch (e: IOException) { throw IOException("Could not reach GitHub: ${e.message}") }
-        val a = JSONArray(text)
-        val out = ArrayList<Build>()
-        for (i in 0 until a.length()) {
-            val r = a.getJSONObject(i)
-            val tag = r.optString("tag_name")
-            val n = Regex("""build-(\d+)""").matchEntire(tag)?.groupValues?.get(1)?.toIntOrNull() ?: continue
-            val assets = r.optJSONArray("assets") ?: continue
-            for (j in 0 until assets.length()) {
-                val s = assets.getJSONObject(j)
-                if (s.optString("name") == "Entrion.apk") out.add(Build(n, tag, s.optString("browser_download_url"), r.optString("published_at").take(10)))
+    /** Admin only: uploads the chosen Entrion.apk to the public "updates" storage and returns the link users will download from. */
+    fun uploadApk(file: java.io.File, build: Int): String {
+        val t = token() ?: throw IOException("Sign in first.")
+        val path = "build-$build/Entrion.apk"
+        val client = http.newBuilder().writeTimeout(180, TimeUnit.SECONDS).readTimeout(180, TimeUnit.SECONDS).build()
+        val req = Request.Builder().url(Defaults.SUPABASE_URL + "/storage/v1/object/updates/" + path)
+            .header("apikey", Defaults.SUPABASE_KEY).header("Authorization", "Bearer $t").header("x-upsert", "true")
+            .post(file.asRequestBody("application/vnd.android.package-archive".toMediaType())).build()
+        try {
+            client.newCall(req).execute().use {
+                val text = it.body?.string().orEmpty()
+                if (!it.isSuccessful) throw IOException("Upload refused (HTTP ${it.code}): ${message(text)}")
             }
-        }
-        return out
+        } catch (e: IOException) { if (e.message?.startsWith("Upload refused") == true) throw e else throw IOException("Upload failed: ${e.message}") }
+        return Defaults.SUPABASE_URL + "/storage/v1/object/public/updates/" + path
     }
 
     fun audit(action: String, detail: String) {

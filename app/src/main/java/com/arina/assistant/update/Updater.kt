@@ -11,9 +11,9 @@ import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-/** Downloads a published Entrion.apk and hands it to Android's installer. Only links from our own GitHub releases are accepted. */
+/** Downloads a published Entrion.apk and hands it to Android's installer. Only links from our own update storage are accepted. */
 object Updater {
-    private const val PREFIX = "https://github.com/mdimam12120909-blip/Arina/releases/download/"
+    private const val PREFIX = "https://xzwlhegzneeujlpbjjba.supabase.co/storage/v1/object/public/updates/"
     private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).followRedirects(true).build()
 
     fun allowed(url: String) = url.startsWith(PREFIX) && url.endsWith("/Entrion.apk")
