@@ -445,7 +445,10 @@ class ArinaEngine private constructor(private val app: Application) {
     init { TavilySearch.token = { cloud.accessToken() } }
     val accountName = mutableStateOf(cloud.name)
     val accountEmail = mutableStateOf(cloud.email)
-    val isAdmin = mutableStateOf(false)
+    /** Remembered verdict from the last server check, so an admin never sees the user app flash up before the check finishes. The server still decides everything. */
+    val isAdmin = mutableStateOf(com.arina.assistant.cloud.Local.prefs(app, "arina_ui").getBoolean("admin_hint", false))
+    /** Admin Console stays locked until the face / screen-lock check passes; locks again when the app leaves the screen. */
+    val adminUnlocked = mutableStateOf(false)
     val signInBusy = mutableStateOf(false)
     /** The person chose to look around before signing in. */
     val skippedSignIn = mutableStateOf(uiPrefs.getBoolean("skip_signin", false))
@@ -517,6 +520,8 @@ class ArinaEngine private constructor(private val app: Application) {
             accountEmail.value = cloud.email
             Identity.userName = cloud.name
             isAdmin.value = admin
+            uiPrefs.edit().putBoolean("admin_hint", admin).apply()
+            checkUpdate()
             gemini.reset()
         }
     }
@@ -570,6 +575,66 @@ class ArinaEngine private constructor(private val app: Application) {
     // ---- Admin tools (the database refuses all of these for anyone but the admin) -------------------
     val adminFacts = mutableStateListOf<Cloud.Fact>()
     val adminUsers = mutableStateListOf<Cloud.User>()
+
+    // ---- app updates ------------------------------------------------------------------------------
+    /** A newer release than the installed one, if any. */
+    val update = mutableStateOf<Cloud.Release?>(null)
+    val updateProgress = mutableFloatStateOf(-1f)      // -1 idle, 0..1 downloading, 2 handed to the installer
+    val updateError = mutableStateOf("")
+    val updateDismissed = mutableStateOf(false)
+    val adminReleases = mutableStateListOf<Cloud.Release>()
+    val adminBuilds = mutableStateListOf<Cloud.Build>()
+    val adminAudit = mutableStateListOf<Cloud.AuditRow>()
+
+    fun checkUpdate() {
+        scope.launch {
+            val r = withContext(Dispatchers.IO) { runCatching { cloud.latestRelease() }.getOrNull() }
+            update.value = r?.takeIf { it.build > com.arina.assistant.BuildConfig.VERSION_CODE && com.arina.assistant.update.Updater.allowed(it.url) }
+        }
+    }
+
+    fun startUpdate(onReady: (java.io.File) -> Unit) {
+        val r = update.value ?: return
+        updateError.value = ""
+        updateProgress.floatValue = 0f
+        scope.launch {
+            try {
+                val f = withContext(Dispatchers.IO) { com.arina.assistant.update.Updater.download(app, r.url) { p -> updateProgress.floatValue = p } }
+                updateProgress.floatValue = 2f
+                onReady(f)
+            } catch (e: Exception) {
+                updateProgress.floatValue = -1f
+                updateError.value = e.message ?: "The update did not download."
+            }
+        }
+    }
+
+    fun loadReleases() = adminRun {
+        val (rel, aud) = withContext(Dispatchers.IO) { cloud.releases() to cloud.auditLog() }
+        adminReleases.clear(); adminReleases.addAll(rel)
+        adminAudit.clear(); adminAudit.addAll(aud)
+    }
+
+    fun findBuilds() = adminRun {
+        val b = withContext(Dispatchers.IO) { cloud.githubBuilds() }
+        adminBuilds.clear(); adminBuilds.addAll(b)
+        if (b.isEmpty()) notice.value = "No build with an Entrion.apk file was found on GitHub yet."
+    }
+
+    fun publishBuild(b: Cloud.Build, notes: String, force: Boolean) = adminRun {
+        withContext(Dispatchers.IO) { cloud.publishRelease(b.build, "build ${b.build}", b.url, notes, force) }
+        notice.value = "Published build ${b.build}. Users will see the update next time they open the app."
+        val (rel, aud) = withContext(Dispatchers.IO) { cloud.releases() to cloud.auditLog() }
+        adminReleases.clear(); adminReleases.addAll(rel)
+        adminAudit.clear(); adminAudit.addAll(aud)
+    }
+
+    fun setReleaseActive(r: Cloud.Release, active: Boolean) = adminRun {
+        withContext(Dispatchers.IO) { cloud.setReleaseActive(r.id, r.build, active) }
+        val (rel, aud) = withContext(Dispatchers.IO) { cloud.releases() to cloud.auditLog() }
+        adminReleases.clear(); adminReleases.addAll(rel)
+        adminAudit.clear(); adminAudit.addAll(aud)
+    }
     val adminStatsText = mutableStateOf("")
     val adminBusy = mutableStateOf(false)
 

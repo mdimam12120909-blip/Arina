@@ -805,7 +805,7 @@ private fun AdminPage(vm: ArinaEngine) {
     var section by rememberSaveable { mutableStateOf("Agent") }
     PageColumn {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Agent", "Facts", "Users", "Secrets").forEach { name ->
+            listOf("Agent", "Facts", "Users", "Updates", "Secrets", "Log").forEach { name ->
                 val on = section == name
                 Text(
                     name,
@@ -822,6 +822,8 @@ private fun AdminPage(vm: ArinaEngine) {
             "Agent" -> AdminAgent(vm)
             "Facts" -> AdminFacts(vm)
             "Users" -> AdminUsers(vm)
+            "Updates" -> AdminUpdates(vm)
+            "Log" -> AdminLog(vm)
             else -> AdminSecrets(vm)
         }
         vm.notice.value?.let { Text(it, color = Warn, fontSize = 12.sp, lineHeight = 17.sp) }
@@ -895,6 +897,90 @@ private fun AdminUsers(vm: ArinaEngine) {
                     }
                 }
             }
+        }
+    }
+}
+
+/** What an admin sees instead of the app: the console only. No assistant, no mic, no orb. */
+@Composable
+fun AdminConsole(vm: ArinaEngine, onLock: () -> Unit) {
+    Column(Modifier.fillMaxSize().background(ArinaColors.Background)) {
+        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Entrion Admin Console", color = ArinaColors.Text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Text(vm.accountEmail.value, color = ArinaColors.Muted, fontSize = 12.sp)
+            }
+            PillButton("Lock") { onLock() }
+            Spacer(Modifier.width(8.dp))
+            PillButton("Sign out") { vm.signOut() }
+        }
+        Box(Modifier.weight(1f).fillMaxWidth()) { AdminPage(vm) }
+        Spacer(Modifier.navigationBarsPadding())
+    }
+}
+
+@Composable
+private fun AdminUpdates(vm: ArinaEngine) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var notes by remember { mutableStateOf("") }
+    var force by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { vm.loadReleases(); vm.findBuilds() }
+    Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Update App", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        Text("Installed here: build ${com.arina.assistant.BuildConfig.VERSION_CODE}. Only a file named Entrion.apk from the project's GitHub releases can be published.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
+        LongField("What is new (shown to users)", notes) { notes = it }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Must update", color = ArinaColors.Text, fontSize = 14.sp)
+                Text("Users cannot skip it. Use only for urgent fixes.", color = ArinaColors.Muted, fontSize = 12.sp)
+            }
+            Switch(checked = force, onCheckedChange = { force = it }, colors = SwitchDefaults.colors())
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PillButton("Open GitHub in Chrome") {
+                runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/mdimam12120909-blip/Arina/releases")).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            }
+            PillButton("Find builds") { vm.findBuilds() }
+        }
+    }
+    SectionTitle("READY TO PUBLISH")
+    val published = vm.adminReleases.map { it.build }.toSet()
+    val fresh = vm.adminBuilds.filter { it.build !in published }
+    if (fresh.isEmpty()) Text(if (vm.adminBusy.value) "Loading…" else "Nothing new on GitHub.", color = ArinaColors.Muted, fontSize = 13.sp)
+    fresh.forEach { b ->
+        Row(Modifier.fillMaxWidth().glass().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Entrion.apk  |  build ${b.build}", color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                Text(b.date, color = ArinaColors.Muted, fontSize = 12.sp)
+            }
+            PillButton("Publish") { vm.publishBuild(b, notes, force); notes = ""; force = false }
+        }
+    }
+    SectionTitle("HISTORY")
+    if (vm.adminReleases.isEmpty()) Text("No update published yet.", color = ArinaColors.Muted, fontSize = 13.sp)
+    vm.adminReleases.forEach { r ->
+        Row(Modifier.fillMaxWidth().glass().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Build ${r.build}" + (if (r.force) "  |  must update" else "") + (if (!r.active) "  |  withdrawn" else ""), color = if (r.active) ArinaColors.Text else Warn, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                Text(r.date, color = ArinaColors.Muted, fontSize = 12.sp)
+                if (r.notes.isNotBlank()) Text(r.notes, color = ArinaColors.Text, fontSize = 12.sp, lineHeight = 17.sp)
+            }
+            Text(if (r.active) "Withdraw" else "Restore", color = Warn, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clickable { vm.setReleaseActive(r, !r.active) }.padding(6.dp))
+        }
+    }
+}
+
+@Composable
+private fun AdminLog(vm: ArinaEngine) {
+    LaunchedEffect(Unit) { vm.loadReleases() }
+    Text("Every admin action, newest first.", color = ArinaColors.Muted, fontSize = 12.sp)
+    if (vm.adminAudit.isEmpty()) Text(if (vm.adminBusy.value) "Loading…" else "Nothing logged yet.", color = ArinaColors.Muted, fontSize = 13.sp)
+    vm.adminAudit.forEach { a ->
+        Column(Modifier.fillMaxWidth().glass().padding(12.dp)) {
+            Text(a.action.replace('_', ' '), color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Text(a.detail, color = ArinaColors.Text, fontSize = 12.sp)
+            Text("${a.at}  |  ${a.actor}", color = ArinaColors.Muted, fontSize = 11.sp)
         }
     }
 }

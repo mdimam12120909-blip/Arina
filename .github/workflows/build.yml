@@ -46,7 +46,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk Arina.apk
-          gh release create "build-${{ github.run_number }}" Arina.apk \
-            --title "Arina build ${{ github.run_number }}" \
-            --notes "Download Arina.apk on your Android phone and install it."
+          cp app/build/outputs/apk/debug/app-debug.apk Entrion.apk
+          gh release create "build-${{ github.run_number }}" Entrion.apk \
+            --title "Entrion build ${{ github.run_number }}" \
+            --notes "Download Entrion.apk on your Android phone and install it."

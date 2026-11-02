@@ -6,7 +6,10 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -22,7 +25,7 @@ import com.arina.assistant.ui.ArinaEngine
 import com.arina.assistant.ui.ArinaTheme
 import com.arina.assistant.ui.MainScreen
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
 
     companion object {
         const val EXTRA_FROM_OVERLAY = "from_overlay"
@@ -78,8 +81,16 @@ class MainActivity : ComponentActivity() {
                     IntroScreen { introDone = true }
                     return@ArinaTheme
                 }
+                com.arina.assistant.ui.UpdatePrompt(engine)
                 if (!engine.signedIn.value && !engine.skippedSignIn.value) {
                     SignInScreen(engine)
+                    return@ArinaTheme
+                }
+                // An admin gets the console only: no assistant, no microphone, no floating orb.
+                if (engine.signedIn.value && engine.isAdmin.value) {
+                    androidx.compose.runtime.LaunchedEffect(Unit) { OverlayService.stop(this@MainActivity) }
+                    if (!engine.adminUnlocked.value) com.arina.assistant.ui.AdminGate(engine) { unlockAdmin() }
+                    else com.arina.assistant.ui.AdminConsole(engine) { engine.adminUnlocked.value = false }
                     return@ArinaTheme
                 }
                 MainScreen(
@@ -108,10 +119,44 @@ class MainActivity : ComponentActivity() {
             }
         }
         // Opening the app turns Arina on in the background, unless we came here from the floating avatar.
-        if (!intent.getBooleanExtra(EXTRA_FROM_OVERLAY, false) && hasMic() && Settings.canDrawOverlays(this)) {
+        if (!engine.isAdmin.value && !intent.getBooleanExtra(EXTRA_FROM_OVERLAY, false) && hasMic() && Settings.canDrawOverlays(this)) {
             wantsToStart = true
             startArina()
         }
+    }
+
+    /** Face (or fingerprint, or screen lock) check before the Admin Console opens. The server still decides who is an admin. */
+    private fun unlockAdmin() {
+        val strong = BiometricManager.Authenticators.BIOMETRIC_WEAK
+        val auth = if (Build.VERSION.SDK_INT >= 30) strong or BiometricManager.Authenticators.DEVICE_CREDENTIAL else strong
+        val can = BiometricManager.from(this).canAuthenticate(auth)
+        if (can != BiometricManager.BIOMETRIC_SUCCESS) {
+            // The phone has no face / fingerprint / screen lock set up, so there is nothing to check against.
+            engine.notice.value = "Set a screen lock on this phone to protect the Admin Console."
+            engine.adminUnlocked.value = true
+            return
+        }
+        val prompt = BiometricPrompt(this, ContextCompat.getMainExecutor(this), object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                engine.notice.value = null
+                engine.adminUnlocked.value = true
+            }
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                engine.notice.value = errString.toString().take(120)
+            }
+        })
+        val info = BiometricPrompt.PromptInfo.Builder()
+            .setTitle("Unlock Admin Console")
+            .setSubtitle("Look at the phone or use your screen lock")
+            .setAllowedAuthenticators(auth)
+            .apply { if (Build.VERSION.SDK_INT < 30) setNegativeButtonText("Cancel") }
+            .build()
+        prompt.authenticate(info)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        engine.adminUnlocked.value = false   // the console locks itself whenever the app leaves the screen
     }
 
     override fun onNewIntent(intent: Intent) {
