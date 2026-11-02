@@ -59,9 +59,9 @@ fun moodTint(persona: Persona, mood: Mood): Color = when (mood) {
 fun accentOf(persona: Persona): Color = if (persona == Persona.Arina) Color(0xFFEC4899) else Color(0xFF2563EB)
 
 /** Colours of one orb: the white-hot core, a light tone, a mid tone and a deep tone. */
-private class OrbPalette(val core: Color, val light: Color, val mid: Color, val deep: Color)
+internal class OrbPalette(val core: Color, val light: Color, val mid: Color, val deep: Color)
 
-private fun paletteOf(persona: Persona, mood: Mood): OrbPalette {
+internal fun paletteOf(persona: Persona, mood: Mood): OrbPalette {
     val base = if (persona == Persona.Arina)
         OrbPalette(Color(0xFFFFF4FA), Color(0xFFFF9AD5), Color(0xFFF0449F), Color(0xFF9D4EDD))
     else
@@ -174,7 +174,7 @@ private const val BUCKETS = 15   // 4 depths x 3 tones, then 3 sparkle levels
  * apart and fade, so the orb melts into the screen.
  */
 @Composable
-fun OrbView(persona: Persona, mood: Mood, level: Float, modifier: Modifier = Modifier, dissolve: Float = 0f, backdrop: Boolean = false) {
+internal fun ParticleOrb(persona: Persona, mood: Mood, level: Float, modifier: Modifier = Modifier, dissolve: Float = 0f, backdrop: Boolean = false) {
     var time by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(Unit) {
         val start = withFrameNanos { it }
