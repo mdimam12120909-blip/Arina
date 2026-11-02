@@ -96,7 +96,7 @@ private class Cloud(val n: Int) {
 /** Blue "Rasengan": a swirling sphere of light. Kinds: 0 swirl body, 1 orbiting ring, 2 white-hot core, 3 outer mist. */
 private fun buildRasengan(): Cloud {
     val rnd = java.util.Random(11L)
-    val body = 820; val ring = 2 * 64; val core = 170; val mist = 140
+    val body = 1000; val ring = 2 * 64; val core = 170; val mist = 140
     val c = Cloud(body + ring + core + mist)
     var i = 0
     for (j in 0 until body) {
@@ -104,7 +104,7 @@ private fun buildRasengan(): Cloud {
         val u = rnd.nextFloat() * 2f - 1f
         val rad = 0.52f + 0.48f * sqrt(rnd.nextFloat())
         c.u[i] = u; c.rad[i] = rad; c.kind[i] = 0; c.arm[i] = k
-        c.a[i] = k * TWO_PI / 8f + u * 2.4f + (rnd.nextFloat() - 0.5f) * 0.20f   // lines up the specks into curved streams
+        c.a[i] = k * TWO_PI / 8f + u * 2.4f + (rnd.nextFloat() - 0.5f) * 0.10f   // lines up the specks into curved streams
         c.tone[i] = if (rad < 0.72f) 1 else 2
         c.scatter(i, rnd); i++
     }
@@ -131,13 +131,13 @@ private fun buildRasengan(): Cloud {
 /** Pink galaxy: three spiral arms, a glowing bulge, a faint halo and twinkling sparkles. Kinds: 0 arm, 1 bulge, 2 halo, 3 sparkle. */
 private fun buildGalaxy(): Cloud {
     val rnd = java.util.Random(7L)
-    val per = 330; val arms = 3; val bulge = 170; val halo = 230; val spark = 110
+    val per = 380; val arms = 3; val bulge = 170; val halo = 230; val spark = 110
     val c = Cloud(per * arms + bulge + halo + spark)
     var i = 0
     for (k in 0 until arms) for (j in 0 until per) {
         val s = (j + 1) / per.toFloat()
         c.rad[i] = 0.07f + 0.90f * s
-        c.a[i] = k * TWO_PI / arms + s * 6.0f + (rnd.nextFloat() - 0.5f) * (0.15f + 0.55f * s)
+        c.a[i] = k * TWO_PI / arms + s * 6.0f + (rnd.nextFloat() - 0.5f) * (0.08f + 0.40f * s)
         c.u[i] = (rnd.nextFloat() + rnd.nextFloat() - 1f) * 0.12f * (1f - 0.5f * s)
         c.kind[i] = 0; c.arm[i] = k
         c.tone[i] = if (s < 0.30f) 0 else if (s < 0.68f) 1 else 2
@@ -174,7 +174,7 @@ private const val BUCKETS = 15   // 4 depths x 3 tones, then 3 sparkle levels
  * apart and fade, so the orb melts into the screen.
  */
 @Composable
-fun OrbView(persona: Persona, mood: Mood, level: Float, modifier: Modifier = Modifier, dissolve: Float = 0f) {
+fun OrbView(persona: Persona, mood: Mood, level: Float, modifier: Modifier = Modifier, dissolve: Float = 0f, backdrop: Boolean = false) {
     var time by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(Unit) {
         val start = withFrameNanos { it }
@@ -220,6 +220,14 @@ fun OrbView(persona: Persona, mood: Mood, level: Float, modifier: Modifier = Mod
         val ct = cos(tilt); val st = sin(tilt)
         val spreadK = d * 1.5f * r
 
+        // a deep, soft night behind the orb (only where asked), so white light shows on a white screen
+        if (backdrop) drawCircle(
+            Brush.radialGradient(
+                listOf(Color(0xFF0A1B4D).copy(alpha = 0.96f * fade), Color(0xFF071236).copy(alpha = 0.80f * fade), Color.Transparent),
+                center = c, radius = base * 1.0f
+            ),
+            radius = base * 1.0f, center = c
+        )
         // soft glow behind the specks (so the white-hot parts show on a light screen too)
         drawCircle(
             Brush.radialGradient(listOf(tintMid.copy(alpha = (0.24f + 0.26f * energy) * fade), Color.Transparent), center = c, radius = r * 1.9f),
@@ -313,15 +321,20 @@ fun OrbView(persona: Persona, mood: Mood, level: Float, modifier: Modifier = Mod
                 if (b >= 12) {
                     col = lerp(tintLight, pal.core, 0.7f)
                     dAlpha = when (b) { 12 -> 0.18f; 13 -> 0.55f; else -> 1f }
-                    w = base * (0.010f + 0.020f * (b - 11) / 3f)
+                    w = base * (0.016f + 0.026f * (b - 11) / 3f)
                 } else {
                     val dc = b / 3; val tone = b % 3
                     col = when (tone) { 0 -> pal.core; 1 -> tintLight; else -> lerp(tintMid, tintDeep, 0.45f * (1f - dc / 3f)) }
                     dAlpha = 0.20f + 0.80f * (dc + 0.5f) / 4f
-                    w = base * (0.008f + 0.013f * (dc + 0.5f) / 4f) * (if (tone == 0) 1.3f else if (tone == 1) 1.05f else 0.9f)
+                    w = base * (0.014f + 0.016f * (dc + 0.5f) / 4f) * (if (tone == 0) 1.35f else if (tone == 1) 1.1f else 0.95f)
                 }
+                val ww = max(w, 1.0f * density)
+                // a wide faint pass first (the glow around each speck), then the speck itself
+                paint.color = col.copy(alpha = (dAlpha * bright * fade * 0.20f).coerceIn(0f, 1f)).toArgb()
+                paint.strokeWidth = ww * 3.4f
+                nc.drawPoints(pts[b], 0, cnt[b] * 2, paint)
                 paint.color = col.copy(alpha = (dAlpha * bright * fade).coerceIn(0f, 1f)).toArgb()
-                paint.strokeWidth = max(w, 0.8f * density)
+                paint.strokeWidth = ww
                 nc.drawPoints(pts[b], 0, cnt[b] * 2, paint)
             }
         }

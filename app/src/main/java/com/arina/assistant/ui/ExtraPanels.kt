@@ -53,8 +53,8 @@ private val Bad = Color(0xFFFF5C6C)
 
 private fun card(strong: Boolean = false) = Modifier
     .clip(RoundedCornerShape(20.dp))
-    .background(Brush.verticalGradient(if (strong) listOf(Color(0x550B5FFF), Color(0x33071A33)) else listOf(Color(0x260B5FFF), Color(0x66071A33))))
-    .border(1.dp, Brush.linearGradient(listOf(ArinaColors.Glow.copy(alpha = 0.55f), ArinaColors.Deep.copy(alpha = 0.15f))), RoundedCornerShape(20.dp))
+    .background(if (strong) ArinaColors.Glow.copy(alpha = if (ArinaColors.dark) 0.18f else 0.10f) else ArinaColors.Surface)
+    .border(1.dp, if (strong) ArinaColors.Glow.copy(alpha = 0.55f) else ArinaColors.Deep, RoundedCornerShape(20.dp))
 
 @Composable
 private fun Chip(text: String, color: Color, filled: Boolean = false, onClick: () -> Unit) {

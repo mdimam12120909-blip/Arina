@@ -115,8 +115,8 @@ fun Stage(engine: ArinaEngine, modifier: Modifier = Modifier) {
 private fun panel(strong: Boolean = false): Modifier =
     Modifier
         .clip(RoundedCornerShape(22.dp))
-        .background(Brush.verticalGradient(if (strong) listOf(Color(0xF00B2A55), Color(0xF2041634)) else listOf(Color(0xEE0A1E40), Color(0xF2041020))))
-        .border(1.dp, Brush.linearGradient(listOf(ArinaColors.Glow.copy(alpha = 0.7f), ArinaColors.Deep.copy(alpha = 0.2f))), RoundedCornerShape(22.dp))
+        .background(if (strong) ArinaColors.Surface.copy(alpha = 0.99f) else ArinaColors.Surface.copy(alpha = 0.97f))
+        .border(if (strong) 1.5.dp else 1.dp, ArinaColors.Glow.copy(alpha = if (strong) 0.8f else 0.5f), RoundedCornerShape(22.dp))
 
 @Composable
 private fun ApprovalCard(a: Approval, onAnswer: (Boolean) -> Unit) {

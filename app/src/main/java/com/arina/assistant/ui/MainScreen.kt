@@ -58,6 +58,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.ui.graphics.compositeOver
 import com.arina.assistant.Brand
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -313,7 +314,7 @@ private fun HomePanel(vm: ArinaEngine, onMicClick: () -> Unit) {
         BoxWithConstraints(Modifier.fillMaxWidth().height(300.dp), contentAlignment = Alignment.Center) {
             OrbView(
                 persona = persona, mood = mood, level = vm.level.floatValue,
-                modifier = Modifier.size(minOf(maxWidth, 290.dp))
+                modifier = Modifier.size(minOf(maxWidth, 300.dp)), backdrop = true
             )
             Text(
                 mood.label, color = accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
@@ -480,14 +481,19 @@ private fun SoulPanel(vm: ArinaEngine) {
             val shape = RoundedCornerShape(24.dp)
             Row(
                 Modifier.fillMaxWidth().clip(shape)
-                    .background(Brush.horizontalGradient(listOf(color.copy(alpha = if (sel) 0.28f else 0.08f), Color(0xAA041020))))
-                    .border(if (sel) 2.dp else 1.dp, color.copy(alpha = if (sel) 1f else 0.4f), shape)
+                    .background(if (sel) color.copy(alpha = 0.08f).compositeOver(ArinaColors.Surface) else ArinaColors.Surface)
+                    .border(if (sel) 2.dp else 1.dp, color.copy(alpha = if (sel) 1f else 0.35f), shape)
                     .clickable { vm.switchPersona(p) }
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                OrbView(p, Mood.Standby, 0f, Modifier.size(120.dp))
-                Spacer(Modifier.width(10.dp))
+                // the orb sits in a dark "portal" so its light shows up on the white screen
+                Box(
+                    Modifier.size(124.dp).clip(RoundedCornerShape(20.dp))
+                        .background(Brush.radialGradient(listOf(Color(0xFF16367A), Color(0xFF071236), Color(0xFF040A1E)))),
+                    contentAlignment = Alignment.Center
+                ) { OrbView(p, if (sel) Mood.Listening else Mood.Standby, 0f, Modifier.size(124.dp)) }
+                Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(p.displayName.uppercase(), color = ArinaColors.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
                     Text(if (p == Persona.Arina) "Female voice · pink" else "Male voice · blue", color = color, fontSize = 12.sp)
