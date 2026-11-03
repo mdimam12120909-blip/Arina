@@ -194,9 +194,10 @@ fun OrbView(persona: Persona, mood: Mood, level: Float, modifier: Modifier = Mod
         val base = min(size.width, size.height) / 2f
         val c = Offset(size.width / 2f, size.height / 2f)
         val talk = if (mood == Mood.Speaking) (0.5f + 0.5f * sin(time * 9f) * sin(time * 5.3f + 1f)).coerceIn(0f, 1f) else 0f
+        val tint = if (male) Color(0xFF3B7BFF) else Color(0xFFE45AA8)   // a soft colour behind the orb, never black
         if (backdrop) drawCircle(
             Brush.radialGradient(
-                listOf(Color(0xFF0A1B4D).copy(alpha = 0.96f * fade), Color(0xFF071236).copy(alpha = 0.80f * fade), Color.Transparent),
+                listOf(tint.copy(alpha = 0.50f * fade), tint.copy(alpha = 0.24f * fade), Color.Transparent),
                 center = c, radius = base
             ),
             radius = base, center = c

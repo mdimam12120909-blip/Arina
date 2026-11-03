@@ -221,9 +221,10 @@ internal fun ParticleOrb(persona: Persona, mood: Mood, level: Float, modifier: M
         val spreadK = d * 1.5f * r
 
         // a deep, soft night behind the orb (only where asked), so white light shows on a white screen
+        val tint = if (male) Color(0xFF3B7BFF) else Color(0xFFE45AA8)   // a soft colour behind the orb, never black
         if (backdrop) drawCircle(
             Brush.radialGradient(
-                listOf(Color(0xFF0A1B4D).copy(alpha = 0.96f * fade), Color(0xFF071236).copy(alpha = 0.80f * fade), Color.Transparent),
+                listOf(tint.copy(alpha = 0.50f * fade), tint.copy(alpha = 0.24f * fade), Color.Transparent),
                 center = c, radius = base * 1.0f
             ),
             radius = base * 1.0f, center = c
