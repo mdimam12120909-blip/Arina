@@ -47,6 +47,7 @@ float hash(float2 p) { return fract(sin(dot(p, float2(12.9898, 78.233))) * 43758
     private const val MALE = HEAD + """
 half4 main(float2 fc) {
   float2 p = (fc - 0.5 * res) / (0.5 * min(res.x, res.y));
+  float edge = 1.0 - smoothstep(0.70, 0.98, length(p));
   float2 cell = floor(p * 46.0);
   p += (float2(hash(cell), hash(cell + 7.3)) - 0.5) * melt * 1.6;
   float r = length(p);
@@ -84,7 +85,7 @@ half4 main(float2 fc) {
   float3 rgb = b * I + cLight * halo + cLight * ring + cCore * core + cCore * sp;
   float al = clamp(max(max(max(I, halo * 0.8), max(ring, core)), sp), 0.0, 1.0);
   float fade = pow(1.0 - melt, 1.5);
-  al *= fade;
+  al *= fade * edge;
   rgb = clamp(rgb, 0.0, 1.0);
   return half4(half3(rgb * al), half(al));
 }
@@ -94,6 +95,7 @@ half4 main(float2 fc) {
     private const val FEMALE = HEAD + """
 half4 main(float2 fc) {
   float2 p = (fc - 0.5 * res) / (0.5 * min(res.x, res.y));
+  float edge = 1.0 - smoothstep(0.70, 0.98, length(p));
   float2 cell = floor(p * 46.0);
   p += (float2(hash(cell), hash(cell + 7.3)) - 0.5) * melt * 1.6;
   p = p / (1.0 + 0.10 * level);
@@ -116,7 +118,7 @@ half4 main(float2 fc) {
   float3 rgb = body * I + cMid * halo + cCore * core * 1.2 + cCore * stars;
   float al = clamp(max(max(I, halo * 0.9), max(core, stars)), 0.0, 1.0);
   float fade = pow(1.0 - melt, 1.5);
-  al *= fade;
+  al *= fade * edge;
   rgb = clamp(rgb, 0.0, 1.0);
   return half4(half3(rgb * al), half(al));
 }
