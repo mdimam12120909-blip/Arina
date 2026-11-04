@@ -158,7 +158,8 @@ class ArinaEngine private constructor(private val app: Application) {
     private val memory = Memory(app)
 
     // Which assistant is active (remembered between launches)
-    private val uiPrefs = com.arina.assistant.cloud.Local.prefs(app, "arina_ui")
+    internal val uiPrefs = com.arina.assistant.cloud.Local.prefs(app, "arina_ui")
+    init { OrbChoice.load(com.arina.assistant.cloud.Local.prefs(app, "arina_ui")) }
     val persona = mutableStateOf(
         runCatching { Persona.valueOf(uiPrefs.getString("persona", "Arina").orEmpty()) }.getOrDefault(Persona.Arina)
     )

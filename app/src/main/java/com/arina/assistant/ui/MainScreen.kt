@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -497,10 +498,9 @@ private fun SoulPanel(vm: ArinaEngine) {
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // the orb sits in a dark "portal" so its light shows up on the white screen
                 Box(
                     Modifier.size(124.dp).clip(RoundedCornerShape(20.dp))
-                        .background(Brush.radialGradient(listOf(Color(0xFF16367A), Color(0xFF071236), Color(0xFF040A1E)))),
+                        .background(Brush.radialGradient(listOf(color.copy(alpha = 0.16f).compositeOver(ArinaColors.Background), ArinaColors.Background))),
                     contentAlignment = Alignment.Center
                 ) { OrbView(p, if (sel) Mood.Listening else Mood.Standby, 0f, Modifier.size(124.dp)) }
                 Spacer(Modifier.width(14.dp))
@@ -508,6 +508,27 @@ private fun SoulPanel(vm: ArinaEngine) {
                     Text(p.displayName.uppercase(), color = ArinaColors.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
                     Text(if (p == Persona.Arina) "Female voice · pink" else "Male voice · blue", color = color, fontSize = 12.sp)
                     Text(if (sel) "ACTIVE" else "Tap to switch", color = if (sel) Good else ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 2.sp)
+                }
+            }
+        }
+        val cur = vm.persona.value
+        val curColor = accentOf(cur)
+        SectionTitle(if (cur == Persona.Arina) "ORB DESIGN - FEMALE AGENT" else "ORB DESIGN - MALE AGENT")
+        Text("Pick the look of the orb. It moves with the voice and changes colour with the mood.", color = ArinaColors.Muted, fontSize = 12.sp)
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OrbChoice.names(cur).forEachIndexed { i, name ->
+                val on = OrbChoice.of(cur) == i
+                val tile = RoundedCornerShape(20.dp)
+                Column(
+                    Modifier.width(112.dp).clip(tile)
+                        .background(if (on) curColor.copy(alpha = 0.08f).compositeOver(ArinaColors.Surface) else ArinaColors.Surface)
+                        .border(if (on) 2.dp else 1.dp, curColor.copy(alpha = if (on) 1f else 0.30f), tile)
+                        .clickable { OrbChoice.set(vm.uiPrefs, cur, i) }
+                        .padding(vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    OrbView(cur, Mood.Listening, 0f, Modifier.size(104.dp), style = i)
+                    Text(name, color = if (on) curColor else ArinaColors.Text, fontSize = 12.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium)
                 }
             }
         }

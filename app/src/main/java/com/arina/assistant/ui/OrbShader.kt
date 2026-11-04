@@ -125,14 +125,28 @@ half4 main(float2 fc) {
 """
 
     /** The program for one orb, or null when this phone cannot run it. Never throws. */
-    fun create(male: Boolean): Holder? {
+    fun create(male: Boolean, style: Int = 0): Holder? {
         if (Build.VERSION.SDK_INT < 33) return null
-        return try { make(male) } catch (e: Throwable) { null }
+        return try { make(male, style) } catch (e: Throwable) { null }
+    }
+
+    private fun source(male: Boolean, style: Int): String = if (male) when (style) {
+        1 -> OrbDesigns.MALE1_STORM
+        2 -> OrbDesigns.MALE2_RINGED
+        3 -> OrbDesigns.MALE3_APERTURE
+        4 -> OrbDesigns.MALE4_ATOM
+        else -> MALE
+    } else when (style) {
+        1 -> OrbDesigns.FEM1_FLUID
+        2 -> OrbDesigns.FEM2_VOICE
+        3 -> OrbDesigns.FEM3_PEARL
+        4 -> OrbDesigns.FEM4_BLOOM
+        else -> FEMALE
     }
 
     @RequiresApi(33)
-    private fun make(male: Boolean): Holder {
-        val sh = android.graphics.RuntimeShader(if (male) MALE else FEMALE)
+    private fun make(male: Boolean, style: Int): Holder {
+        val sh = android.graphics.RuntimeShader(source(male, style))
         return Holder(sh, ShaderBrush(sh))
     }
 
@@ -151,6 +165,24 @@ half4 main(float2 fc) {
     }
 }
 
+/** Which of the five designs each agent uses. Saved per account. */
+object OrbChoice {
+    val maleNames = listOf("Vortex", "Storm", "Ringed", "Aperture", "Atom")
+    val femaleNames = listOf("Galaxy", "Fluid", "Voice rings", "Pearl", "Bloom")
+    val male = androidx.compose.runtime.mutableIntStateOf(0)
+    val female = androidx.compose.runtime.mutableIntStateOf(0)
+    fun of(persona: Persona): Int = if (persona == Persona.Aurion) male.intValue else female.intValue
+    fun names(persona: Persona) = if (persona == Persona.Aurion) maleNames else femaleNames
+    fun load(prefs: android.content.SharedPreferences) {
+        male.intValue = prefs.getInt("orb_male", 0).coerceIn(0, 4)
+        female.intValue = prefs.getInt("orb_female", 0).coerceIn(0, 4)
+    }
+    fun set(prefs: android.content.SharedPreferences, persona: Persona, i: Int) {
+        if (persona == Persona.Aurion) { male.intValue = i; prefs.edit().putInt("orb_male", i).apply() }
+        else { female.intValue = i; prefs.edit().putInt("orb_female", i).apply() }
+    }
+}
+
 /**
  * The agent's orb. Blue (male): a Rasengan. Pink (female): a small galaxy.
  * [mood] sets speed and brightness, [level] is the microphone loudness. [dissolve] (0 to 1) breaks the orb into
@@ -158,9 +190,10 @@ half4 main(float2 fc) {
  * its light shows on a white screen.
  */
 @Composable
-fun OrbView(persona: Persona, mood: Mood, level: Float, modifier: Modifier = Modifier, dissolve: Float = 0f, backdrop: Boolean = false) {
+fun OrbView(persona: Persona, mood: Mood, level: Float, modifier: Modifier = Modifier, dissolve: Float = 0f, backdrop: Boolean = false, style: Int = -1) {
     val male = persona == Persona.Aurion
-    val holder = remember(male) { OrbShaders.create(male) }
+    val design = if (style >= 0) style else OrbChoice.of(persona)
+    val holder = remember(male, design) { OrbShaders.create(male, design) }
     if (holder == null) {
         ParticleOrb(persona, mood, level, modifier, dissolve, backdrop)
         return
