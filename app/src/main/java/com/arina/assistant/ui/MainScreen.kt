@@ -148,7 +148,15 @@ fun MainScreen(
         gesturesEnabled = page == Page.Home || drawer.isOpen,
         drawerContent = { AppDrawer(vm, page, ::open) }
     ) {
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(ArinaColors.Background, ArinaColors.Background.mix(ArinaColors.Glow, 0.07f))))) {
+        val ambient = Color(OrbChoice.hues[OrbChoice.hueOf(vm.persona.value)].mid)
+        Box(
+            Modifier.fillMaxSize()
+                .background(ArinaColors.Background)
+                .background(Brush.radialGradient(
+                    colors = listOf(ambient.copy(alpha = 0.30f), ambient.copy(alpha = 0.10f), Color.Transparent),
+                    center = androidx.compose.ui.geometry.Offset(540f, 620f), radius = 1100f
+                ))
+        ) {
             Column(Modifier.fillMaxSize().imePadding()) {
                 Header(
                     vm, page, onPower,

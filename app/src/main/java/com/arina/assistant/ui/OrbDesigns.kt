@@ -266,4 +266,115 @@ float4 shade(float2 p){
 
 """ + TAIL
 
+
+    val ORB_MESH = HEAD + """
+float4 shade(float2 p){
+ float a=atan(p.y,p.x);float r=length(p);
+ float R=0.66*(1.0+0.04*level);
+ float disp=(fbm(float2(a*1.6+t*0.30,t*0.2))-0.5)*(0.22+0.30*energy+0.45*level);
+ float rr=R*(1.0+disp*0.40);
+ float k=r/rr;
+ float al=0.0;float3 col=float3(0.0);
+ if(k<1.0){
+  float z=sqrt(1.0-k*k);float3 n=float3(p/rr,z);
+  float ca=cos(t*0.25);float sa=sin(t*0.25);float tl=0.30;float ct=cos(tl);float st=sin(tl);
+  float3 q=float3(n.x*ca+n.z*sa,n.y,-n.x*sa+n.z*ca);
+  float3 u=float3(q.x,q.y*ct-q.z*st,q.y*st+q.z*ct);
+  float lat=asin(clamp(u.y,-1.0,1.0));float lon=atan(u.x,u.z);
+  float amp=0.10+0.10*energy+0.20*level;
+  float w1=(fbm(float2(lon*1.4+t*0.35,lat*1.4-t*0.2))-0.5)*amp*2.0;
+  float w2=(fbm(float2(lon*1.4-t*0.25+5.0,lat*1.4+t*0.3))-0.5)*amp*2.0;
+  float wv=fbm(float2(lon*2.0+t*0.4,lat*2.0-t*0.3));
+
+  float la=(lat+w1)*26.0/3.14159;float lo=(lon+w2)*36.0/6.28318;
+  float gx=abs(fract(lo)-0.5);float gy=abs(fract(la)-0.5);
+  float lw=0.30+0.05*z;
+  float line=max(smoothstep(lw,0.5,gx),smoothstep(lw,0.5,gy));
+  float node=smoothstep(lw,0.5,gx)*smoothstep(lw,0.5,gy);
+  float rim=pow(1.0-z,1.3);
+  float tone=clamp(0.5+0.55*u.x+0.25*u.y+0.25*wv,0.0,1.0);
+  col=ramp(clamp(tone*0.8+0.25*rim,0.0,1.0));
+  al=line*(0.40+0.55*rim+0.30*wv+0.2*level)+node*0.35+0.12*rim;
+
+ }
+ float dust=0.0;
+ float2 g=p*85.0;float h=hash(floor(g));float2 f=fract(g)-0.5;
+ float band=smoothstep(rr*0.98,rr*1.04,r)*(1.0-smoothstep(rr*1.05,rr*1.30,r));
+ dust=step(0.92,h)*(1.0-smoothstep(0.0,0.40,length(f)))*band*(0.4+0.5*sin(t*2.5+h*30.0));
+ float glow=exp(-max(r-rr,0.0)*8.0)*0.30*(0.5+energy);
+ float tot=al+dust+glow;
+ return pm((col*al+cLight*dust+cMid*glow)/max(tot,0.001),tot);}
+""" + TAIL
+
+    val ORB_RIPPLE = HEAD + """
+float4 shade(float2 p){
+ float a=atan(p.y,p.x);float r=length(p);
+ float R=0.66*(1.0+0.04*level);
+ float disp=(fbm(float2(a*1.6+t*0.30,t*0.2))-0.5)*(0.22+0.30*energy+0.45*level);
+ float rr=R*(1.0+disp*0.40);
+ float k=r/rr;
+ float al=0.0;float3 col=float3(0.0);
+ if(k<1.0){
+  float z=sqrt(1.0-k*k);float3 n=float3(p/rr,z);
+  float ca=cos(t*0.25);float sa=sin(t*0.25);float tl=0.30;float ct=cos(tl);float st=sin(tl);
+  float3 q=float3(n.x*ca+n.z*sa,n.y,-n.x*sa+n.z*ca);
+  float3 u=float3(q.x,q.y*ct-q.z*st,q.y*st+q.z*ct);
+  float lat=asin(clamp(u.y,-1.0,1.0));float lon=atan(u.x,u.z);
+  float amp=0.10+0.10*energy+0.20*level;
+  float w1=(fbm(float2(lon*1.4+t*0.35,lat*1.4-t*0.2))-0.5)*amp*2.0;
+  float w2=(fbm(float2(lon*1.4-t*0.25+5.0,lat*1.4+t*0.3))-0.5)*amp*2.0;
+  float wv=fbm(float2(lon*2.0+t*0.4,lat*2.0-t*0.3));
+
+  float la=lat+w1;float lo=lon+w2;
+  float dl=3.14159/84.0;float li=floor(la/dl+0.5);float latc=li*dl;
+  float nl=max(1.0,floor(176.0*cos(clamp(latc,-1.5,1.5))));float dlon=6.28318/nl;
+  float lj=floor(lo/dlon+0.5);float lonc=lj*dlon;
+  float dy=(la-latc)/dl;float dx=(lo-lonc)/dlon;
+  float dist=length(float2(dx,dy));
+  float dotm=1.0-smoothstep(0.18,0.46,dist);
+  float rim=pow(1.0-z,1.6);
+  float fold=smoothstep(0.35,0.85,wv);
+  float b=0.22+0.55*rim+0.75*fold*fold+0.25*level;
+  col=ramp(clamp(0.30+0.5*rim+0.45*fold,0.0,1.0));
+  al=dotm*b;
+
+ }
+ float dust=0.0;
+ float2 g=p*85.0;float h=hash(floor(g));float2 f=fract(g)-0.5;
+ float band=smoothstep(rr*0.98,rr*1.04,r)*(1.0-smoothstep(rr*1.05,rr*1.30,r));
+ dust=step(0.92,h)*(1.0-smoothstep(0.0,0.40,length(f)))*band*(0.4+0.5*sin(t*2.5+h*30.0));
+ float glow=exp(-max(r-rr,0.0)*8.0)*0.30*(0.5+energy);
+ float tot=al+dust+glow;
+ return pm((col*al+cLight*dust+cMid*glow)/max(tot,0.001),tot);}
+""" + TAIL
+
+    val ORB_PLASMA = HEAD + """
+float4 shade(float2 p){
+ float r=length(p);float R=0.70;float k=r/R;
+ float al=0.0;float3 col=float3(0.0);
+ float ang=atan(p.y,p.x);
+ if(k<1.0){
+  float z=sqrt(1.0-k*k);
+  float2 w=float2(fbm(p*2.0+float2(t*0.25,0.0)),fbm(p*2.0+float2(4.0,-t*0.22)));
+  float2 q=p*(2.4+1.2*energy)+(w-0.5)*(1.4+1.2*level);
+  float v1=fbm(q+float2(t*0.35,-t*0.2));
+  float v2=fbm(q*1.4+float2(-t*0.3,t*0.25)+9.0);
+  float r1=1.0-abs(v1*2.0-1.0);float r2=1.0-abs(v2*2.0-1.0);
+  float fil=pow(r1,9.0)+0.6*pow(r2,11.0);
+  float rad=exp(-k*1.7);
+  float fa=fil*(0.35+1.4*rad)*(0.7+0.6*energy+0.5*level);
+  float core=exp(-pow(k/(0.13+0.06*level),2.0));
+  float inner=exp(-k*3.2)*0.55*(0.6+energy);
+  float rim=pow(1.0-z,2.4);
+  float spec=exp(-pow(length(p-float2(-0.26,0.30))/0.14,2.0))*0.55;
+  float glass=0.10+0.45*rim;
+  float tone=clamp(0.35+0.55*fa+0.4*core,0.0,1.0);
+  col=ramp(tone);
+  col=mix(col,cCore,clamp(core*1.2+spec,0.0,1.0));
+  al=clamp(fa*0.85+core*1.2+inner+glass+spec,0.0,1.0);
+ }
+ float glow=exp(-max(r-R,0.0)*9.0)*0.30*(0.5+energy);
+ float tot=al+glow;
+ return pm((col*al+cMid*glow)/max(tot,0.001),tot);}
+""" + TAIL
 }

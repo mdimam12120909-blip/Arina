@@ -130,17 +130,12 @@ half4 main(float2 fc) {
         return try { make(male, style) } catch (e: Throwable) { null }
     }
 
-    private fun source(male: Boolean, style: Int): String = if (male) when (style) {
-        1 -> OrbDesigns.MALE1_STORM
-        2 -> OrbDesigns.MALE2_TESSERACT
-        3 -> OrbDesigns.MALE3_CRYSTAL
-        4 -> OrbDesigns.MALE4_ATOM
-        else -> MALE
-    } else when (style) {
+    /** Both agents share one list of five designs. */
+    private fun source(male: Boolean, style: Int): String = when (style) {
         1 -> OrbDesigns.FEM1_FLUID
-        2 -> OrbDesigns.FEM2_VOICE
-        3 -> OrbDesigns.FEM3_PEARL
-        4 -> OrbDesigns.FEM4_MANDALA
+        2 -> OrbDesigns.ORB_MESH
+        3 -> OrbDesigns.ORB_RIPPLE
+        4 -> OrbDesigns.ORB_PLASMA
         else -> OrbDesigns.FEM0_FLOWER
     }
 
@@ -167,8 +162,7 @@ half4 main(float2 fc) {
 
 /** Which of the five designs each agent uses. Saved per account. */
 object OrbChoice {
-    val maleNames = listOf("Vortex", "Storm", "Tesseract", "Crystal", "Atom")
-    val femaleNames = listOf("Flower", "Fluid", "Voice rings", "Pearl", "Mandala")
+    val allNames = listOf("Flower", "Fluid", "Mesh", "Ripple", "Plasma")
     /** Colours are free for both agents: name, core, light, mid, deep. */
     class Hue(val name: String, val core: Long, val light: Long, val mid: Long, val deep: Long)
     val hues = listOf(
@@ -188,19 +182,19 @@ object OrbChoice {
         if (persona == Persona.Aurion) { maleHue.intValue = i; prefs.edit().putInt("orb_male_hue", i).apply() }
         else { femaleHue.intValue = i; prefs.edit().putInt("orb_female_hue", i).apply() }
     }
-    val male = androidx.compose.runtime.mutableIntStateOf(0)
+    val male = androidx.compose.runtime.mutableIntStateOf(2)
     val female = androidx.compose.runtime.mutableIntStateOf(0)
     fun of(persona: Persona): Int = if (persona == Persona.Aurion) male.intValue else female.intValue
-    fun names(persona: Persona) = if (persona == Persona.Aurion) maleNames else femaleNames
+    fun names(persona: Persona) = allNames
     fun load(prefs: android.content.SharedPreferences) {
-        male.intValue = prefs.getInt("orb_male", 0).coerceIn(0, 4)
-        female.intValue = prefs.getInt("orb_female", 0).coerceIn(0, 4)
+        male.intValue = prefs.getInt("orb5_male", 2).coerceIn(0, 4)
+        female.intValue = prefs.getInt("orb5_female", 0).coerceIn(0, 4)
         maleHue.intValue = prefs.getInt("orb_male_hue", 0).coerceIn(0, hues.size - 1)
         femaleHue.intValue = prefs.getInt("orb_female_hue", 1).coerceIn(0, hues.size - 1)
     }
     fun set(prefs: android.content.SharedPreferences, persona: Persona, i: Int) {
-        if (persona == Persona.Aurion) { male.intValue = i; prefs.edit().putInt("orb_male", i).apply() }
-        else { female.intValue = i; prefs.edit().putInt("orb_female", i).apply() }
+        if (persona == Persona.Aurion) { male.intValue = i; prefs.edit().putInt("orb5_male", i).apply() }
+        else { female.intValue = i; prefs.edit().putInt("orb5_female", i).apply() }
     }
 }
 
