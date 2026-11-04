@@ -532,6 +532,21 @@ private fun SoulPanel(vm: ArinaEngine) {
                 }
             }
         }
+        SectionTitle("ORB COLOUR")
+        Text("Any colour for either agent.", color = ArinaColors.Muted, fontSize = 12.sp)
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OrbChoice.hues.forEachIndexed { i, h ->
+                val on = OrbChoice.hueOf(cur) == i
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { OrbChoice.setHue(vm.uiPrefs, cur, i) }) {
+                    Box(
+                        Modifier.size(46.dp).clip(RoundedCornerShape(50))
+                            .background(Brush.linearGradient(listOf(Color(h.light), Color(h.mid), Color(h.deep))))
+                            .border(if (on) 3.dp else 1.dp, if (on) ArinaColors.Text else ArinaColors.Deep, RoundedCornerShape(50))
+                    )
+                    Text(h.name, color = if (on) ArinaColors.Text else ArinaColors.Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                }
+            }
+        }
     }
 }
 

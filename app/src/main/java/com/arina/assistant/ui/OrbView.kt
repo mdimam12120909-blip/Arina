@@ -62,10 +62,8 @@ fun accentOf(persona: Persona): Color = if (persona == Persona.Arina) Color(0xFF
 internal class OrbPalette(val core: Color, val light: Color, val mid: Color, val deep: Color)
 
 internal fun paletteOf(persona: Persona, mood: Mood): OrbPalette {
-    val base = if (persona == Persona.Arina)
-        OrbPalette(Color(0xFFFFF4FA), Color(0xFFFF9AD5), Color(0xFFF0449F), Color(0xFF9D4EDD))
-    else
-        OrbPalette(Color(0xFFFFFFFF), Color(0xFF9BE7FF), Color(0xFF3AA0FF), Color(0xFF1B4FE0))
+    val h = OrbChoice.hues[OrbChoice.hueOf(persona)]
+    val base = OrbPalette(Color(h.core), Color(h.light), Color(h.mid), Color(h.deep))
     return when (mood) {
         Mood.Alert -> OrbPalette(base.core, lerp(base.light, Color(0xFFFF9A9A), 0.6f), lerp(base.mid, Color(0xFFEF4444), 0.65f), lerp(base.deep, Color(0xFF9B1C1C), 0.6f))
         Mood.Thinking -> OrbPalette(base.core, lerp(base.light, Color(0xFFC4B5FD), 0.4f), lerp(base.mid, Color(0xFF7C6CF5), 0.4f), base.deep)

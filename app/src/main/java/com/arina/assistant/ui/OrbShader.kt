@@ -132,16 +132,16 @@ half4 main(float2 fc) {
 
     private fun source(male: Boolean, style: Int): String = if (male) when (style) {
         1 -> OrbDesigns.MALE1_STORM
-        2 -> OrbDesigns.MALE2_RINGED
-        3 -> OrbDesigns.MALE3_APERTURE
+        2 -> OrbDesigns.MALE2_TESSERACT
+        3 -> OrbDesigns.MALE3_CRYSTAL
         4 -> OrbDesigns.MALE4_ATOM
         else -> MALE
     } else when (style) {
         1 -> OrbDesigns.FEM1_FLUID
         2 -> OrbDesigns.FEM2_VOICE
         3 -> OrbDesigns.FEM3_PEARL
-        4 -> OrbDesigns.FEM4_BLOOM
-        else -> FEMALE
+        4 -> OrbDesigns.FEM4_MANDALA
+        else -> OrbDesigns.FEM0_FLOWER
     }
 
     @RequiresApi(33)
@@ -167,8 +167,27 @@ half4 main(float2 fc) {
 
 /** Which of the five designs each agent uses. Saved per account. */
 object OrbChoice {
-    val maleNames = listOf("Vortex", "Storm", "Ringed", "Aperture", "Atom")
-    val femaleNames = listOf("Galaxy", "Fluid", "Voice rings", "Pearl", "Bloom")
+    val maleNames = listOf("Vortex", "Storm", "Tesseract", "Crystal", "Atom")
+    val femaleNames = listOf("Flower", "Fluid", "Voice rings", "Pearl", "Mandala")
+    /** Colours are free for both agents: name, core, light, mid, deep. */
+    class Hue(val name: String, val core: Long, val light: Long, val mid: Long, val deep: Long)
+    val hues = listOf(
+        Hue("Blue", 0xFFFFFFFF, 0xFF9BE7FF, 0xFF3AA0FF, 0xFF1B4FE0),
+        Hue("Pink", 0xFFFFF4FA, 0xFFFF9AD5, 0xFFF0449F, 0xFF9D4EDD),
+        Hue("Violet", 0xFFF6F0FF, 0xFFC4B5FD, 0xFF8B5CF6, 0xFF5B21B6),
+        Hue("Teal", 0xFFF0FFFD, 0xFF7DF9E6, 0xFF14B8A6, 0xFF0F766E),
+        Hue("Amber", 0xFFFFFBEB, 0xFFFFD66B, 0xFFF59E0B, 0xFFB45309),
+        Hue("Coral", 0xFFFFF5F2, 0xFFFFA58F, 0xFFF4603A, 0xFFB91C1C),
+        Hue("Green", 0xFFF4FFF6, 0xFF86EFAC, 0xFF22C55E, 0xFF15803D),
+        Hue("Silver", 0xFFFFFFFF, 0xFFE2E8F0, 0xFF94A3B8, 0xFF475569)
+    )
+    val maleHue = androidx.compose.runtime.mutableIntStateOf(0)
+    val femaleHue = androidx.compose.runtime.mutableIntStateOf(1)
+    fun hueOf(persona: Persona): Int = if (persona == Persona.Aurion) maleHue.intValue else femaleHue.intValue
+    fun setHue(prefs: android.content.SharedPreferences, persona: Persona, i: Int) {
+        if (persona == Persona.Aurion) { maleHue.intValue = i; prefs.edit().putInt("orb_male_hue", i).apply() }
+        else { femaleHue.intValue = i; prefs.edit().putInt("orb_female_hue", i).apply() }
+    }
     val male = androidx.compose.runtime.mutableIntStateOf(0)
     val female = androidx.compose.runtime.mutableIntStateOf(0)
     fun of(persona: Persona): Int = if (persona == Persona.Aurion) male.intValue else female.intValue
@@ -176,6 +195,8 @@ object OrbChoice {
     fun load(prefs: android.content.SharedPreferences) {
         male.intValue = prefs.getInt("orb_male", 0).coerceIn(0, 4)
         female.intValue = prefs.getInt("orb_female", 0).coerceIn(0, 4)
+        maleHue.intValue = prefs.getInt("orb_male_hue", 0).coerceIn(0, hues.size - 1)
+        femaleHue.intValue = prefs.getInt("orb_female_hue", 1).coerceIn(0, hues.size - 1)
     }
     fun set(prefs: android.content.SharedPreferences, persona: Persona, i: Int) {
         if (persona == Persona.Aurion) { male.intValue = i; prefs.edit().putInt("orb_male", i).apply() }

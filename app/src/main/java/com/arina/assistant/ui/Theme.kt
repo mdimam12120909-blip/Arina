@@ -9,7 +9,7 @@ import androidx.compose.runtime.key
 import androidx.compose.ui.graphics.Color
 
 /**
- * Entrion's palette: white and blue only. White by day, deep navy (not black) by night, following the phone.
+ * Entrion's palette: deep navy blue and white.
  * [dark] is set by [ArinaTheme] before anything is drawn, so every colour below is the right one for the current theme.
  */
 object ArinaColors {
@@ -41,7 +41,7 @@ private fun scheme(dark: Boolean) =
 
 @Composable
 fun ArinaTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
+    val dark = true   // Entrion is always deep blue
     ArinaColors.dark = dark
     // Everything is rebuilt when the phone switches between light and dark.
     key(dark) { MaterialTheme(colorScheme = scheme(dark), content = content) }
