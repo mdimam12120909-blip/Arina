@@ -12,8 +12,14 @@ object Identity {
     /** The signed-in person's name (from Google), or empty when nobody is signed in. Set by the app. */
     @Volatile var userName: String = ""
 
+    /** What the user asked to be called, and the personality they chose. Set by the app. */
+    @Volatile var callName: String = ""
+    @Volatile var personality: String = ""
+
     /** Who the agent is talking to. The owner is called by his name; everyone else by their own. */
     fun userLine(): String {
+        val c = callName.trim()
+        if (c.isNotEmpty()) return "The user wants to be called $c; always call them $c."
         val n = userName.trim()
         return if (n.isEmpty()) "You do not know the user's name yet; do not guess one."
         else "The user is $n; call them ${n.substringBefore(' ')}."

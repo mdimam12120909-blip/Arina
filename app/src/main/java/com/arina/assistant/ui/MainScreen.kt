@@ -22,6 +22,10 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.animation.togetherWith
+import androidx.compose.material.icons.outlined.CalendarToday
+import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -33,6 +37,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
@@ -109,7 +114,7 @@ import com.arina.assistant.permissions.PermissionCenter
 private enum class Page(val title: String) {
     Home("Home"), Chat("Chat"), Memory("Memory"), Routine("Routine"), Health("Phone health"), Soul("Soul"),
     Settings("Settings"), Account("Account"), Permissions("Permissions"), Keys("Gemini keys"),
-    Assistant("Assistant"), Admin("Admin")
+    Assistant("Assistant"), Admin("Admin"), Today("Today"), Profile("Edit profile")
 }
 
 /** Pages that open from Settings: they show a back arrow that returns to Settings. */
@@ -119,12 +124,11 @@ private val Good = Color(0xFF3DDC97)
 private val Warn = Color(0xFFFFB84D)
 
 private fun Modifier.glass(shape: Shape = RoundedCornerShape(18.dp), strong: Boolean = false): Modifier {
-    val fill = if (strong) ArinaColors.Glow.copy(alpha = if (ArinaColors.dark) 0.16f else 0.10f)
-    else if (ArinaColors.dark) ArinaColors.Surface.copy(alpha = 0.85f) else ArinaColors.Surface
+    val fill = if (strong) ArinaColors.Glow.copy(alpha = if (ArinaColors.dark) 0.18f else 0.10f).compositeOver(ArinaColors.Surface) else ArinaColors.Surface
     return this
         .clip(shape)
         .background(fill)
-        .border(1.dp, if (strong) ArinaColors.Glow.copy(alpha = 0.55f) else ArinaColors.Deep.copy(alpha = if (ArinaColors.dark) 0.9f else 1f), shape)
+        .border(1.dp, if (strong) ArinaColors.Glow.copy(alpha = 0.55f) else ArinaColors.Deep.copy(alpha = 0.8f), shape)
 }
 
 @Composable
@@ -137,41 +141,43 @@ fun MainScreen(
     onAppInfo: () -> Unit
 ) {
     var page by rememberSaveable { mutableStateOf(Page.Home) }
-    val drawer = androidx.compose.material3.rememberDrawerState(androidx.compose.material3.DrawerValue.Closed)
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
-    BackHandler(enabled = drawer.isOpen) { scope.launch { drawer.close() } }
-    BackHandler(enabled = !drawer.isOpen && page != Page.Home) { page = if (page in SETTINGS_SUB) Page.Settings else Page.Home }
-    fun open(p: Page) { page = p; scope.launch { drawer.close() } }
+    var panelOpen by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = panelOpen) { panelOpen = false }
+    BackHandler(enabled = !panelOpen && page != Page.Home) { page = if (page in SETTINGS_SUB) Page.Settings else Page.Home }
+    fun open(p: Page) { page = p; panelOpen = false }
 
-    androidx.compose.material3.ModalNavigationDrawer(
-        drawerState = drawer,
-        gesturesEnabled = page == Page.Home || drawer.isOpen,
-        drawerContent = { AppDrawer(vm, page, ::open) }
+    val ambient = Color(OrbChoice.hues[OrbChoice.hueOf(vm.persona.value)].mid)
+    val dark = ArinaColors.dark
+    val glowA = ArinaColors.Glow
+    val glowB = ArinaColors.Pink
+    Box(
+        Modifier.fillMaxSize().background(ArinaColors.Background).drawBehind {
+            // Soft light that spreads from the corners, tinted by the agent's orb colour near the bottom.
+            drawRect(Brush.radialGradient(listOf(glowA.copy(alpha = if (dark) 0.42f else 0.26f), Color.Transparent), center = Offset(0f, 0f), radius = size.width * 1.1f))
+            drawRect(Brush.radialGradient(listOf(glowB.copy(alpha = if (dark) 0.34f else 0.22f), Color.Transparent), center = Offset(size.width, size.height * 0.30f), radius = size.width * 0.95f))
+            drawRect(Brush.radialGradient(listOf(ambient.copy(alpha = if (dark) 0.36f else 0.26f), Color.Transparent), center = Offset(size.width * 0.5f, size.height), radius = size.width * 1.2f))
+        }
     ) {
-        val ambient = Color(OrbChoice.hues[OrbChoice.hueOf(vm.persona.value)].mid)
-        Box(
-            Modifier.fillMaxSize()
-                .background(ArinaColors.Background)
-                .background(Brush.radialGradient(
-                    colors = listOf(ambient.copy(alpha = 0.30f), ambient.copy(alpha = 0.10f), Color.Transparent),
-                    center = androidx.compose.ui.geometry.Offset(540f, 620f), radius = 1100f
-                ))
-        ) {
-            Column(Modifier.fillMaxSize().imePadding()) {
-                Header(
-                    vm, page, onPower,
-                    onMenu = { scope.launch { drawer.open() } },
-                    onBack = { page = if (page in SETTINGS_SUB) Page.Settings else Page.Home },
-                    modifier = Modifier.statusBarsPadding()
-                )
-                Box(Modifier.weight(1f).fillMaxWidth()) {
-                    when (page) {
+        Column(Modifier.fillMaxSize().imePadding()) {
+            Header(vm, page, onAvatar = { panelOpen = true }, onBack = { page = if (page in SETTINGS_SUB) Page.Settings else Page.Home }, modifier = Modifier.statusBarsPadding())
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                androidx.compose.animation.AnimatedContent(
+                    targetState = page,
+                    transitionSpec = {
+                        (androidx.compose.animation.fadeIn(tween(260)) + androidx.compose.animation.slideInHorizontally(tween(320)) { it / 14 }) togetherWith
+                            androidx.compose.animation.fadeOut(tween(140))
+                    },
+                    label = "page"
+                ) { p ->
+                    when (p) {
                         Page.Home -> HomePanel(vm, onMicClick, onPermission)
                         Page.Chat -> ChatPanel(vm)
                         Page.Memory -> MemoryPanel(vm)
                         Page.Routine -> RoutinePanel(vm)
                         Page.Health -> HealthPanel(vm)
                         Page.Soul -> SoulPanel(vm)
+                        Page.Today -> TodayPage(vm)
+                        Page.Profile -> EditProfilePage(vm) { page = Page.Home }
                         Page.Settings -> SettingsHome(vm) { page = it }
                         Page.Account -> AccountPage(vm)
                         Page.Permissions -> PermissionsPage(vm, onPermission, onGrantAll, onAppInfo)
@@ -180,9 +186,29 @@ fun MainScreen(
                         Page.Admin -> AdminPage(vm)
                     }
                 }
-                Spacer(Modifier.navigationBarsPadding())
             }
-            Stage(vm, Modifier.align(Alignment.Center).padding(horizontal = 14.dp))
+            Spacer(Modifier.navigationBarsPadding())
+        }
+        Stage(vm, Modifier.align(Alignment.Center).padding(horizontal = 14.dp))
+
+        androidx.compose.animation.AnimatedVisibility(
+            visible = panelOpen,
+            enter = androidx.compose.animation.fadeIn(tween(220)),
+            exit = androidx.compose.animation.fadeOut(tween(180))
+        ) {
+            Box(
+                Modifier.fillMaxSize().background(Color(0x99060818)).clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null
+                ) { panelOpen = false }
+            )
+        }
+        androidx.compose.animation.AnimatedVisibility(
+            visible = panelOpen,
+            modifier = Modifier.align(Alignment.CenterEnd),
+            enter = androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.spring(dampingRatio = 0.86f, stiffness = 380f)) { it },
+            exit = androidx.compose.animation.slideOutHorizontally(tween(200)) { it }
+        ) {
+            ProfilePanel(vm, onOpen = ::open, onPower = onPower, onClose = { panelOpen = false })
         }
     }
 }
@@ -190,116 +216,34 @@ fun MainScreen(
 /** Blends this colour toward [other] by [amount] (0..1). */
 private fun Color.mix(other: Color, amount: Float): Color = androidx.compose.ui.graphics.lerp(this, other, amount)
 
-/** The side menu: who is signed in, every page, and account actions. */
-@Composable
-private fun AppDrawer(vm: ArinaEngine, current: Page, go: (Page) -> Unit) {
-    androidx.compose.material3.ModalDrawerSheet(drawerContainerColor = ArinaColors.Background) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
-            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 20.dp, vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                Avatar(vm, 46.dp)
-                Spacer(Modifier.width(14.dp))
-                Column {
-                    Text(
-                        if (vm.signedIn.value) vm.accountName.value.ifBlank { "Signed in" } else "Guest",
-                        color = ArinaColors.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1
-                    )
-                    Text(
-                        if (vm.signedIn.value) vm.accountEmail.value else "Not signed in",
-                        color = ArinaColors.Muted, fontSize = 12.sp, maxLines = 1
-                    )
-                }
-            }
-            DrawerRow("Home", Icons.Filled.Home, current == Page.Home) { go(Page.Home) }
-            DrawerRow("Chat", Icons.Outlined.ChatBubbleOutline, current == Page.Chat) { go(Page.Chat) }
-            DrawerRow("Memory", Icons.Outlined.Psychology, current == Page.Memory) { go(Page.Memory) }
-            DrawerRow("Routine", Icons.Outlined.Schedule, current == Page.Routine) { go(Page.Routine) }
-            DrawerRow("Phone health", Icons.Outlined.HealthAndSafety, current == Page.Health) { go(Page.Health) }
-            DrawerRow("Soul", Icons.Outlined.Face, current == Page.Soul) { go(Page.Soul) }
-            Spacer(Modifier.height(6.dp))
-            Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(1.dp).background(ArinaColors.Deep))
-            Spacer(Modifier.height(6.dp))
-            DrawerRow("Account", Icons.Filled.Person, current == Page.Account) { go(Page.Account) }
-            DrawerRow("Permissions", Icons.Filled.Lock, current == Page.Permissions) { go(Page.Permissions) }
-            DrawerRow("Settings", Icons.Outlined.Settings, current == Page.Settings || current in SETTINGS_SUB && current != Page.Account && current != Page.Permissions) { go(Page.Settings) }
-            Spacer(Modifier.height(18.dp))
-            if (vm.signedIn.value) {
-                DrawerRow("Switch account", Icons.Filled.Person, false) { vm.signOut() }
-                DrawerRow("Sign out", Icons.Filled.ExitToApp, false) { vm.signOut() }
-            } else {
-                DrawerRow("Sign in", Icons.Filled.Person, false) { vm.openSignIn() }
-            }
-            Text(Brand.APP + " by " + Brand.COMPANY, color = ArinaColors.Muted, fontSize = 11.sp, modifier = Modifier.padding(20.dp))
-        }
-    }
-}
+private val AvatarTones = listOf(
+    listOf(Color(0xFF6D8BFF), Color(0xFFA574FF)), listOf(Color(0xFFFF8AC0), Color(0xFFFF6B8A)),
+    listOf(Color(0xFF46D6C0), Color(0xFF3B8BFF)), listOf(Color(0xFFFFC15E), Color(0xFFFF7A59))
+)
 
 @Composable
-private fun DrawerRow(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit) {
-    androidx.compose.material3.NavigationDrawerItem(
-        label = { Text(label, fontSize = 15.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal) },
-        icon = { Icon(icon, null) },
-        selected = selected,
-        onClick = onClick,
-        modifier = Modifier.padding(horizontal = 12.dp),
-        colors = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
-            selectedContainerColor = ArinaColors.Glow.copy(alpha = 0.16f),
-            unselectedContainerColor = Color.Transparent,
-            selectedTextColor = ArinaColors.Glow,
-            unselectedTextColor = ArinaColors.Text,
-            selectedIconColor = ArinaColors.Glow,
-            unselectedIconColor = ArinaColors.Muted
-        )
-    )
-}
-
-/** A round badge with the person's first letter. */
-@Composable
-private fun Avatar(vm: ArinaEngine, size: androidx.compose.ui.unit.Dp) {
-    val letter = (vm.accountName.value.ifBlank { vm.accountEmail.value }.firstOrNull() ?: 'G').uppercaseChar().toString()
+private fun Avatar(vm: ArinaEngine, size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
+    val letter = (vm.displayName().firstOrNull() ?: 'G').uppercaseChar().toString()
     Box(
-        Modifier.size(size).clip(CircleShape).background(Brush.linearGradient(listOf(ArinaColors.Glow, ArinaColors.Pink))),
+        modifier.size(size).clip(CircleShape).background(Brush.linearGradient(AvatarTones[vm.avatarTone.intValue.coerceIn(0, 3)])),
         contentAlignment = Alignment.Center
-    ) { Text(letter, color = Color.White, fontSize = (size.value * 0.42f).sp, fontWeight = FontWeight.Bold) }
+    ) { Text(letter, color = Color.White, fontSize = (size.value * 0.42f).sp, fontWeight = FontWeight.SemiBold) }
 }
 
 @Composable
-private fun Header(vm: ArinaEngine, page: Page, onPower: () -> Unit, onMenu: () -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
-    val on = vm.overlayOn.value
-    val accent = accentOf(vm.persona.value)
-    val nested = page in SETTINGS_SUB
+private fun Header(vm: ArinaEngine, page: Page, onAvatar: () -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
     Row(
-        modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+        modifier.fillMaxWidth().padding(start = 10.dp, end = 18.dp, top = 10.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (nested) {
+        if (page != Page.Home) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = ArinaColors.Text) }
+            Text(page.title, color = ArinaColors.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
         } else {
-            IconButton(onClick = onMenu) { Icon(Icons.Filled.Menu, "Menu", tint = ArinaColors.Text) }
-        }
-        if (page == Page.Home) {
-            LogoTile(Modifier.size(30.dp))
-            Spacer(Modifier.width(10.dp))
-            Column {
-                Text(Brand.APP, color = ArinaColors.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text(
-                    vm.agentName.value.ifBlank { vm.persona.value.displayName + " agent" },
-                    color = accent, fontSize = 12.sp, fontWeight = FontWeight.Medium
-                )
-            }
-        } else {
-            Text(page.title, color = ArinaColors.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 2.dp))
+            Text(Brand.APP, color = ArinaColors.Text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 10.dp))
         }
         Spacer(Modifier.weight(1f))
-        Row(
-            Modifier.glass(RoundedCornerShape(50), strong = on).clickable(onClick = onPower)
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Filled.PowerSettingsNew, "Floating orb", tint = if (on) Good else ArinaColors.Muted, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(if (on) "Orb on" else "Orb off", color = ArinaColors.Text, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-        }
-        Spacer(Modifier.width(8.dp))
+        Avatar(vm, 40.dp, Modifier.clickable(onClick = onAvatar))
     }
 }
 
@@ -308,15 +252,17 @@ private fun Header(vm: ArinaEngine, page: Page, onPower: () -> Unit, onMenu: () 
 @Composable
 private fun HomePanel(vm: ArinaEngine, onMicClick: () -> Unit, onPermission: (PermItem) -> Unit) {
     val persona = vm.persona.value
-    val accent = accentOf(persona)
     val problem = vm.notice.value != null
     val mood = moodOf(vm.status.value, vm.researchActive.value, problem)
     LaunchedEffect(vm.signedIn.value) { vm.refreshHeadlines() }
+    val busy = vm.status.value == Status.Speaking || vm.status.value == Status.Thinking || vm.agentActive.value
+    val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+    val hello = when { hour < 5 -> "Good night"; hour < 12 -> "Good morning"; hour < 17 -> "Good afternoon"; else -> "Good evening" }
+    val who = vm.callName.value.ifBlank { vm.firstName.value.ifBlank { vm.accountName.value.substringBefore(' ') } }
+    val say = vm.notice.value ?: vm.caption.value
+    val lastUser = vm.messages.lastOrNull { it.fromUser }?.text.orEmpty()
 
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         if (vm.phoneControlLost.value) {
             Row(Modifier.fillMaxWidth().glass(strong = true).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -327,48 +273,81 @@ private fun HomePanel(vm: ArinaEngine, onMicClick: () -> Unit, onPermission: (Pe
                 PillButton("Turn on") { PermissionCenter.special.firstOrNull { it.id == "accessibility" }?.let(onPermission) }
             }
         }
-        TranscriptCard(vm, accent)
-
-        // The agent
-        BoxWithConstraints(Modifier.fillMaxWidth().height(300.dp), contentAlignment = Alignment.Center) {
-            OrbView(
-                persona = persona, mood = mood, level = vm.level.floatValue,
-                modifier = Modifier.size(minOf(maxWidth, 300.dp)), backdrop = true
-            )
-            Text(
-                mood.label, color = accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.align(Alignment.BottomCenter)
-            )
-        }
-
-        // Stop and mic
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-            val busy = vm.status.value == Status.Speaking || vm.status.value == Status.Thinking || vm.agentActive.value
-            Row(
-                Modifier.clip(RoundedCornerShape(50))
-                    .border(1.5.dp, if (busy) Color(0xFFFF5C6C) else ArinaColors.Muted.copy(alpha = 0.4f), RoundedCornerShape(50))
-                    .clickable(enabled = busy) { vm.interrupt() }
-                    .padding(horizontal = 18.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Filled.Stop, "Stop", tint = if (busy) Color(0xFFFF5C6C) else ArinaColors.Muted, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Stop", color = if (busy) ArinaColors.Text else ArinaColors.Muted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            }
-            Spacer(Modifier.width(18.dp))
-            MicSwitch(vm.micOn.value, vm.level.floatValue, accent, onMicClick)
-            Spacer(Modifier.width(18.dp))
-            Text(
-                if (vm.micOn.value) "Mic on" else "Mic off",
-                color = if (vm.micOn.value) Good else ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold
-            )
-        }
-
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            HeadlinesCard(vm, accent, Modifier.weight(1.2f))
-            TasksCard(vm, accent, Modifier.weight(1f))
+        Spacer(Modifier.weight(1f))
+        BoxWithConstraints(Modifier.fillMaxWidth().height(320.dp), contentAlignment = Alignment.Center) {
+            OrbView(persona = persona, mood = mood, level = vm.level.floatValue, modifier = Modifier.size(minOf(maxWidth, 320.dp)))
         }
         Spacer(Modifier.height(16.dp))
+        if (vm.micOn.value && (say.isNotBlank() || lastUser.isNotBlank())) {
+            Text(
+                say.ifBlank { lastUser }, color = if (vm.notice.value != null) Warn else ArinaColors.Text,
+                fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center, maxLines = 4,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+        } else {
+            Text(
+                if (who.isBlank()) hello else "$hello, $who", color = ArinaColors.Text,
+                fontSize = 27.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(6.dp))
+            Text("Just say what you need", color = ArinaColors.Muted, fontSize = 14.sp)
+        }
+        Spacer(Modifier.weight(1f))
+        if (busy) {
+            Text(
+                "Stop", color = Color(0xFFFF6B7A), fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clip(RoundedCornerShape(50)).clickable { vm.interrupt() }.padding(horizontal = 18.dp, vertical = 8.dp)
+            )
+        }
+        TalkButton(vm.micOn.value, vm.level.floatValue, onMicClick)
+        Spacer(Modifier.height(26.dp))
+    }
+}
+
+/** One big voice control. Off: "Tap to talk". On: a live wave that moves with the voice, tap to stop. */
+@Composable
+private fun TalkButton(micOn: Boolean, level: Float, onClick: () -> Unit) {
+    val grad = Brush.linearGradient(listOf(ArinaColors.Glow, ArinaColors.Pink))
+    if (!micOn) {
+        Row(
+            Modifier.height(66.dp).clip(RoundedCornerShape(33.dp)).background(grad).clickable(onClick = onClick).padding(start = 12.dp, end = 32.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(Modifier.size(42.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.22f)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.Mic, "Microphone", tint = Color.White, modifier = Modifier.size(24.dp))
+            }
+            Spacer(Modifier.width(14.dp))
+            Text("Tap to talk", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+        }
+    } else {
+        val inf = rememberInfiniteTransition(label = "wave")
+        val ph by inf.animateFloat(0f, 6.2831855f, infiniteRepeatable(tween(1300, easing = LinearEasing), RepeatMode.Restart), label = "ph")
+        val a = ArinaColors.Glow
+        val b = ArinaColors.Pink
+        Column(
+            Modifier.clip(RoundedCornerShape(24.dp)).clickable(onClick = onClick).padding(horizontal = 24.dp, vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Canvas(Modifier.width(150.dp).height(66.dp)) {
+                val n = 15
+                val bw = 5.dp.toPx()
+                val gap = 5.dp.toPx()
+                val total = n * bw + (n - 1) * gap
+                val x0 = (size.width - total) / 2f
+                val lv = level.coerceIn(0f, 1f)
+                for (i in 0 until n) {
+                    val k = 0.5f + 0.5f * kotlin.math.sin(ph + i * 0.55f)
+                    val h = (8.dp.toPx() + (18.dp.toPx() + 34.dp.toPx() * lv) * k).coerceAtMost(size.height)
+                    drawRoundRect(
+                        color = androidx.compose.ui.graphics.lerp(a, b, i / (n - 1f)),
+                        topLeft = Offset(x0 + i * (bw + gap), (size.height - h) / 2f),
+                        size = androidx.compose.ui.geometry.Size(bw, h),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(bw / 2f)
+                    )
+                }
+            }
+            Text("Tap to stop", color = ArinaColors.Muted, fontSize = 12.sp)
+        }
     }
 }
 
@@ -1258,5 +1237,159 @@ private fun SkillsCard(vm: ArinaEngine) {
             }
             if (msg.isNotBlank()) Text(msg, color = ArinaColors.Muted, fontSize = 12.sp)
         }
+    }
+}
+
+
+// ---- Profile panel ------------------------------------------------------------------------------
+
+@Composable
+private fun PanelRow(icon: ImageVector, label: String, onClick: () -> Unit, trailing: (@Composable () -> Unit)? = null) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = ArinaColors.Text.copy(alpha = 0.85f), modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(16.dp))
+        Text(label, color = ArinaColors.Text, fontSize = 16.sp, modifier = Modifier.weight(1f))
+        if (trailing != null) trailing() else Text("›", color = ArinaColors.Muted, fontSize = 18.sp)
+    }
+    Box(Modifier.fillMaxWidth().height(1.dp).background(ArinaColors.Deep.copy(alpha = 0.6f)))
+}
+
+@Composable
+private fun PanelHead(text: String) {
+    Text(text, color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.6.sp, modifier = Modifier.padding(top = 20.dp, bottom = 2.dp))
+}
+
+@Composable
+private fun ProfilePanel(vm: ArinaEngine, onOpen: (Page) -> Unit, onPower: () -> Unit, onClose: () -> Unit) {
+    val shape = RoundedCornerShape(topStart = 32.dp, bottomStart = 32.dp)
+    Column(
+        Modifier.width(330.dp).fillMaxHeight().clip(shape).background(ArinaColors.Surface)
+            .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {}
+            .verticalScroll(rememberScrollState()).statusBarsPadding().padding(start = 24.dp, end = 22.dp, top = 24.dp, bottom = 14.dp)
+    ) {
+        Row(Modifier.fillMaxWidth().clickable { onOpen(Page.Profile) }, verticalAlignment = Alignment.CenterVertically) {
+            Avatar(vm, 60.dp)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(vm.displayName(), color = ArinaColors.Text, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Text("Edit profile ›", color = ArinaColors.Muted, fontSize = 13.sp)
+            }
+        }
+        Spacer(Modifier.height(20.dp))
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(ArinaColors.Deep.copy(alpha = 0.45f)).padding(3.dp)) {
+            listOf("Light", "Dark", "Auto").forEachIndexed { i, name ->
+                val mode = intArrayOf(1, 2, 0)[i]
+                val on = ThemeChoice.mode == mode
+                Box(
+                    Modifier.weight(1f).clip(RoundedCornerShape(11.dp))
+                        .background(if (on) ArinaColors.Glow else Color.Transparent)
+                        .clickable { ThemeChoice.set(vm.uiPrefs, mode) }.padding(vertical = 9.dp),
+                    contentAlignment = Alignment.Center
+                ) { Text(name, color = if (on) Color.White else ArinaColors.Muted, fontSize = 13.5.sp, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal) }
+            }
+        }
+        PanelHead("AGENT")
+        Row(
+            Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 6.dp).clip(RoundedCornerShape(22.dp))
+                .background(Brush.linearGradient(listOf(ArinaColors.Glow, ArinaColors.Pink)))
+                .clickable { onOpen(Page.Soul) }.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(Modifier.size(46.dp), contentAlignment = Alignment.Center) {
+                OrbView(vm.persona.value, Mood.Listening, 0f, Modifier.size(46.dp))
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Soul", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text(OrbChoice.names(vm.persona.value)[OrbChoice.of(vm.persona.value)] + " · " + ArinaEngine.PERSONALITIES[vm.personality.intValue].first, color = Color.White.copy(alpha = 0.85f), fontSize = 12.5.sp)
+            }
+            Text("›", color = Color.White, fontSize = 18.sp)
+        }
+        PanelRow(Icons.Outlined.ChatBubbleOutline, "Chat", { onOpen(Page.Chat) })
+        PanelRow(Icons.Outlined.Psychology, "Memory", { onOpen(Page.Memory) })
+        PanelRow(Icons.Outlined.Schedule, "Routine", { onOpen(Page.Routine) })
+        PanelRow(Icons.Outlined.CalendarToday, "Today", { onOpen(Page.Today) })
+        PanelHead("PHONE")
+        PanelRow(Icons.Outlined.HealthAndSafety, "Phone health", { onOpen(Page.Health) })
+        PanelRow(Icons.Filled.Lock, "Permissions", { onOpen(Page.Permissions) })
+        PanelRow(Icons.Filled.PowerSettingsNew, "Floating orb", { onPower() }, trailing = {
+            Switch(
+                checked = vm.overlayOn.value, onCheckedChange = { onPower() },
+                colors = SwitchDefaults.colors(checkedTrackColor = ArinaColors.Glow, checkedThumbColor = Color.White)
+            )
+        })
+        PanelHead("GENERAL")
+        PanelRow(Icons.Outlined.Settings, "Settings", { onOpen(Page.Settings) })
+        PanelRow(Icons.Filled.Person, "Account", { onOpen(Page.Account) })
+        if (vm.signedIn.value) {
+            PanelRow(Icons.Outlined.SwapHoriz, "Switch account", { vm.signOut() })
+            Row(
+                Modifier.fillMaxWidth().clickable { vm.signOut() }.padding(vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Filled.ExitToApp, null, tint = Color(0xFFFF6B7A), modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(16.dp))
+                Text("Sign out", color = Color(0xFFFF6B7A), fontSize = 16.sp)
+            }
+        } else PanelRow(Icons.Filled.Person, "Sign in", { vm.openSignIn() })
+        Text(Brand.APP + " by " + Brand.COMPANY, color = ArinaColors.Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp))
+    }
+}
+
+@Composable
+private fun EditProfilePage(vm: ArinaEngine, onDone: () -> Unit) {
+    var first by rememberSaveable { mutableStateOf(vm.firstName.value.ifBlank { vm.accountName.value.substringBefore(' ') }) }
+    var last by rememberSaveable { mutableStateOf(vm.lastName.value.ifBlank { vm.accountName.value.substringAfter(' ', "") }) }
+    var call by rememberSaveable { mutableStateOf(vm.callName.value) }
+    var pers by rememberSaveable { mutableStateOf(vm.personality.intValue) }
+    var tone by rememberSaveable { mutableStateOf(vm.avatarTone.intValue) }
+    PageColumn {
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(92.dp).clip(CircleShape).background(Brush.linearGradient(AvatarTones[tone])), contentAlignment = Alignment.Center) {
+                Text((first.firstOrNull() ?: 'G').uppercaseChar().toString(), color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+            AvatarTones.forEachIndexed { i, t ->
+                Box(
+                    Modifier.padding(horizontal = 6.dp).size(40.dp).clip(CircleShape).background(Brush.linearGradient(t))
+                        .border(if (tone == i) 3.dp else 0.dp, if (tone == i) ArinaColors.Text else Color.Transparent, CircleShape)
+                        .clickable { tone = i }
+                )
+            }
+        }
+        KeyField("First name", first, false) { first = it }
+        KeyField("Last name", last, false) { last = it }
+        KeyField("What the agent calls you", call, false) { call = it }
+        SectionTitle("PERSONALITY")
+        Text("How the agent talks to you.", color = ArinaColors.Muted, fontSize = 13.sp)
+        for (row in 0..1) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (i in row * 3 until row * 3 + 3) {
+                    val on = pers == i
+                    Box(
+                        Modifier.weight(1f).clip(RoundedCornerShape(14.dp))
+                            .background(if (on) ArinaColors.Glow else ArinaColors.Surface)
+                            .border(1.dp, if (on) Color.Transparent else ArinaColors.Deep, RoundedCornerShape(14.dp))
+                            .clickable { pers = i }.padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) { Text(ArinaEngine.PERSONALITIES[i].first, color = if (on) Color.White else ArinaColors.Text, fontSize = 13.sp, fontWeight = FontWeight.Medium) }
+                }
+            }
+        }
+        PillButton("Save") { vm.saveProfile(first, last, call, pers, tone); onDone() }
+    }
+}
+
+@Composable
+private fun TodayPage(vm: ArinaEngine) {
+    val accent = ArinaColors.Glow
+    LaunchedEffect(vm.signedIn.value) { vm.refreshHeadlines() }
+    PageColumn {
+        TasksCard(vm, accent, Modifier.fillMaxWidth())
+        HeadlinesCard(vm, accent, Modifier.fillMaxWidth())
     }
 }

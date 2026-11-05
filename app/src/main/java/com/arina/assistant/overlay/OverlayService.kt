@@ -125,7 +125,7 @@ class OverlayService : Service() {
         )
         @Suppress("DEPRECATION")
         val notification = Notification.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_launcher_mono)
             .setContentTitle("Entrion is on")
             .setContentText("Ready when you are.")
             .setContentIntent(open)

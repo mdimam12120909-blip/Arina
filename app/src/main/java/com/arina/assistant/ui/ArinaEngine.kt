@@ -75,6 +75,15 @@ data class ChatMessage(val fromUser: Boolean, val text: String)
 class ArinaEngine private constructor(private val app: Application) {
 
     companion object {
+        /** Name shown to the user, and the instruction the agent follows. */
+        val PERSONALITIES = listOf(
+            "Friendly" to "warm, kind and easy-going, like a good friend.",
+            "Professional" to "polite, precise and businesslike; no slang.",
+            "Playful" to "light-hearted and witty; a little humour is welcome, never at the user's expense.",
+            "Calm" to "slow, gentle and reassuring; never hurried.",
+            "Direct" to "short and to the point; no filler words.",
+            "Motivating" to "energetic and encouraging; help the user keep going."
+        )
         @Volatile
         private var instance: ArinaEngine? = null
 
@@ -159,7 +168,7 @@ class ArinaEngine private constructor(private val app: Application) {
 
     // Which assistant is active (remembered between launches)
     internal val uiPrefs = com.arina.assistant.cloud.Local.prefs(app, "arina_ui")
-    init { OrbChoice.load(com.arina.assistant.cloud.Local.prefs(app, "arina_ui")) }
+    init { ThemeChoice.load(uiPrefs); OrbChoice.load(com.arina.assistant.cloud.Local.prefs(app, "arina_ui")) }
     val persona = mutableStateOf(
         runCatching { Persona.valueOf(uiPrefs.getString("persona", "Arina").orEmpty()) }.getOrDefault(Persona.Arina)
     )
@@ -459,6 +468,29 @@ class ArinaEngine private constructor(private val app: Application) {
 
     /** What the user calls the agent. Empty: the agent has no personal name. */
     val agentName = mutableStateOf(uiPrefs.getString("agent_name", "").orEmpty())
+    // ---- Profile: saved per account (this engine is rebuilt for each account) ----
+    val firstName = mutableStateOf(uiPrefs.getString("p_first", "").orEmpty())
+    val lastName = mutableStateOf(uiPrefs.getString("p_last", "").orEmpty())
+    val callName = mutableStateOf(uiPrefs.getString("p_call", "").orEmpty())
+    val personality = androidx.compose.runtime.mutableIntStateOf(uiPrefs.getInt("p_pers", 0).coerceIn(0, 5))
+    val avatarTone = androidx.compose.runtime.mutableIntStateOf(uiPrefs.getInt("p_avatar", 0).coerceIn(0, 3))
+    init { Identity.callName = callName.value; Identity.personality = PERSONALITIES[personality.intValue].second }
+
+    /** The name shown in the profile: the one the user typed, else the one from the account. */
+    fun displayName(): String {
+        val n = (firstName.value.trim() + " " + lastName.value.trim()).trim()
+        return n.ifBlank { accountName.value.ifBlank { "Guest" } }
+    }
+
+    fun saveProfile(first: String, last: String, call: String, pers: Int, avatar: Int) {
+        firstName.value = first.trim(); lastName.value = last.trim(); callName.value = call.trim()
+        personality.intValue = pers.coerceIn(0, 5); avatarTone.intValue = avatar.coerceIn(0, 3)
+        uiPrefs.edit().putString("p_first", first.trim()).putString("p_last", last.trim()).putString("p_call", call.trim())
+            .putInt("p_pers", personality.intValue).putInt("p_avatar", avatarTone.intValue).apply()
+        Identity.callName = call.trim(); Identity.personality = PERSONALITIES[personality.intValue].second
+        gemini.reset()
+    }
+
     fun setAgentName(n: String) {
         agentName.value = n.trim()
         uiPrefs.edit().putString("agent_name", n.trim()).apply()
@@ -474,7 +506,9 @@ class ArinaEngine private constructor(private val app: Application) {
         val facts = Cloud.cfg(app, "global_facts", "").trim()
         val extra = (if (style.isNotEmpty()) "\nHOW TO SPEAK (set by Entrion): $style" else "") +
             (if (facts.isNotEmpty()) "\nFACTS YOU KNOW (set by Entrion; treat as true):\n$facts" else "")
-        return base + extra + if (n.isEmpty()) " You have no personal name; if the user wants, they can give you one." else " The user has named you \"$n\"; that is your name."
+        val pers = Identity.personality
+        val persLine = if (pers.isNotBlank()) "\nPERSONALITY (chosen by the user): $pers" else ""
+        return base + extra + persLine + if (n.isEmpty()) " You have no personal name; if the user wants, they can give you one." else " The user has named you \"$n\"; that is your name."
     }
 
     /** Called with Google's ID token after the account chooser. */

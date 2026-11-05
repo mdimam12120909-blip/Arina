@@ -1,17 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- ring, open on the right like a doorway -->
-    <path
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="7"
-        android:strokeLineCap="round"
-        android:pathData="M70.4,65.5 A20,20 0 1,1 70.4,42.5" />
-    <!-- the dot stepping in -->
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M81,54 a6,6 0 1,0 -12,0 a6,6 0 1,0 12,0 z" />
+    <!-- the ring, back half -->
+    <group android:pivotX="54" android:pivotY="54" android:rotation="-24">
+        <path
+            android:strokeColor="#CFE6FF"
+            android:strokeWidth="3.4"
+            android:strokeLineCap="round"
+            android:pathData="M23,54 a31,10 0 0,1 62,0" />
+    </group>
+    <!-- the orb -->
+    <path android:pathData="M54,54 m-22,0 a22,22 0 1,0 44,0 a22,22 0 1,0 -44,0 z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="45"
+                android:centerY="44"
+                android:gradientRadius="36">
+                <item android:offset="0.0" android:color="#FFFFFFFF" />
+                <item android:offset="0.28" android:color="#FF9AD2FF" />
+                <item android:offset="0.68" android:color="#FF4A72FF" />
+                <item android:offset="1.0" android:color="#FF6A3BE0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- the ring, front half -->
+    <group android:pivotX="54" android:pivotY="54" android:rotation="-24">
+        <path
+            android:strokeColor="#E8F3FF"
+            android:strokeWidth="3.8"
+            android:strokeLineCap="round"
+            android:pathData="M23,54 a31,10 0 0,0 62,0" />
+    </group>
 </vector>

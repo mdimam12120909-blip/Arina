@@ -13,19 +13,27 @@ import androidx.compose.ui.graphics.Color
  * [dark] is set by [ArinaTheme] before anything is drawn, so every colour below is the right one for the current theme.
  */
 object ArinaColors {
-    @Volatile var dark: Boolean = true
+    /** Backed by Compose state, so changing the theme redraws every screen. */
+    var dark: Boolean by androidx.compose.runtime.mutableStateOf(true)
 
-    val Background: Color get() = if (dark) Color(0xFF070D1A) else Color(0xFFFFFFFF)
-    val Surface: Color get() = if (dark) Color(0xFF0F1A31) else Color(0xFFF3F7FF)
-    val Primary: Color get() = if (dark) Color(0xFF6EA8FF) else Color(0xFF2563EB)
+    val Background: Color get() = if (dark) Color(0xFF0B0F26) else Color(0xFFF7F8FD)
+    val Surface: Color get() = if (dark) Color(0xFF151A3C) else Color(0xFFFFFFFF)
+    val Primary: Color get() = if (dark) Color(0xFF6C8CFF) else Color(0xFF3F63F0)
     /** The one accent: buttons, icons, highlights. */
-    val Glow: Color get() = if (dark) Color(0xFF6EA8FF) else Color(0xFF2563EB)
+    val Glow: Color get() = if (dark) Color(0xFF6C8CFF) else Color(0xFF3F63F0)
     /** Borders and dividers. */
-    val Deep: Color get() = if (dark) Color(0xFF22345A) else Color(0xFFD9E4F8)
-    val Text: Color get() = if (dark) Color(0xFFEAF1FF) else Color(0xFF0F1B33)
-    val Muted: Color get() = if (dark) Color(0xFF93A4C3) else Color(0xFF5B6B87)
-    /** A lighter blue for the second colour of gradients. */
-    val Pink: Color get() = if (dark) Color(0xFF9CC4FF) else Color(0xFF60A5FA)
+    val Deep: Color get() = if (dark) Color(0xFF262D5C) else Color(0xFFE3E6F3)
+    val Text: Color get() = if (dark) Color(0xFFF1F3FF) else Color(0xFF14182B)
+    val Muted: Color get() = if (dark) Color(0xFF9097C4) else Color(0xFF6A6F8C)
+    /** The second colour of gradients. */
+    val Pink: Color get() = if (dark) Color(0xFF9B7BFF) else Color(0xFF8A5CFF)
+}
+
+/** 0 = follow the phone, 1 = light, 2 = dark. Saved by the engine. */
+object ThemeChoice {
+    var mode: Int by androidx.compose.runtime.mutableIntStateOf(2)
+    fun load(prefs: android.content.SharedPreferences) { mode = prefs.getInt("theme_mode", 2).coerceIn(0, 2) }
+    fun set(prefs: android.content.SharedPreferences, m: Int) { mode = m; prefs.edit().putInt("theme_mode", m).apply() }
 }
 
 private fun scheme(dark: Boolean) =
@@ -41,7 +49,8 @@ private fun scheme(dark: Boolean) =
 
 @Composable
 fun ArinaTheme(content: @Composable () -> Unit) {
-    val dark = true   // Entrion is always deep blue
+    val system = isSystemInDarkTheme()
+    val dark = when (ThemeChoice.mode) { 1 -> false; 2 -> true; else -> system }
     ArinaColors.dark = dark
     // Everything is rebuilt when the phone switches between light and dark.
     key(dark) { MaterialTheme(colorScheme = scheme(dark), content = content) }
