@@ -54,6 +54,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.height
@@ -160,7 +162,7 @@ fun MainScreen(
     BackHandler(enabled = panelOpen) { panelOpen = false }
     BackHandler(enabled = !panelOpen && page != Page.Home) { page = if (page in SETTINGS_SUB) Page.Settings else Page.Home }
     fun open(p: Page) { page = p; panelOpen = false }
-    val imeUp = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
+    val imeUp = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
 
     val ambient = Color(OrbChoice.hues[OrbChoice.hueOf(vm.persona.value)].mid)
     val dark = ArinaColors.dark
