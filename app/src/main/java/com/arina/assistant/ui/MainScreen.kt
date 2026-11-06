@@ -25,6 +25,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
@@ -286,22 +290,25 @@ private fun HomePanel(vm: ArinaEngine, onMicClick: () -> Unit, onPermission: (Pe
             Spacer(Modifier.height(8.dp))
         }
         // What the agent can do right now
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Pop(0) { Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             CapTag("Web search", vm.signedIn.value)
             CapTag("Phone control", !vm.phoneControlLost.value)
             CapTag("Memory", true)
-        }
+        } }
         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
             OrbView(persona = persona, mood = mood, level = vm.level.floatValue, modifier = Modifier.size(orbSize))
         }
         Column(Modifier.fillMaxWidth().animateContentSize(spring(dampingRatio = 0.9f, stiffness = 300f)), horizontalAlignment = Alignment.CenterHorizontally) {
-            if (vm.micOn.value && say.isNotBlank()) {
+val titleKey = if (vm.micOn.value && say.isNotBlank()) 0 else if (busy) 1 else 2
+            AnimatedContent(targetState = titleKey, transitionSpec = { (fadeIn(tween(260, delayMillis = 60)) + slideInVertically(tween(300)) { it / 6 }) togetherWith fadeOut(tween(120)) }, label = "title") { k ->
+              Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            if (k == 0) {
                 Text(
                     say, color = if (vm.notice.value != null) Warn else ArinaColors.Text,
                     fontSize = 19.sp, lineHeight = 26.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center, maxLines = 3,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
-            } else if (busy) {
+            } else if (k == 1) {
                 Text(
                     if (vm.status.value == Status.Speaking) "Answering you…" else if (vm.researchActive.value) "Searching the web…" else "Thinking it through…",
                     color = ArinaColors.Text, fontSize = 21.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center
@@ -311,8 +318,11 @@ private fun HomePanel(vm: ArinaEngine, onMicClick: () -> Unit, onPermission: (Pe
                 Spacer(Modifier.height(4.dp))
                 Text("Ask me anything, or tell me what to do", color = ArinaColors.Muted, fontSize = 14.sp)
             }
+              }
+            }
             Spacer(Modifier.height(14.dp))
-            if (busy) {
+            AnimatedContent(targetState = busy, transitionSpec = { (fadeIn(tween(280)) + slideInVertically(tween(320)) { it / 8 }) togetherWith fadeOut(tween(120)) }, label = "card") { isBusy ->
+            if (isBusy) {
                 ActivityCard(vm)
             } else if (lastUser.isNotBlank() || lastAi.isNotBlank()) {
                 Column(Modifier.fillMaxWidth().glass().padding(horizontal = 18.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -320,6 +330,7 @@ private fun HomePanel(vm: ArinaEngine, onMicClick: () -> Unit, onPermission: (Pe
                     if (lastUser.isNotBlank()) Row { Text("YOU", color = ArinaColors.Muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(58.dp).padding(top = 3.dp)); Text(lastUser, color = ArinaColors.Text, fontSize = 14.sp, lineHeight = 19.sp, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
                     if (lastAi.isNotBlank()) Row { Text("ENTRION", color = ArinaColors.Glow, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(58.dp).padding(top = 3.dp)); Text(lastAi, color = ArinaColors.Text, fontSize = 14.sp, lineHeight = 19.sp, maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
                 }
+            }
             }
             if (!busy) {
                 Spacer(Modifier.height(10.dp))
@@ -333,9 +344,17 @@ private fun HomePanel(vm: ArinaEngine, onMicClick: () -> Unit, onPermission: (Pe
             }
         }
         Spacer(Modifier.height(14.dp))
-        Dock(vm.micOn.value, vm.level.floatValue, onMicClick, onNav)
+        Pop(3) { Dock(vm.micOn.value, vm.level.floatValue, onMicClick, onNav) }
         Spacer(Modifier.height(18.dp))
     }
+}
+
+/** Staggered entrance: fade + rise, delayed by [index]. */
+@Composable
+private fun Pop(index: Int, content: @Composable () -> Unit) {
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { kotlinx.coroutines.delay(80L + index * 90L); shown = true }
+    androidx.compose.animation.AnimatedVisibility(shown, enter = fadeIn(tween(420)) + slideInVertically(tween(460)) { it / 4 }) { content() }
 }
 
 @Composable
