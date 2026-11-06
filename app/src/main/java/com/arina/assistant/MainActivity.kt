@@ -29,6 +29,7 @@ class MainActivity : FragmentActivity() {
 
     companion object {
         const val EXTRA_FROM_OVERLAY = "from_overlay"
+        const val EXTRA_FROM_ASSIST = "from_assist"
     }
 
     private val engine by lazy { ArinaEngine.get(this) }
@@ -91,7 +92,7 @@ class MainActivity : FragmentActivity() {
                     androidx.compose.runtime.mutableStateOf(engine.isAdmin.value || engine.uiPrefs.getBoolean("onboarded", false) || engine.geminiKeySet)
                 }
                 if (engine.signedIn.value && !onboarded) {
-                    com.arina.assistant.ui.OnboardingScreen(engine, onPermission = ::requestItem) { onboarded = true }
+                    com.arina.assistant.ui.OnboardingScreen(engine, onPermission = ::requestItem, onAssistant = { openSafely(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)) }) { onboarded = true }
                     return@ArinaTheme
                 }
                 // An admin gets the console only: no assistant, no microphone, no floating orb.
@@ -127,10 +128,17 @@ class MainActivity : FragmentActivity() {
             }
         }
         // Opening the app turns Arina on in the background, unless we came here from the floating avatar.
-        if (!engine.isAdmin.value && !intent.getBooleanExtra(EXTRA_FROM_OVERLAY, false) && hasMic() && Settings.canDrawOverlays(this)) {
-            wantsToStart = true
-            startArina()
-        }
+        // The floating orb no longer starts by itself; it only runs when the person switches it on.
+        handleAssist(intent)
+    }
+
+    /** Opened from a long press on Home (default assistant): go to Home and start listening straight away. */
+    private fun handleAssist(i: Intent?) {
+        if (i?.getBooleanExtra(EXTRA_FROM_ASSIST, false) != true) return
+        i.removeExtra(EXTRA_FROM_ASSIST)
+        if (engine.isAdmin.value || !engine.signedIn.value) return
+        if (!hasMic()) { micPermission.launch(Manifest.permission.RECORD_AUDIO); return }
+        if (!engine.micOn.value) engine.onMicTap()
     }
 
     /** Face (or fingerprint, or screen lock) check before the Admin Console opens. The server still decides who is an admin. */
@@ -167,6 +175,7 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        handleAssist(intent)
     }
 
     override fun onResume() {

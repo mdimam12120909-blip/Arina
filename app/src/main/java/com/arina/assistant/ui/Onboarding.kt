@@ -86,7 +86,7 @@ private const val STEPS = 8
 
 /** Shown once, right after a new account signs in: a calm run of questions that sets Entrion up the way the person wants. */
 @Composable
-fun OnboardingScreen(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onDone: () -> Unit) {
+fun OnboardingScreen(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onAssistant: () -> Unit, onDone: () -> Unit) {
     var step by rememberSaveable { mutableIntStateOf(0) }
     var found by rememberSaveable { mutableIntStateOf(-1) }
     var uses by rememberSaveable { mutableStateOf("") }
@@ -105,6 +105,18 @@ fun OnboardingScreen(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onDone: 
         if (keys.any { it.isNotBlank() }) vm.saveKeys(keys.toList())
         vm.uiPrefs.edit().putBoolean("onboarded", true).putInt("ob_found", found).putString("ob_uses", uses).apply()
         onDone()
+    }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val isAssistant = (android.provider.Settings.Secure.getString(ctx.contentResolver, "assistant") ?: "").startsWith(ctx.packageName)
+    // Continue only lights up once the question has an answer.
+    val canNext = when (step) {
+        0 -> found >= 0
+        1 -> uses.isNotBlank()
+        2 -> first.isNotBlank()
+        3 -> about.isNotBlank()
+        6 -> keys.any { it.isNotBlank() }
+        7 -> isAssistant || PermissionCenter.runtime.firstOrNull { it.id == "mic" }?.let { vm.perms[it.id] == true } == true
+        else -> true
     }
     fun next() { back = false; if (step >= STEPS - 1) finish() else step++ }
     fun prev() { back = true; if (step > 0) step-- }
@@ -191,13 +203,13 @@ fun OnboardingScreen(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onDone: 
                                 Title(8, "Let Entrion help on your phone", "Allow only what you want. Each one can be changed later in Permissions.")
                                 val items = listOf(
                                     Triple(Icons.Outlined.Mic, "Microphone", PermissionCenter.runtime.firstOrNull { it.id == "mic" }),
-                                    Triple(Icons.Outlined.Layers, "Floating orb", PermissionCenter.special.firstOrNull { it.id == "overlay" }),
                                     Triple(Icons.Outlined.Accessibility, "Phone control", PermissionCenter.special.firstOrNull { it.id == "accessibility" })
                                 )
                                 items.forEach { (ic, t, item) ->
                                     val ok = item != null && vm.perms[item.id] == true
                                     Option(ic, t, ok, trailing = if (ok) "Allowed" else "Allow") { if (item != null) onPermission(item) }
                                 }
+                                Option(Icons.Outlined.Layers, "Hold Home to open Entrion", isAssistant, trailing = if (isAssistant) "On" else "Set") { onAssistant() }
                             }
                         }
                     }
@@ -209,11 +221,11 @@ fun OnboardingScreen(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onDone: 
                 if (step in listOf(3, 6, 7)) Text("Skip", color = ArinaColors.Muted, fontSize = 14.sp, modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { next() }.padding(horizontal = 6.dp, vertical = 10.dp))
             }
             Box(
-                Modifier.fillMaxWidth().height(56.dp).padding(bottom = 0.dp).clip(RoundedCornerShape(28.dp))
-                    .background(Brush.horizontalGradient(listOf(GradA, GradB)))
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { next() },
+                Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(28.dp))
+                    .background(Brush.horizontalGradient(listOf(GradA.copy(alpha = if (canNext) 1f else 0.28f), GradB.copy(alpha = if (canNext) 1f else 0.28f))))
+                    .clickable(enabled = canNext, interactionSource = remember { MutableInteractionSource() }, indication = null) { next() },
                 contentAlignment = Alignment.Center
-            ) { Text(if (step == STEPS - 1) "Finish" else "Continue", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold) }
+            ) { Text(if (step == STEPS - 1) "Finish" else "Continue", color = Color.White.copy(alpha = if (canNext) 1f else 0.6f), fontSize = 16.sp, fontWeight = FontWeight.SemiBold) }
             Spacer(Modifier.height(18.dp))
         }
     }

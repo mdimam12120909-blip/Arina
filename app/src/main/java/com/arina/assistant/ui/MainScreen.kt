@@ -46,6 +46,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Search
@@ -1529,6 +1530,10 @@ private fun ProfilePanel(vm: ArinaEngine, onOpen: (Page) -> Unit, onPower: () ->
         PanelHead("PHONE")
         PanelRow(Icons.Outlined.HealthAndSafety, "Phone health", { onOpen(Page.Health) })
         PanelRow(Icons.Filled.Lock, "Permissions", { onOpen(Page.Permissions) })
+        val actx = androidx.compose.ui.platform.LocalContext.current
+        PanelRow(Icons.Outlined.Mic, "Hold Home to open Entrion", {
+            runCatching { actx.startActivity(android.content.Intent(android.provider.Settings.ACTION_VOICE_INPUT_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        })
         PanelRow(Icons.Filled.PowerSettingsNew, "Floating orb", { onPower() }, trailing = {
             Switch(
                 checked = vm.overlayOn.value, onCheckedChange = { onPower() },
