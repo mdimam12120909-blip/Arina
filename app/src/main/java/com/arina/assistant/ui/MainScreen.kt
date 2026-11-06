@@ -130,6 +130,9 @@ private enum class Page(val title: String) {
     Assistant("Assistant"), Admin("Admin"), Today("Today"), Profile("Edit profile")
 }
 
+/** The five bottom tabs, left to right. */
+private fun tabIdx(p: Page): Int = when (p) { Page.Memory -> 0; Page.Chat -> 1; Page.Home -> 2; Page.Today -> 3; Page.Routine -> 4; else -> -1 }
+
 /** Pages that open from Settings: they show a back arrow that returns to Settings. */
 private val SETTINGS_SUB = setOf(Page.Account, Page.Permissions, Page.Keys, Page.Assistant, Page.Admin)
 
@@ -157,6 +160,7 @@ fun MainScreen(
     BackHandler(enabled = panelOpen) { panelOpen = false }
     BackHandler(enabled = !panelOpen && page != Page.Home) { page = if (page in SETTINGS_SUB) Page.Settings else Page.Home }
     fun open(p: Page) { page = p; panelOpen = false }
+    val imeUp = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
 
     val ambient = Color(OrbChoice.hues[OrbChoice.hueOf(vm.persona.value)].mid)
     val dark = ArinaColors.dark
@@ -177,8 +181,15 @@ fun MainScreen(
                 androidx.compose.animation.AnimatedContent(
                     targetState = page,
                     transitionSpec = {
-                        (androidx.compose.animation.fadeIn(tween(260)) + androidx.compose.animation.slideInHorizontally(tween(320)) { it / 14 }) togetherWith
-                            androidx.compose.animation.fadeOut(tween(140))
+                        val a = tabIdx(initialState); val b = tabIdx(targetState)
+                        if (a >= 0 && b >= 0) {
+                            val d = if (b > a) 1 else -1
+                            (androidx.compose.animation.fadeIn(tween(320, delayMillis = 60)) + androidx.compose.animation.slideInHorizontally(tween(420)) { d * it / 4 }) togetherWith
+                                (androidx.compose.animation.fadeOut(tween(180)) + androidx.compose.animation.slideOutHorizontally(tween(320)) { -d * it / 6 })
+                        } else {
+                            (androidx.compose.animation.fadeIn(tween(260)) + androidx.compose.animation.slideInHorizontally(tween(320)) { it / 14 }) togetherWith
+                                androidx.compose.animation.fadeOut(tween(140))
+                        }
                     },
                     label = "page"
                 ) { p ->
@@ -199,6 +210,12 @@ fun MainScreen(
                         Page.Admin -> AdminPage(vm)
                     }
                 }
+            }
+            if (tabIdx(page) >= 0 && !imeUp) {
+                Box(Modifier.padding(horizontal = 20.dp).padding(top = 8.dp)) {
+                    Dock(page, vm.micOn.value, vm.level.floatValue, onMicClick) { page = if (it == page && it != Page.Home) Page.Home else it }
+                }
+                Spacer(Modifier.height(14.dp))
             }
             Spacer(Modifier.navigationBarsPadding())
         }
@@ -249,7 +266,9 @@ private fun Header(vm: ArinaEngine, page: Page, onAvatar: () -> Unit, onBack: ()
         modifier.fillMaxWidth().padding(start = 10.dp, end = 18.dp, top = 10.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (page != Page.Home) {
+        if (tabIdx(page) >= 0 && page != Page.Home) {
+            Text(page.title, color = ArinaColors.Text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 10.dp))
+        } else if (page != Page.Home) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = ArinaColors.Text) }
             Text(page.title, color = ArinaColors.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
         } else {
@@ -344,8 +363,6 @@ val titleKey = if (vm.micOn.value && say.isNotBlank()) 0 else if (busy) 1 else 2
             }
         }
         Spacer(Modifier.height(14.dp))
-        Pop(3) { Dock(vm.micOn.value, vm.level.floatValue, onMicClick, onNav) }
-        Spacer(Modifier.height(18.dp))
     }
 }
 
@@ -405,47 +422,69 @@ private fun ActivityCard(vm: ArinaEngine) {
 }
 
 @Composable
-private fun DockItem(icon: ImageVector, label: String, onClick: () -> Unit) {
-    Column(Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(horizontal = 4.dp, vertical = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            Modifier.size(44.dp).clip(CircleShape).background(Color.White.copy(alpha = if (ArinaColors.dark) 0.10f else 0.7f))
-                .border(1.dp, Color.White.copy(alpha = if (ArinaColors.dark) 0.18f else 0.9f), CircleShape),
-            contentAlignment = Alignment.Center
-        ) { Icon(icon, label, tint = ArinaColors.Text, modifier = Modifier.size(21.dp)) }
-        Text(label, color = ArinaColors.Muted, fontSize = 10.5.sp, modifier = Modifier.padding(top = 3.dp))
+private fun DockItem(icon: ImageVector, label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val tint by androidx.compose.animation.animateColorAsState(if (selected) ArinaColors.Glow else ArinaColors.Text, tween(260), label = "tint")
+    val lift by androidx.compose.animation.core.animateFloatAsState(if (selected) -2f else 0f, spring(dampingRatio = 0.5f, stiffness = 380f), label = "lift")
+    Column(
+        modifier.fillMaxHeight().clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
+    ) {
+        Icon(icon, label, tint = tint, modifier = Modifier.size(24.dp).graphicsLayer { translationY = lift * density; scaleX = 1f + (-lift) * 0.06f; scaleY = 1f + (-lift) * 0.06f })
+        Text(label, color = if (selected) ArinaColors.Glow else ArinaColors.Muted, fontSize = 10.5.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, modifier = Modifier.padding(top = 4.dp))
     }
 }
 
-/** The bottom bar: four shortcuts and one big microphone. The mic glows and pulses while it is listening. */
+/** The bottom bar. A liquid blob slides (stretching as it goes) behind the active tab; the big mic sits in the middle. */
 @Composable
-private fun Dock(micOn: Boolean, level: Float, onMic: () -> Unit, onNav: (Page) -> Unit) {
+private fun Dock(page: Page, micOn: Boolean, level: Float, onMic: () -> Unit, onNav: (Page) -> Unit) {
     val inf = rememberInfiniteTransition(label = "dock")
     val pulse by inf.animateFloat(1f, 1.07f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "pulse")
     val ring by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(1700, easing = LinearEasing), RepeatMode.Restart), label = "ring")
     val scale = if (micOn) pulse + level.coerceIn(0f, 1f) * 0.08f else 1f
-    Row(
-        Modifier.fillMaxWidth().height(88.dp).glass(RoundedCornerShape(44.dp)).padding(horizontal = 14.dp),
-        horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
-    ) {
-        DockItem(Icons.Outlined.Psychology, "Memory") { onNav(Page.Memory) }
-        DockItem(Icons.Outlined.ChatBubbleOutline, "Chat") { onNav(Page.Chat) }
-        Box(Modifier.size(92.dp), contentAlignment = Alignment.Center) {
-            Canvas(Modifier.fillMaxSize()) {
-                if (micOn) for (i in 0..1) {
-                    val p = (ring + i * 0.5f) % 1f
-                    drawCircle(ArinaColors.Glow.copy(alpha = (1f - p) * 0.45f), radius = size.minDimension * (0.36f + p * 0.16f), center = center, style = Stroke(2.dp.toPx()))
+    val idx = tabIdx(page).coerceAtLeast(0)
+    val weights = floatArrayOf(1f, 1f, 1.4f, 1f, 1f)
+    val total = weights.sum()
+    val lastIdx = remember { mutableStateOf(idx) }
+    val goingRight = remember(idx) { (idx > lastIdx.value).also { lastIdx.value = idx } }
+    val fast = spring<Float>(dampingRatio = 0.78f, stiffness = 650f)
+    val slow = spring<Float>(dampingRatio = 0.85f, stiffness = 190f)
+    val showBlob by androidx.compose.animation.core.animateFloatAsState(if (page == Page.Home) 0f else 1f, tween(260), label = "blobAlpha")
+    val dark = ArinaColors.dark
+    BoxWithConstraints(Modifier.fillMaxWidth().height(80.dp).glass(RoundedCornerShape(40.dp))) {
+        val inner = maxWidth - 20.dp
+        val slotStart = (0 until idx).sumOf { weights[it].toDouble() }.toFloat() / total
+        val slotW = weights[idx] / total
+        val bw = 56f
+        val leftT = 10f + inner.value * slotStart + (inner.value * slotW - bw) / 2f
+        val left by androidx.compose.animation.core.animateFloatAsState(leftT, if (goingRight) slow else fast, label = "bl")
+        val right by androidx.compose.animation.core.animateFloatAsState(leftT + bw, if (goingRight) fast else slow, label = "br")
+        Box(
+            Modifier.offset(x = left.dp, y = 10.dp).width((right - left).coerceAtLeast(30f).dp).height(60.dp)
+                .graphicsLayer { alpha = showBlob }
+                .clip(RoundedCornerShape(30.dp))
+                .background(Brush.linearGradient(listOf(Color(0xFF4F7DFF).copy(alpha = if (dark) 0.34f else 0.22f), Color(0xFF8F5BFF).copy(alpha = if (dark) 0.34f else 0.22f))))
+                .border(1.dp, Color.White.copy(alpha = if (dark) 0.30f else 0.85f), RoundedCornerShape(30.dp))
+        )
+        Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            DockItem(Icons.Outlined.Psychology, "Memory", page == Page.Memory, Modifier.weight(1f)) { onNav(Page.Memory) }
+            DockItem(Icons.Outlined.ChatBubbleOutline, "Chat", page == Page.Chat, Modifier.weight(1f)) { onNav(Page.Chat) }
+            Box(Modifier.weight(1.4f).fillMaxHeight().clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) { if (page != Page.Home) onNav(Page.Home) else onMic() }, contentAlignment = Alignment.Center) {
+                Canvas(Modifier.size(92.dp)) {
+                    if (micOn) for (i in 0..1) {
+                        val p = (ring + i * 0.5f) % 1f
+                        drawCircle(ArinaColors.Glow.copy(alpha = (1f - p) * 0.45f), radius = size.minDimension * (0.36f + p * 0.16f), center = center, style = Stroke(2.dp.toPx()))
+                    }
                 }
+                Box(
+                    Modifier.size(62.dp).graphicsLayer { scaleX = scale; scaleY = scale }.clip(CircleShape)
+                        .background(Brush.linearGradient(listOf(Color(0xFF4F7DFF), Color(0xFF8F5BFF))))
+                        .border(1.dp, Color.White.copy(alpha = 0.35f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) { Icon(if (page != Page.Home) Icons.Filled.Home else if (micOn) Icons.Filled.Mic else Icons.Filled.MicOff, "Microphone", tint = Color.White, modifier = Modifier.size(28.dp)) }
             }
-            Box(
-                Modifier.size(70.dp).graphicsLayer { scaleX = scale; scaleY = scale }.clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(Color(0xFF4F7DFF), Color(0xFF8F5BFF))))
-                    .border(1.dp, Color.White.copy(alpha = 0.35f), CircleShape)
-                    .clickable(onClick = onMic),
-                contentAlignment = Alignment.Center
-            ) { Icon(if (micOn) Icons.Filled.Mic else Icons.Filled.MicOff, "Microphone", tint = Color.White, modifier = Modifier.size(30.dp)) }
+            DockItem(Icons.Outlined.CalendarToday, "Today", page == Page.Today, Modifier.weight(1f)) { onNav(Page.Today) }
+            DockItem(Icons.Outlined.Schedule, "Routine", page == Page.Routine, Modifier.weight(1f)) { onNav(Page.Routine) }
         }
-        DockItem(Icons.Outlined.CalendarToday, "Today") { onNav(Page.Today) }
-        DockItem(Icons.Outlined.Schedule, "Routine") { onNav(Page.Routine) }
     }
 }
 
