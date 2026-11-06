@@ -647,38 +647,31 @@ private fun TasksCard(vm: ArinaEngine, accent: Color, modifier: Modifier) {
     val tasks = vm.taskList
     val left = tasks.count { !it.done }
     val frac = if (tasks.isEmpty()) 0f else (tasks.size - left).toFloat() / tasks.size
-    Column(modifier.heightIn(min = 190.dp).glass(strong = true).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier.heightIn(min = 190.dp).glass(RoundedCornerShape(26.dp)).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Today's tasks", color = ArinaColors.Text, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                Text("$left left", color = ArinaColors.Muted, fontSize = 10.sp)
+                Text("TASKS", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.6.sp)
+                Text("$left left", color = ArinaColors.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
             }
-            Icon(Icons.Outlined.Add, "Add task", tint = accent, modifier = Modifier.size(20.dp).clickable { adding = !adding })
+            Box(Modifier.size(40.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Color(0xFF4F7DFF), Color(0xFF8F5BFF)))).clickable { adding = !adding }, contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Add, "Add task", tint = Color.White, modifier = Modifier.size(22.dp)) }
         }
-        Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x33FFFFFF))) {
-            Box(Modifier.fillMaxWidth(frac).height(4.dp).background(accent))
+        Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(Color(0x33FFFFFF))) {
+            Box(Modifier.fillMaxWidth(frac).height(6.dp).background(Brush.horizontalGradient(listOf(Color(0xFF4F7DFF), Color(0xFF8F5BFF)))))
         }
         if (adding) {
-            OutlinedTextField(
-                value = draft, onValueChange = { draft = it }, singleLine = true,
-                placeholder = { Text("New task", fontSize = 12.sp, color = ArinaColors.Muted) },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { vm.addTaskTyped(draft); draft = ""; adding = false }),
-                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = ArinaColors.Text, unfocusedTextColor = ArinaColors.Text, focusedBorderColor = accent, unfocusedBorderColor = ArinaColors.Muted),
-                modifier = Modifier.fillMaxWidth()
-            )
+            GlassField(draft, { draft = it }, "New task", keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { vm.addTaskTyped(draft); draft = ""; adding = false }))
         }
-        if (tasks.isEmpty() && !adding) Text("Nothing yet. Say “add a task…” or tap +.", color = ArinaColors.Muted, fontSize = 12.sp)
+        if (tasks.isEmpty() && !adding) Text("Nothing yet. Say “add a task…” or tap +.", color = ArinaColors.Muted, fontSize = 14.sp)
         tasks.take(6).forEach { t ->
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { vm.toggleTask(t.id) }) {
-                Box(Modifier.size(10.dp).clip(CircleShape).border(1.5.dp, accent, CircleShape).background(if (t.done) accent else Color.Transparent))
-                Spacer(Modifier.width(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { vm.toggleTask(t.id) }.padding(vertical = 4.dp)) {
+                Box(Modifier.size(22.dp).clip(CircleShape).then(if (t.done) Modifier.background(Brush.linearGradient(listOf(Color(0xFF4F7DFF), Color(0xFF8F5BFF)))) else Modifier.border(2.dp, ArinaColors.Muted, CircleShape)), contentAlignment = Alignment.Center) { if (t.done) Icon(Icons.Outlined.Check, null, tint = Color.White, modifier = Modifier.size(14.dp)) }
+                Spacer(Modifier.width(12.dp))
                 Text(
-                    t.text, color = if (t.done) ArinaColors.Muted else ArinaColors.Text, fontSize = 12.sp, lineHeight = 15.sp, maxLines = 2,
+                    t.text, color = if (t.done) ArinaColors.Muted else ArinaColors.Text, fontSize = 15.sp, lineHeight = 20.sp, maxLines = 2,
                     textDecoration = if (t.done) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
                     modifier = Modifier.weight(1f)
                 )
-                Icon(Icons.Outlined.Close, "Delete", tint = ArinaColors.Muted, modifier = Modifier.size(14.dp).clickable { vm.removeTask(t.id) })
+                Icon(Icons.Outlined.Close, "Delete", tint = ArinaColors.Muted, modifier = Modifier.size(18.dp).clickable { vm.removeTask(t.id) })
             }
         }
     }
@@ -827,33 +820,18 @@ private fun MemoryPanel(vm: ArinaEngine) {
 
     Column(
         Modifier.fillMaxSize()
-            .background(ArinaColors.Background.copy(alpha = 0.9f))
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Memory", color = ArinaColors.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
         Text(
-            "Everything here stays on this phone. The agent reads it before every answer.",
+            "Everything here stays on this phone. Entrion reads it before every answer.",
             color = ArinaColors.Muted, fontSize = 12.sp
         )
 
         Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Profile", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-            OutlinedTextField(
-                value = profile,
-                onValueChange = { profile = it },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp),
-                placeholder = { Text("Paste who you are, your projects, goals and how Arina should treat you", color = ArinaColors.Muted, fontSize = 13.sp) },
-                shape = RoundedCornerShape(14.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = ArinaColors.Text,
-                    unfocusedTextColor = ArinaColors.Text,
-                    focusedBorderColor = ArinaColors.Glow,
-                    unfocusedBorderColor = ArinaColors.Deep,
-                    cursorColor = ArinaColors.Glow
-                )
-            )
+            Text("PROFILE", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.6.sp)
+            GlassField(profile, { profile = it }, "Paste who you are, your projects, goals and how Entrion should treat you", singleLine = false, minHeight = 160.dp)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 PillButton("Save profile") { vm.saveProfile(profile) }
                 Text("${profile.length} / 6000", color = ArinaColors.Muted, fontSize = 12.sp)
@@ -862,34 +840,22 @@ private fun MemoryPanel(vm: ArinaEngine) {
         }
 
         Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Things Arina remembers (${vm.facts.size})", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Text("THINGS ENTRION REMEMBERS  ·  ${vm.facts.size}", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.6.sp)
             if (vm.facts.isEmpty()) {
-                Text("Nothing yet. Tell Arina to remember something, or add it below.", color = ArinaColors.Muted, fontSize = 12.sp)
+                Text("Nothing yet. Tell Entrion to remember something, or add it below.", color = ArinaColors.Muted, fontSize = 12.sp)
             }
             vm.facts.reversed().forEach { f ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(f.text, color = ArinaColors.Text, fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.weight(1f))
+                    Box(Modifier.size(7.dp).clip(CircleShape).background(ArinaColors.Glow))
+                    Spacer(Modifier.width(12.dp))
+                    Text(f.text, color = ArinaColors.Text, fontSize = 14.5.sp, lineHeight = 21.sp, modifier = Modifier.weight(1f))
                     IconButton(onClick = { vm.deleteFact(f.id) }) {
                         Icon(Icons.Outlined.Close, "Delete", tint = ArinaColors.Muted)
                     }
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = newFact,
-                    onValueChange = { newFact = it },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Add a fact", color = ArinaColors.Muted, fontSize = 13.sp) },
-                    singleLine = true,
-                    shape = RoundedCornerShape(24.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = ArinaColors.Text,
-                        unfocusedTextColor = ArinaColors.Text,
-                        focusedBorderColor = ArinaColors.Glow,
-                        unfocusedBorderColor = ArinaColors.Deep,
-                        cursorColor = ArinaColors.Glow
-                    )
-                )
+                GlassField(newFact, { newFact = it }, "Add a fact", modifier = Modifier.weight(1f))
                 Spacer(Modifier.width(8.dp))
                 PillButton("Add") {
                     vm.addFact(newFact)
@@ -900,38 +866,47 @@ private fun MemoryPanel(vm: ArinaEngine) {
     }
 }
 
+/** A rounded glass text field used everywhere instead of the plain outlined box. */
+@Composable
+internal fun GlassField(
+    value: String, onChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier,
+    singleLine: Boolean = true, minHeight: androidx.compose.ui.unit.Dp = 50.dp, secret: Boolean = false, label: String? = null,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default, keyboardActions: KeyboardActions = KeyboardActions.Default
+) {
+    Column(modifier.fillMaxWidth()) {
+        if (label != null) Text(label, color = ArinaColors.Muted, fontSize = 12.sp, modifier = Modifier.padding(start = 6.dp, bottom = 5.dp))
+        Box(
+            Modifier.fillMaxWidth().heightIn(min = minHeight).glass(RoundedCornerShape(if (singleLine) 26.dp else 20.dp)).padding(horizontal = 18.dp),
+            contentAlignment = if (singleLine) Alignment.CenterStart else Alignment.TopStart
+        ) {
+            androidx.compose.foundation.text.BasicTextField(
+                value = value, onValueChange = onChange, singleLine = singleLine,
+                textStyle = androidx.compose.ui.text.TextStyle(color = ArinaColors.Text, fontSize = 15.sp, lineHeight = 22.sp),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(ArinaColors.Glow),
+                visualTransformation = if (secret) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+                keyboardOptions = keyboardOptions, keyboardActions = keyboardActions,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp)
+            )
+            if (value.isEmpty()) Text(placeholder, color = ArinaColors.Muted, fontSize = 15.sp, modifier = Modifier.padding(vertical = if (singleLine) 0.dp else 14.dp))
+        }
+    }
+}
+
 @Composable
 private fun KeyField(label: String, value: String, secret: Boolean, onChange: (String) -> Unit) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onChange,
-        modifier = Modifier.fillMaxWidth(),
-        label = { Text(label, fontSize = 12.sp) },
-        singleLine = true,
-        visualTransformation = if (secret) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
-        shape = RoundedCornerShape(14.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedTextColor = ArinaColors.Text,
-            unfocusedTextColor = ArinaColors.Text,
-            focusedBorderColor = ArinaColors.Glow,
-            unfocusedBorderColor = ArinaColors.Deep,
-            focusedLabelColor = ArinaColors.Glow,
-            unfocusedLabelColor = ArinaColors.Muted,
-            cursorColor = ArinaColors.Glow
-        )
-    )
+    GlassField(value, onChange, "", label = label, secret = secret)
 }
 
 @Composable
 private fun PillButton(label: String, onClick: () -> Unit) {
     Text(
         label,
-        color = ArinaColors.Background,
+        color = Color.White,
         fontSize = 13.sp,
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier
             .clip(RoundedCornerShape(50))
-            .background(ArinaColors.Glow)
+            .background(Brush.linearGradient(listOf(Color(0xFF4F7DFF), Color(0xFF8F5BFF))))
             .clickable(onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 8.dp)
     )
@@ -1481,32 +1456,36 @@ private fun SkillsCard(vm: ArinaEngine) {
 @Composable
 private fun PanelRow(icon: ImageVector, label: String, onClick: () -> Unit, trailing: (@Composable () -> Unit)? = null) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 14.dp),
+        Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(horizontal = 6.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null, tint = ArinaColors.Text.copy(alpha = 0.85f), modifier = Modifier.size(22.dp))
-        Spacer(Modifier.width(16.dp))
-        Text(label, color = ArinaColors.Text, fontSize = 16.sp, modifier = Modifier.weight(1f))
-        if (trailing != null) trailing() else Text("›", color = ArinaColors.Muted, fontSize = 18.sp)
+        Box(
+            Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(Color(0x474F7DFF), Color(0x478F5BFF)))).border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center
+        ) { Icon(icon, null, tint = ArinaColors.Text, modifier = Modifier.size(20.dp)) }
+        Spacer(Modifier.width(14.dp))
+        Text(label, color = ArinaColors.Text, fontSize = 15.5.sp, modifier = Modifier.weight(1f))
+        if (trailing != null) trailing() else Text("›", color = ArinaColors.Muted, fontSize = 20.sp)
     }
-    Box(Modifier.fillMaxWidth().height(1.dp).background(ArinaColors.Deep.copy(alpha = 0.6f)))
 }
 
 @Composable
 private fun PanelHead(text: String) {
-    Text(text, color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.6.sp, modifier = Modifier.padding(top = 20.dp, bottom = 2.dp))
+    Text(text, color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.6.sp, modifier = Modifier.padding(start = 6.dp, top = 22.dp, bottom = 6.dp))
 }
 
 @Composable
 private fun ProfilePanel(vm: ArinaEngine, onOpen: (Page) -> Unit, onPower: () -> Unit, onClose: () -> Unit) {
     val shape = RoundedCornerShape(topStart = 32.dp, bottomStart = 32.dp)
     Column(
-        Modifier.width(330.dp).fillMaxHeight().clip(shape).background(ArinaColors.Surface)
+        Modifier.width(330.dp).fillMaxHeight().clip(shape)
+            .background(Brush.verticalGradient(listOf(ArinaColors.Surface.mix(ArinaColors.Glow, 0.16f), ArinaColors.Surface, ArinaColors.Surface.mix(ArinaColors.Pink, 0.12f))))
+            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.35f), Color.White.copy(alpha = 0.05f))), shape)
             .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {}
             .verticalScroll(rememberScrollState()).statusBarsPadding().padding(start = 24.dp, end = 22.dp, top = 24.dp, bottom = 14.dp)
     ) {
-        Row(Modifier.fillMaxWidth().clickable { onOpen(Page.Profile) }, verticalAlignment = Alignment.CenterVertically) {
-            Avatar(vm, 60.dp)
+        Row(Modifier.fillMaxWidth().glass(RoundedCornerShape(24.dp)).clickable { onOpen(Page.Profile) }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Avatar(vm, 56.dp)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(vm.displayName(), color = ArinaColors.Text, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)

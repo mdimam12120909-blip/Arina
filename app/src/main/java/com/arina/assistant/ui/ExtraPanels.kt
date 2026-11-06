@@ -95,12 +95,22 @@ fun RoutinePanel(vm: ArinaEngine) {
             "Entrion reminds you at these times with a notification and its voice. You can also just say: “add a routine, study at 9 pm”.",
             color = ArinaColors.Muted, fontSize = 13.sp, lineHeight = 18.sp
         )
-        Column(Modifier.fillMaxWidth().then(card(true)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("NEW ROUTINE", color = accent, fontSize = 11.sp, letterSpacing = 3.sp, fontWeight = FontWeight.Bold)
-            OutlinedTextField(title, { title = it }, singleLine = true, label = { Text("Title (Study, Gym, Sleep…)") }, colors = fieldColors, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(note, { note = it }, singleLine = true, label = { Text("What to say (optional)") }, colors = fieldColors, modifier = Modifier.fillMaxWidth())
+        var showForm by remember { mutableStateOf(vm.routines.isEmpty()) }
+        Row(
+            Modifier.fillMaxWidth().then(card()).clickable { showForm = !showForm }.padding(horizontal = 18.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(Modifier.size(40.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Color(0xFF4F7DFF), Color(0xFF8F5BFF)))), contentAlignment = Alignment.Center) {
+                Text(if (showForm) "–" else "+", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            }
+            Spacer(Modifier.width(14.dp))
+            Text("New routine", color = ArinaColors.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        }
+        if (showForm) Column(Modifier.fillMaxWidth().then(card()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            GlassField(title, { title = it }, "Title (Study, Gym, Sleep…)")
+            GlassField(note, { note = it }, "What to say (optional)")
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("%02d:%02d".format(hour, minute), color = ArinaColors.Text, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                Text("%02d:%02d".format(hour, minute), color = ArinaColors.Text, fontSize = 34.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.width(14.dp))
                 Chip("Set time", accent) {
                     TimePickerDialog(ctx, { _, h, m -> hour = h; minute = m }, hour, minute, true).show()
@@ -111,26 +121,32 @@ fun RoutinePanel(vm: ArinaEngine) {
                     val on = (days shr i) and 1 == 1
                     Box(
                         Modifier.size(36.dp).clip(CircleShape)
-                            .background(if (on) accent else Color.Transparent)
-                            .border(1.dp, accent, CircleShape)
+                            .background(if (on) Brush.linearGradient(listOf(Color(0xFF4F7DFF), Color(0xFF8F5BFF))) else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)))
+                            .border(1.dp, if (on) Color.Transparent else ArinaColors.Muted.copy(alpha = 0.5f), CircleShape)
                             .clickable { days = days xor (1 shl i) },
                         contentAlignment = Alignment.Center
-                    ) { Text(n, color = if (on) ArinaColors.Background else ArinaColors.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                    ) { Text(n, color = if (on) Color.White else ArinaColors.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
                 }
             }
             Chip("Add routine", accent, filled = true) {
                 if (title.isNotBlank() && days and 127 != 0) {
                     vm.saveRoutine(Routine(System.currentTimeMillis(), title.trim(), hour, minute, days, note.trim(), true))
-                    title = ""; note = ""
+                    title = ""; note = ""; showForm = false
                 }
             }
         }
 
-        if (vm.routines.isEmpty()) Text("No routines yet.", color = ArinaColors.Muted, fontSize = 13.sp)
+        if (vm.routines.isEmpty()) Text("No routines yet.", color = ArinaColors.Muted, fontSize = 14.sp, modifier = Modifier.padding(start = 6.dp))
+        else Text("YOUR ROUTINES", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.6.sp, modifier = Modifier.padding(start = 6.dp, top = 4.dp))
         vm.routines.forEach { r ->
-            Row(Modifier.fillMaxWidth().then(card(r.enabled)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().then(card()).padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Color(0x594F7DFF), Color(0x598F5BFF)))), contentAlignment = Alignment.Center) {
+                    Text(r.timeText().take(2), color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(r.timeText() + "  " + r.title, color = ArinaColors.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(r.title, color = ArinaColors.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(r.timeText(), color = ArinaColors.Text, fontSize = 13.sp)
                     Text(vm.daysText(r.days) + if (r.note.isNotBlank()) " · ${r.note}" else "", color = ArinaColors.Muted, fontSize = 12.sp)
                 }
                 Switch(
