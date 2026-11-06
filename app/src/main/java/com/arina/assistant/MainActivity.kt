@@ -86,6 +86,14 @@ class MainActivity : FragmentActivity() {
                     SignInScreen(engine)
                     return@ArinaTheme
                 }
+                // First time on a new account: a short run of questions that sets Entrion up.
+                var onboarded by androidx.compose.runtime.saveable.rememberSaveable {
+                    androidx.compose.runtime.mutableStateOf(engine.isAdmin.value || engine.uiPrefs.getBoolean("onboarded", false) || engine.geminiKeySet)
+                }
+                if (engine.signedIn.value && !onboarded) {
+                    com.arina.assistant.ui.OnboardingScreen(engine, onPermission = ::requestItem) { onboarded = true }
+                    return@ArinaTheme
+                }
                 // An admin gets the console only: no assistant, no microphone, no floating orb.
                 if (engine.signedIn.value && engine.isAdmin.value) {
                     androidx.compose.runtime.LaunchedEffect(Unit) { OverlayService.stop(this@MainActivity) }
