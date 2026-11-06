@@ -33,8 +33,8 @@ object ArinaColors {
 
 /** 0 = follow the phone, 1 = light, 2 = dark. Saved by the engine. */
 object ThemeChoice {
-    var mode: Int by androidx.compose.runtime.mutableIntStateOf(2)
-    fun load(prefs: android.content.SharedPreferences) { mode = prefs.getInt("theme_mode", 2).coerceIn(0, 2) }
+    var mode: Int by androidx.compose.runtime.mutableIntStateOf(1)
+    fun load(prefs: android.content.SharedPreferences) { mode = prefs.getInt("theme_mode", 1).coerceIn(0, 2) }
     fun set(prefs: android.content.SharedPreferences, m: Int) { mode = m; prefs.edit().putInt("theme_mode", m).apply() }
 }
 

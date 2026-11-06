@@ -82,7 +82,7 @@ private fun Modifier.obGlass(shape: androidx.compose.ui.graphics.Shape = Rounded
 private val FOUND = listOf("A friend told me" to Icons.Outlined.Group, "YouTube or social media" to Icons.Outlined.PlayArrow, "Search" to Icons.Outlined.Search, "Something else" to Icons.Outlined.AutoAwesome)
 private val USES = listOf("Calls & messages", "Reminders", "Research", "Studying", "Translate", "Control my phone", "Just talk", "Memory", "Daily planning", "Writing")
 private val PERS_ICONS = listOf(Icons.Outlined.EmojiEmotions, Icons.Outlined.Work, Icons.Outlined.Celebration, Icons.Outlined.Spa)
-private const val STEPS = 9
+private const val STEPS = 8
 
 /** Shown once, right after a new account signs in: a calm run of questions that sets Entrion up the way the person wants. */
 @Composable
@@ -187,7 +187,7 @@ fun OnboardingScreen(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onDone: 
                                 Fields { keys.forEachIndexed { i, v -> GlassField(v, { keys[i] = it }, "Paste key", label = jobs.getOrElse(i) { "Key ${i + 1}" }, secret = true) } }
                                 Text("An empty key uses key 1.", color = ArinaColors.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp, start = 6.dp))
                             }
-                            7 -> {
+                            else -> {
                                 Title(8, "Let Entrion help on your phone", "Allow only what you want. Each one can be changed later in Permissions.")
                                 val items = listOf(
                                     Triple(Icons.Outlined.Mic, "Microphone", PermissionCenter.runtime.firstOrNull { it.id == "mic" }),
@@ -197,18 +197,6 @@ fun OnboardingScreen(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onDone: 
                                 items.forEach { (ic, t, item) ->
                                     val ok = item != null && vm.perms[item.id] == true
                                     Option(ic, t, ok, trailing = if (ok) "Allowed" else "Allow") { if (item != null) onPermission(item) }
-                                }
-                            }
-                            else -> {
-                                Title(9, "Pick your look", "Light, dark, or follow your phone.")
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    listOf("Light" to 1, "Dark" to 2, "Auto" to 0).forEach { (n, mode) ->
-                                        val on = ThemeChoice.mode == mode
-                                        Box(
-                                            Modifier.weight(1f).height(140.dp).obGlass(RoundedCornerShape(24.dp), on).clickable { ThemeChoice.set(vm.uiPrefs, mode) }.padding(bottom = 14.dp),
-                                            contentAlignment = Alignment.BottomCenter
-                                        ) { Text(n, color = ArinaColors.Text, fontSize = 15.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal) }
-                                    }
                                 }
                             }
                         }
