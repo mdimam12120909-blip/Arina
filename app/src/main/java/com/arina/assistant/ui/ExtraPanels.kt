@@ -51,18 +51,22 @@ private val Good = Color(0xFF3DDC97)
 private val Warn = Color(0xFFFFB84D)
 private val Bad = Color(0xFFFF5C6C)
 
-private fun card(strong: Boolean = false) = Modifier
-    .clip(RoundedCornerShape(20.dp))
-    .background(if (strong) ArinaColors.Glow.copy(alpha = if (ArinaColors.dark) 0.18f else 0.10f) else ArinaColors.Surface)
-    .border(1.dp, if (strong) ArinaColors.Glow.copy(alpha = 0.55f) else ArinaColors.Deep, RoundedCornerShape(20.dp))
+private fun card(strong: Boolean = false): Modifier {
+    val dark = ArinaColors.dark
+    val shape = RoundedCornerShape(22.dp)
+    val edge = Brush.verticalGradient(listOf(Color.White.copy(alpha = if (dark) 0.30f else 0.95f), Color.White.copy(alpha = if (dark) 0.07f else 0.35f)))
+    return Modifier.clip(shape)
+        .background(if (strong) ArinaColors.Glow.copy(alpha = 0.22f) else Color.White.copy(alpha = if (dark) 0.09f else 0.58f))
+        .border(1.dp, if (strong) Brush.verticalGradient(listOf(ArinaColors.Glow, ArinaColors.Glow.copy(alpha = 0.3f))) else edge, shape)
+}
 
 @Composable
 private fun Chip(text: String, color: Color, filled: Boolean = false, onClick: () -> Unit) {
     Text(
-        text, color = if (filled) ArinaColors.Background else color, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+        text, color = if (filled) Color.White else ArinaColors.Text, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold,
         modifier = Modifier.clip(RoundedCornerShape(50))
-            .then(if (filled) Modifier.background(color) else Modifier.border(1.dp, color, RoundedCornerShape(50)))
-            .clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 7.dp)
+            .then(if (filled) Modifier.background(Brush.linearGradient(listOf(if (color == Bad) Color(0xFFE5484D) else Color(0xFF4F7DFF), if (color == Bad) Color(0xFFFF7A59) else Color(0xFF8F5BFF)))) else Modifier.border(1.dp, Color.White.copy(alpha = if (ArinaColors.dark) 0.3f else 0.9f), RoundedCornerShape(50)).background(Color.White.copy(alpha = if (ArinaColors.dark) 0.08f else 0.5f)))
+            .clickable(onClick = onClick).padding(horizontal = 15.dp, vertical = 8.dp)
     )
 }
 
@@ -131,7 +135,7 @@ fun RoutinePanel(vm: ArinaEngine) {
                 }
                 Switch(
                     checked = r.enabled, onCheckedChange = { vm.toggleRoutine(r.id) },
-                    colors = SwitchDefaults.colors(checkedTrackColor = accent, checkedThumbColor = ArinaColors.Background)
+                    colors = SwitchDefaults.colors(checkedTrackColor = Color(0xFF6C7CFF), checkedThumbColor = Color.White)
                 )
                 Spacer(Modifier.width(6.dp))
                 Icon(Icons.Outlined.Close, "Delete", tint = ArinaColors.Muted, modifier = Modifier.size(20.dp).clickable { vm.deleteRoutine(r.id) })

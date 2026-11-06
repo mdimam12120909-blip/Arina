@@ -1,6 +1,18 @@
 package com.arina.assistant.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.graphics.TransformOrigin
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.text.KeyboardActions
@@ -215,7 +227,7 @@ fun MainScreen(
             }
             if (tabIdx(page) >= 0 && !imeUp) {
                 Box(Modifier.padding(horizontal = 20.dp).padding(top = 8.dp)) {
-                    Dock(page, vm.micOn.value, vm.level.floatValue, onMicClick) { page = if (it == page && it != Page.Home) Page.Home else it }
+                    Dock(page, vm.micOn.value, vm.level.floatValue, onMicClick) { page = it }
                 }
                 Spacer(Modifier.height(14.dp))
             }
@@ -424,53 +436,120 @@ private fun ActivityCard(vm: ArinaEngine) {
 }
 
 @Composable
-private fun DockItem(icon: ImageVector, label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    val tint by androidx.compose.animation.animateColorAsState(if (selected) ArinaColors.Glow else ArinaColors.Text, tween(260), label = "tint")
-    val lift by androidx.compose.animation.core.animateFloatAsState(if (selected) -2f else 0f, spring(dampingRatio = 0.5f, stiffness = 380f), label = "lift")
-    Column(
-        modifier.fillMaxHeight().clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null, onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
-    ) {
+private fun DockItem(icon: ImageVector, label: String, selected: Boolean, modifier: Modifier = Modifier) {
+    val tint by androidx.compose.animation.animateColorAsState(if (selected) ArinaColors.Glow else ArinaColors.Text, tween(220), label = "tint")
+    val lift by androidx.compose.animation.core.animateFloatAsState(if (selected) -2f else 0f, spring(dampingRatio = 0.5f, stiffness = 420f), label = "lift")
+    Column(modifier.fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Icon(icon, label, tint = tint, modifier = Modifier.size(24.dp).graphicsLayer { translationY = lift * density; scaleX = 1f + (-lift) * 0.06f; scaleY = 1f + (-lift) * 0.06f })
         Text(label, color = if (selected) ArinaColors.Glow else ArinaColors.Muted, fontSize = 10.5.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, modifier = Modifier.padding(top = 4.dp))
     }
 }
 
-/** The bottom bar. A liquid blob slides (stretching as it goes) behind the active tab; the big mic sits in the middle. */
+/**
+ * The bottom bar. Put a finger anywhere on it and slide: the liquid blob follows the finger, the whole bar leans and
+ * squeezes with the speed, the page changes as the blob crosses each tab, and every change plays a soft sound.
+ */
 @Composable
 private fun Dock(page: Page, micOn: Boolean, level: Float, onMic: () -> Unit, onNav: (Page) -> Unit) {
     val inf = rememberInfiniteTransition(label = "dock")
     val pulse by inf.animateFloat(1f, 1.07f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "pulse")
     val ring by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(1700, easing = LinearEasing), RepeatMode.Restart), label = "ring")
     val scale = if (micOn) pulse + level.coerceIn(0f, 1f) * 0.08f else 1f
-    val idx = tabIdx(page).coerceAtLeast(0)
+    val tabs = listOf(Page.Memory, Page.Chat, Page.Home, Page.Today, Page.Routine)
     val weights = floatArrayOf(1f, 1f, 1.4f, 1f, 1f)
     val total = weights.sum()
-    val lastIdx = remember { mutableStateOf(idx) }
-    val goingRight = remember(idx) { (idx > lastIdx.value).also { lastIdx.value = idx } }
-    val fast = spring<Float>(dampingRatio = 0.78f, stiffness = 650f)
-    val slow = spring<Float>(dampingRatio = 0.85f, stiffness = 190f)
-    val showBlob by androidx.compose.animation.core.animateFloatAsState(if (page == Page.Home) 0f else 1f, tween(260), label = "blobAlpha")
+    val idx = tabIdx(page).coerceAtLeast(0)
+    var widthPx by remember { mutableFloatStateOf(0f) }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val padPx = with(density) { 10.dp.toPx() }
+    val blobW = with(density) { 58.dp.toPx() }
+    fun centerOf(i: Int): Float {
+        var acc = 0f
+        for (k in 0 until i) acc += weights[k]
+        return padPx + (widthPx - 2 * padPx) * (acc + weights[i] / 2f) / total
+    }
+    fun nearest(px: Float): Int {
+        var best = 0
+        for (i in 1..4) if (kotlin.math.abs(centerOf(i) - px) < kotlin.math.abs(centerOf(best) - px)) best = i
+        return best
+    }
+    val x = remember { Animatable(0f) }
+    var dragging by remember { mutableStateOf(false) }
+    LaunchedEffect(idx, widthPx) {
+        if (widthPx > 0f && !dragging) {
+            if (x.value == 0f) x.snapTo(centerOf(idx)) else x.animateTo(centerOf(idx), spring(dampingRatio = 0.62f, stiffness = 430f))
+        }
+    }
+    val haptic = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    val curPage by rememberUpdatedState(page)
+    val showBlob by androidx.compose.animation.core.animateFloatAsState(if (page == Page.Home) 0f else 1f, tween(240), label = "blobAlpha")
     val dark = ArinaColors.dark
-    BoxWithConstraints(Modifier.fillMaxWidth().height(80.dp).glass(RoundedCornerShape(40.dp))) {
-        val inner = maxWidth - 20.dp
-        val slotStart = (0 until idx).sumOf { weights[it].toDouble() }.toFloat() / total
-        val slotW = weights[idx] / total
-        val bw = 56f
-        val leftT = 10f + inner.value * slotStart + (inner.value * slotW - bw) / 2f
-        val left by androidx.compose.animation.core.animateFloatAsState(leftT, if (goingRight) slow else fast, label = "bl")
-        val right by androidx.compose.animation.core.animateFloatAsState(leftT + bw, if (goingRight) fast else slow, label = "br")
+    Box(
+        Modifier.fillMaxWidth().height(80.dp)
+            .graphicsLayer {
+                val vn = (x.velocity / 3200f).coerceIn(-1f, 1f)
+                val sq = kotlin.math.abs(vn)
+                transformOrigin = TransformOrigin(0.5f, 1f)
+                cameraDistance = 14f * this.density
+                rotationZ = vn * 1.8f
+                rotationX = sq * 8f
+                scaleX = 1f - sq * 0.035f
+                scaleY = 1f - sq * 0.07f
+            }
+            .glass(RoundedCornerShape(40.dp))
+            .onSizeChanged { widthPx = it.width.toFloat() }
+            .pointerInput(widthPx) {
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    var moved = false
+                    var lastIdx = nearest(down.position.x)
+                    val slop = viewConfiguration.touchSlop
+                    while (true) {
+                        val ev = awaitPointerEvent()
+                        val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                        if (!ch.pressed) break
+                        if (!moved && kotlin.math.abs(ch.position.x - down.position.x) > slop) { moved = true; dragging = true }
+                        if (moved) {
+                            ch.consume()
+                            val px = ch.position.x.coerceIn(centerOf(0), centerOf(4))
+                            scope.launch { x.animateTo(px, spring(dampingRatio = 0.9f, stiffness = 1100f)) }
+                            val n = nearest(px)
+                            if (n != lastIdx) {
+                                lastIdx = n
+                                NavSound.tick(n); haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onNav(tabs[n])
+                            }
+                        }
+                    }
+                    dragging = false
+                    if (moved) {
+                        scope.launch { x.animateTo(centerOf(lastIdx), spring(dampingRatio = 0.6f, stiffness = 380f)) }
+                    } else {
+                        val n = nearest(down.position.x)
+                        NavSound.tick(n); haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        if (n == 2) { if (curPage != Page.Home) onNav(Page.Home) else onMic() } else onNav(tabs[n])
+                    }
+                }
+            }
+    ) {
         Box(
-            Modifier.offset(x = left.dp, y = 10.dp).width((right - left).coerceAtLeast(30f).dp).height(60.dp)
-                .graphicsLayer { alpha = showBlob }
+            Modifier.padding(top = 10.dp).size(58.dp, 60.dp)
+                .graphicsLayer {
+                    val sq = (kotlin.math.abs(x.velocity) / 3200f).coerceIn(0f, 1f)
+                    translationX = x.value - blobW / 2f
+                    scaleX = 1f + sq * 0.6f
+                    scaleY = 1f - sq * 0.2f
+                    alpha = showBlob
+                }
                 .clip(RoundedCornerShape(30.dp))
-                .background(Brush.linearGradient(listOf(Color(0xFF4F7DFF).copy(alpha = if (dark) 0.34f else 0.22f), Color(0xFF8F5BFF).copy(alpha = if (dark) 0.34f else 0.22f))))
-                .border(1.dp, Color.White.copy(alpha = if (dark) 0.30f else 0.85f), RoundedCornerShape(30.dp))
+                .background(Brush.linearGradient(listOf(Color(0xFF4F7DFF).copy(alpha = if (dark) 0.36f else 0.24f), Color(0xFF8F5BFF).copy(alpha = if (dark) 0.36f else 0.24f))))
+                .border(1.dp, Color.White.copy(alpha = if (dark) 0.32f else 0.85f), RoundedCornerShape(30.dp))
         )
         Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            DockItem(Icons.Outlined.Psychology, "Memory", page == Page.Memory, Modifier.weight(1f)) { onNav(Page.Memory) }
-            DockItem(Icons.Outlined.ChatBubbleOutline, "Chat", page == Page.Chat, Modifier.weight(1f)) { onNav(Page.Chat) }
-            Box(Modifier.weight(1.4f).fillMaxHeight().clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) { if (page != Page.Home) onNav(Page.Home) else onMic() }, contentAlignment = Alignment.Center) {
+            DockItem(Icons.Outlined.Psychology, "Memory", page == Page.Memory, Modifier.weight(1f))
+            DockItem(Icons.Outlined.ChatBubbleOutline, "Chat", page == Page.Chat, Modifier.weight(1f))
+            Box(Modifier.weight(1.4f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                 Canvas(Modifier.size(92.dp)) {
                     if (micOn) for (i in 0..1) {
                         val p = (ring + i * 0.5f) % 1f
@@ -484,8 +563,8 @@ private fun Dock(page: Page, micOn: Boolean, level: Float, onMic: () -> Unit, on
                     contentAlignment = Alignment.Center
                 ) { Icon(if (page != Page.Home) Icons.Filled.Home else if (micOn) Icons.Filled.Mic else Icons.Filled.MicOff, "Microphone", tint = Color.White, modifier = Modifier.size(28.dp)) }
             }
-            DockItem(Icons.Outlined.CalendarToday, "Today", page == Page.Today, Modifier.weight(1f)) { onNav(Page.Today) }
-            DockItem(Icons.Outlined.Schedule, "Routine", page == Page.Routine, Modifier.weight(1f)) { onNav(Page.Routine) }
+            DockItem(Icons.Outlined.CalendarToday, "Today", page == Page.Today, Modifier.weight(1f))
+            DockItem(Icons.Outlined.Schedule, "Routine", page == Page.Routine, Modifier.weight(1f))
         }
     }
 }
@@ -683,8 +762,17 @@ private fun ChatPanel(vm: ArinaEngine) {
     LaunchedEffect(vm.messages.size) {
         if (vm.messages.isNotEmpty()) listState.animateScrollToItem(vm.messages.lastIndex)
     }
-    Column(Modifier.fillMaxSize().background(ArinaColors.Background.copy(alpha = 0.88f))) {
-        LazyColumn(
+    Column(Modifier.fillMaxSize()) {
+        if (vm.messages.isEmpty()) {
+            Column(Modifier.weight(1f).fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Box(Modifier.size(64.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Color(0xFF4F7DFF), Color(0xFF8F5BFF)))), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Outlined.ChatBubbleOutline, null, tint = Color.White, modifier = Modifier.size(30.dp))
+                }
+                Spacer(Modifier.height(14.dp))
+                Text("No messages yet", color = ArinaColors.Text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Text("Type below, or tap the mic and just talk.", color = ArinaColors.Muted, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
+            }
+        } else LazyColumn(
             Modifier.weight(1f).padding(horizontal = 16.dp),
             state = listState,
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -692,44 +780,42 @@ private fun ChatPanel(vm: ArinaEngine) {
         ) {
             items(vm.messages) { m ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = if (m.fromUser) Arrangement.End else Arrangement.Start) {
+                    val shape = if (m.fromUser) RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp) else RoundedCornerShape(20.dp, 20.dp, 20.dp, 6.dp)
                     Text(
                         m.text,
-                        color = ArinaColors.Text,
+                        color = if (m.fromUser) Color.White else ArinaColors.Text,
                         fontSize = 15.sp,
                         lineHeight = 22.sp,
                         modifier = Modifier
                             .widthIn(max = 300.dp)
-                            .glass(RoundedCornerShape(16.dp), strong = m.fromUser)
-                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                            .then(
+                                if (m.fromUser) Modifier.clip(shape).background(Brush.linearGradient(listOf(Color(0xE64F7DFF), Color(0xE68F5BFF)))).border(1.dp, Color.White.copy(alpha = 0.3f), shape)
+                                else Modifier.glass(shape)
+                            )
+                            .padding(horizontal = 15.dp, vertical = 11.dp)
                     )
                 }
             }
         }
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            OutlinedTextField(
-                value = input,
-                onValueChange = { input = it },
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("Type a message (Bengali or English)", color = ArinaColors.Muted, fontSize = 14.sp) },
-                singleLine = true,
-                shape = RoundedCornerShape(24.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = ArinaColors.Text,
-                    unfocusedTextColor = ArinaColors.Text,
-                    focusedBorderColor = ArinaColors.Glow,
-                    unfocusedBorderColor = ArinaColors.Deep,
-                    cursorColor = ArinaColors.Glow
+            Box(Modifier.weight(1f).heightIn(min = 50.dp).glass(RoundedCornerShape(26.dp)).padding(horizontal = 18.dp), contentAlignment = Alignment.CenterStart) {
+                androidx.compose.foundation.text.BasicTextField(
+                    value = input, onValueChange = { input = it },
+                    textStyle = androidx.compose.ui.text.TextStyle(color = ArinaColors.Text, fontSize = 15.sp),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(ArinaColors.Glow),
+                    maxLines = 4, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
                 )
-            )
-            IconButton(onClick = {
-                vm.sendText(input)
-                input = ""
-            }) {
-                Icon(Icons.AutoMirrored.Filled.Send, "Send", tint = ArinaColors.Glow)
+                if (input.isEmpty()) Text("Message Entrion\u2026", color = ArinaColors.Muted, fontSize = 15.sp)
             }
+            Spacer(Modifier.width(8.dp))
+            Box(
+                Modifier.size(50.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Color(0xFF4F7DFF), Color(0xFF8F5BFF))))
+                    .clickable { if (input.isNotBlank()) { vm.sendText(input); input = "" } },
+                contentAlignment = Alignment.Center
+            ) { Icon(Icons.AutoMirrored.Filled.Send, "Send", tint = Color.White, modifier = Modifier.size(22.dp)) }
         }
     }
 }
@@ -932,8 +1018,8 @@ private fun NavRow(title: String, subtitle: String, icon: ImageVector, onClick: 
         Modifier.fillMaxWidth().glass().clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(ArinaColors.Glow.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = ArinaColors.Glow, modifier = Modifier.size(22.dp))
+        Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Color(0x594F7DFF), Color(0x598F5BFF)))).border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = Color.White, modifier = Modifier.size(22.dp))
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
@@ -947,6 +1033,16 @@ private fun NavRow(title: String, subtitle: String, icon: ImageVector, onClick: 
 @Composable
 private fun SettingsHome(vm: ArinaEngine, go: (Page) -> Unit) {
     PageColumn {
+        Row(Modifier.fillMaxWidth().glass(RoundedCornerShape(24.dp)).clickable { go(Page.Profile) }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Avatar(vm, 54.dp)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(vm.displayName().ifBlank { "Your profile" }, color = ArinaColors.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                Text(if (vm.signedIn.value) vm.accountEmail.value else "Not signed in", color = ArinaColors.Muted, fontSize = 12.sp)
+            }
+            Text("\u203A", color = ArinaColors.Muted, fontSize = 24.sp)
+        }
+        SectionTitle("GENERAL")
         NavRow("Account", if (vm.signedIn.value) vm.accountEmail.value else "Sign in to keep your data", Icons.Filled.Person) { go(Page.Account) }
         NavRow("Permissions", "Choose what the agent may do on this phone", Icons.Filled.Lock) { go(Page.Permissions) }
         NavRow("Gemini keys", "Your five keys, one for each job", Icons.Outlined.GraphicEq) { go(Page.Keys) }
@@ -1528,6 +1624,24 @@ private fun TodayPage(vm: ArinaEngine) {
     val accent = ArinaColors.Glow
     LaunchedEffect(vm.signedIn.value) { vm.refreshHeadlines() }
     PageColumn {
+        val left = vm.taskList.count { !it.done }
+        val total = vm.taskList.size
+        val frac = if (total == 0) 0f else (total - left).toFloat() / total
+        val dateText = java.text.SimpleDateFormat("EEEE, d MMMM", java.util.Locale.getDefault()).format(java.util.Date()).uppercase()
+        Row(Modifier.fillMaxWidth().glass(RoundedCornerShape(26.dp)).padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(dateText, color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.4.sp)
+                Text(if (total == 0) "A clear day" else if (left == 0) "All done" else "$left task${if (left == 1) "" else "s"} left", color = ArinaColors.Text, fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
+                Text(if (total == 0) "Say \u201Cadd a task\u201D to begin" else "${total - left} of $total finished", color = ArinaColors.Muted, fontSize = 13.sp)
+            }
+            Box(Modifier.size(70.dp), contentAlignment = Alignment.Center) {
+                Canvas(Modifier.fillMaxSize()) {
+                    drawArc(Color.White.copy(alpha = 0.18f), 0f, 360f, false, style = Stroke(7.dp.toPx()))
+                    drawArc(Brush.sweepGradient(listOf(Color(0xFF4F7DFF), Color(0xFF8F5BFF), Color(0xFF4F7DFF))), -90f, 360f * frac, false, style = Stroke(7.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round))
+                }
+                Text("${(frac * 100).toInt()}%", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
         TasksCard(vm, accent, Modifier.fillMaxWidth())
         HeadlinesCard(vm, accent, Modifier.fillMaxWidth())
     }
