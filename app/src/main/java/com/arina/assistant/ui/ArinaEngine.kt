@@ -451,6 +451,15 @@ class ArinaEngine private constructor(private val app: Application) {
     // ---- Entrion account and cloud settings --------------------------------------------------
 
     val cloud = Cloud(app)
+
+    /** Sends the first-run survey answers to the account's cloud row once; retried at the next start if offline. */
+    fun syncOnboarding() {
+        if (uiPrefs.getBoolean("ob_synced", false) || !uiPrefs.contains("ob_found")) return
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { cloud.saveOnboarding(uiPrefs.getInt("ob_found", -1), uiPrefs.getString("ob_uses", "").orEmpty()) }
+                .onSuccess { uiPrefs.edit().putBoolean("ob_synced", true).apply() }
+        }
+    }
     val signedIn = mutableStateOf(cloud.signedIn)
     init { TavilySearch.token = { cloud.accessToken() } }
     val accountName = mutableStateOf(cloud.name)
@@ -545,6 +554,7 @@ class ArinaEngine private constructor(private val app: Application) {
 
     /** Downloads the admin's settings and checks whether this account is the admin. Quietly does nothing offline. */
     fun refreshCloud() {
+        syncOnboarding()
         scope.launch {
             val admin = withContext(Dispatchers.IO) {
                 runCatching { cloud.fetchConfig() }

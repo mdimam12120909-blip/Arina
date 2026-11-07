@@ -103,7 +103,8 @@ fun OnboardingScreen(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onAssist
         else vm.saveProfile(vm.firstName.value, vm.lastName.value, vm.callName.value, pers, vm.avatarTone.intValue)
         if (about.isNotBlank()) vm.saveProfile(about.trim())
         if (keys.any { it.isNotBlank() }) vm.saveKeys(keys.toList())
-        vm.uiPrefs.edit().putBoolean("onboarded", true).putInt("ob_found", found).putString("ob_uses", uses).apply()
+        vm.uiPrefs.edit().putBoolean("onboarded", true).putInt("ob_found", found).putString("ob_uses", uses).putBoolean("ob_synced", false).apply()
+        vm.syncOnboarding()
         onDone()
     }
     val ctx = androidx.compose.ui.platform.LocalContext.current

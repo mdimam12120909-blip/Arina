@@ -95,6 +95,28 @@ fun RoutinePanel(vm: ArinaEngine) {
             "Entrion reminds you at these times with a notification and its voice. You can also just say: “add a routine, study at 9 pm”.",
             color = ArinaColors.Muted, fontSize = 13.sp, lineHeight = 18.sp
         )
+        // "Next up": the routine that fires soonest, with the time left.
+        run {
+            val now = System.currentTimeMillis()
+            val up = vm.routines.filter { it.enabled }.mapNotNull { r -> r.nextAfter(now)?.let { r to it } }.minByOrNull { it.second }
+            if (up != null) {
+                val mins = ((up.second - now) / 60000L).coerceAtLeast(0)
+                val left = if (mins >= 60) "in ${mins / 60} h ${mins % 60} min" else "in $mins min"
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
+                        .background(Brush.linearGradient(listOf(Color(0xFF4F7DFF), Color(0xFF8F5BFF))))
+                        .padding(horizontal = 18.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("NEXT UP", color = Color.White.copy(alpha = 0.75f), fontSize = 10.sp, letterSpacing = 2.sp)
+                        Text(up.first.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        Text(left, color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
+                    }
+                    Text(up.first.timeText(), color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
         var showForm by remember { mutableStateOf(vm.routines.isEmpty()) }
         Row(
             Modifier.fillMaxWidth().then(card()).clickable { showForm = !showForm }.padding(horizontal = 18.dp, vertical = 14.dp),
@@ -173,6 +195,36 @@ fun HealthPanel(vm: ArinaEngine) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        if (st != null) {
+            // Health score: how comfortable the phone is right now (memory, storage, battery).
+            val ramUsed = (st.ramTotalMb - st.ramFreeMb).toFloat() / st.ramTotalMb.coerceAtLeast(1)
+            val stoUsed = 1f - st.storageFreeGb / st.storageTotalGb.coerceAtLeast(0.1f)
+            val bat = st.battery.coerceIn(0, 100) / 100f
+            val score = (100f - ramUsed * 35f - stoUsed * 40f - (1f - bat) * 25f).toInt().coerceIn(0, 100)
+            val shown by androidx.compose.animation.core.animateFloatAsState(score / 100f, androidx.compose.animation.core.tween(900), label = "health")
+            Row(Modifier.fillMaxWidth().then(card()).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(84.dp), contentAlignment = Alignment.Center) {
+                    androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                        val w = 9.dp.toPx()
+                        val inset = w / 2f
+                        val arc = androidx.compose.ui.geometry.Size(size.width - w, size.height - w)
+                        drawArc(accent.copy(alpha = 0.15f), 0f, 360f, false, androidx.compose.ui.geometry.Offset(inset, inset), arc, style = androidx.compose.ui.graphics.drawscope.Stroke(w))
+                        drawArc(
+                            Brush.sweepGradient(listOf(Color(0xFF4F7DFF), Color(0xFF8F5BFF), Color(0xFF4F7DFF))),
+                            -90f, 360f * shown, false, androidx.compose.ui.geometry.Offset(inset, inset), arc,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(w, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                        )
+                    }
+                    Text("$score", color = ArinaColors.Text, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(16.dp))
+                Column {
+                    Text("PHONE HEALTH", color = ArinaColors.Muted, fontSize = 10.sp, letterSpacing = 2.sp)
+                    Text(if (score >= 75) "Feeling good" else if (score >= 50) "Could be better" else "Needs attention", color = ArinaColors.Text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Based on memory, storage and battery.", color = ArinaColors.Muted, fontSize = 11.sp)
+                }
+            }
+        }
         if (st != null) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Stat("MEMORY", "${(st.ramTotalMb - st.ramFreeMb) * 100 / st.ramTotalMb.coerceAtLeast(1)}%", "${st.ramFreeMb} MB free", accent, Modifier.weight(1f))

@@ -32,11 +32,27 @@ class Memory(ctx: Context) {
 
     @Synchronized
     fun facts(): List<Fact> {
+        purgeWrongAge()
         val arr = runCatching { JSONArray(prefs.getString("facts", "[]")) }.getOrDefault(JSONArray())
         return (0 until arr.length()).mapNotNull {
             val o = arr.optJSONObject(it) ?: return@mapNotNull null
             Fact(o.optLong("id"), o.optString("text")).takeIf { f -> f.text.isNotBlank() }
         }
+    }
+
+    /** An old wrong note ("14 years old") must never come back: the owner is 23. Removed once, quietly. */
+    private fun purgeWrongAge() {
+        val raw = prefs.getString("facts", "[]").orEmpty()
+        if (!raw.contains("14 years", ignoreCase = true) && !raw.contains("14-year", ignoreCase = true)) return
+        val arr = runCatching { JSONArray(raw) }.getOrNull() ?: return
+        val out = JSONArray()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val t = o.optString("text")
+            if (t.contains("14 years", ignoreCase = true) || t.contains("14-year", ignoreCase = true)) continue
+            out.put(o)
+        }
+        prefs.edit().putString("facts", out.toString()).apply()
     }
 
     private fun save(list: List<Fact>) {

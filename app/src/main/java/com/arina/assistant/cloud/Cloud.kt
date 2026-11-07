@@ -143,6 +143,15 @@ class Cloud(private val ctx: Context) {
         if (code !in 200..299) throw IOException("Could not save (HTTP $code): ${message(text)}")
     }
 
+    /** Saves the person's first-run survey answers on their own row (the database lets nobody else touch it). */
+    fun saveOnboarding(found: Int, uses: String) {
+        val t = token() ?: throw IOException("Sign in first.")
+        val id = uid.ifBlank { throw IOException("Sign in first.") }
+        val row = JSONArray().put(JSONObject().put("user_id", id).put("found", found).put("uses", uses).put("updated_at", java.time.Instant.now().toString()))
+        val (code, text) = raw("POST", "/rest/v1/onboarding_answers?on_conflict=user_id", row.toString(), bearer = t, prefer = "resolution=merge-duplicates,return=minimal")
+        if (code !in 200..299) throw IOException("Could not save (HTTP $code): ${message(text)}")
+    }
+
     // ---- admin tools (the database refuses all of these for anyone who is not the admin) ------------
 
     class Fact(val id: Long, val text: String)
