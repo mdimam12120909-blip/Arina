@@ -49,7 +49,7 @@ private val IntroBg = Color(0xFFF7F8FD)
 private val IntroInk = Color(0xFF0E1330)
 
 /**
- * The opening animation: always white, over in about a second and a half. A ripple spreads, the Entrion mark
+ * The opening animation: always white, over in about two and a half seconds. A ripple spreads, the Entrion mark
  * pops in and its voice bars pulse, "entrion" appears letter by letter, then "FROM" and the Pravat logo rise
  * in at the bottom. Tap to skip.
  */
@@ -63,14 +63,14 @@ fun IntroScreen(onFinished: () -> Unit) {
     val out = remember { Animatable(1f) }
     LaunchedEffect(Unit) {
         coroutineScope {
-            launch { ripple.animateTo(1f, tween(850, easing = FastOutSlowInEasing)) }
+            launch { ripple.animateTo(1f, tween(1150, easing = FastOutSlowInEasing)) }
             launch { pop.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMedium)) }
-            launch { delay(250); bars.animateTo(1f, spring(dampingRatio = 0.4f, stiffness = Spring.StiffnessMedium)) }
-            letters.forEachIndexed { i, a -> launch { delay(380L + i * 35L); a.animateTo(1f, tween(260, easing = FastOutSlowInEasing)) } }
-            launch { delay(800); fromA.animateTo(1f, tween(450, easing = FastOutSlowInEasing)) }
+            launch { delay(350); bars.animateTo(1f, spring(dampingRatio = 0.4f, stiffness = Spring.StiffnessMedium)) }
+            letters.forEachIndexed { i, a -> launch { delay(560L + i * 55L); a.animateTo(1f, tween(340, easing = FastOutSlowInEasing)) } }
+            launch { delay(1150); fromA.animateTo(1f, tween(600, easing = FastOutSlowInEasing)) }
         }
-        delay(250)
-        out.animateTo(0f, tween(200, easing = LinearEasing))
+        delay(550)
+        out.animateTo(0f, tween(260, easing = LinearEasing))
         onFinished()
     }
     Box(

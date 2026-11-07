@@ -202,8 +202,21 @@ fun MainScreen(
                             (androidx.compose.animation.fadeIn(tween(320, delayMillis = 60)) + androidx.compose.animation.slideInHorizontally(tween(420)) { d * it / 4 }) togetherWith
                                 (androidx.compose.animation.fadeOut(tween(180)) + androidx.compose.animation.slideOutHorizontally(tween(320)) { -d * it / 6 })
                         } else {
-                            (androidx.compose.animation.fadeIn(tween(260)) + androidx.compose.animation.slideInHorizontally(tween(320)) { it / 14 }) togetherWith
-                                androidx.compose.animation.fadeOut(tween(140))
+                            // Depth: tabs 0, Settings 1, its sub-pages 2. Going deeper slides in from the right with the old page
+                            // easing away; going back reverses it; anything else is a soft cross-fade with a tiny scale.
+                            fun depth(p: Page) = if (tabIdx(p) >= 0) 0 else if (p in SETTINGS_SUB) 2 else 1
+                            val da = depth(initialState); val db = depth(targetState)
+                            val ease = androidx.compose.animation.core.CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
+                            if (db > da) {
+                                (androidx.compose.animation.fadeIn(tween(380, delayMillis = 40, easing = ease)) + androidx.compose.animation.slideInHorizontally(tween(460, easing = ease)) { it / 3 }) togetherWith
+                                    (androidx.compose.animation.fadeOut(tween(260)) + androidx.compose.animation.slideOutHorizontally(tween(460, easing = ease)) { -it / 6 })
+                            } else if (db < da) {
+                                (androidx.compose.animation.fadeIn(tween(380, delayMillis = 40, easing = ease)) + androidx.compose.animation.slideInHorizontally(tween(460, easing = ease)) { -it / 5 }) togetherWith
+                                    (androidx.compose.animation.fadeOut(tween(240)) + androidx.compose.animation.slideOutHorizontally(tween(460, easing = ease)) { it / 3 })
+                            } else {
+                                (androidx.compose.animation.fadeIn(tween(340, delayMillis = 60, easing = ease)) + androidx.compose.animation.scaleIn(tween(420, easing = ease), initialScale = 0.96f)) togetherWith
+                                    (androidx.compose.animation.fadeOut(tween(200)) + androidx.compose.animation.scaleOut(tween(300), targetScale = 0.98f))
+                            }
                         }
                     },
                     label = "page"
