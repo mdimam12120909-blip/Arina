@@ -1093,7 +1093,7 @@ private fun AdminFacts(vm: ArinaEngine) {
     var text by remember { mutableStateOf("") }
     LaunchedEffect(Unit) { vm.loadFacts() }
     Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Facts every agent knows for every user (about Entrion, Kashikoi, products, rules). Short and true.", color = ArinaColors.Muted, fontSize = 12.sp)
+        Text("Facts every agent knows for every user (about Entrion, Pravat, products, rules). Short and true.", color = ArinaColors.Muted, fontSize = 12.sp)
         LongField("New fact", text) { text = it }
         PillButton("Add fact") { vm.addGlobalFact(text); text = "" }
     }

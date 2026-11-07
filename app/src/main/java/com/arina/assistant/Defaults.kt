@@ -7,7 +7,7 @@ package com.arina.assistant
 /** Names shown to people. The agent itself has no personal name unless the user gives it one. */
 object Brand {
     const val APP = "Entrion"
-    const val COMPANY = "Kashikoi"
+    const val COMPANY = "Pravat"
 }
 
 object Defaults {

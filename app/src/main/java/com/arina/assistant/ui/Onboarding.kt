@@ -155,7 +155,7 @@ fun OnboardingScreen(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onAssist
                     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 28.dp, bottom = 12.dp)) {
                         when (s) {
                             0 -> {
-                                Title(1, "How did you find Entrion?", "This helps Kashikoi know where people hear about us.")
+                                Title(1, "How did you find Entrion?", "This helps Pravat know where people hear about us.")
                                 FOUND.forEachIndexed { i, (t, ic) -> Option(ic, t, found == i) { found = i } }
                             }
                             1 -> {
