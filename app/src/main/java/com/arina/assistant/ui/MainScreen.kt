@@ -238,7 +238,7 @@ fun MainScreen(
                         Page.Permissions -> PermissionsPage(vm, onPermission, onGrantAll, onAppInfo)
                         Page.Keys -> KeysPage(vm)
                         Page.Connectors -> ConnectorsPage(vm)
-                        Page.Assistant -> AssistantPage(vm)
+                        Page.Assistant -> AssistantPage(vm, onPower)
                         Page.Admin -> AdminPage(vm)
                     }
                 }
@@ -1371,8 +1371,29 @@ private fun KeysPage(vm: ArinaEngine) {
 }
 
 @Composable
-private fun AssistantPage(vm: ArinaEngine) {
+private fun AssistantPage(vm: ArinaEngine, onPower: () -> Unit) {
+    val actx = androidx.compose.ui.platform.LocalContext.current
     PageColumn {
+        SectionTitle("OPEN ENTRION")
+        Group(
+            {
+                NavRow("Hold Home to open Entrion", "Set Entrion as the default assistant, then hold the Home button", Icons.Outlined.Mic, flat = true) {
+                    runCatching { actx.startActivity(android.content.Intent(android.provider.Settings.ACTION_VOICE_INPUT_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                }
+            },
+            {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Floating orb", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        Text("Keep a small orb over other apps (off by default)", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 16.sp)
+                    }
+                    Switch(
+                        checked = vm.overlayOn.value, onCheckedChange = { onPower() },
+                        colors = SwitchDefaults.colors(checkedTrackColor = ArinaColors.Glow, checkedThumbColor = Color.White)
+                    )
+                }
+            }
+        )
         ToggleCard(
             "Speak up on its own",
             "Notices long scrolling or non-stop phone use (needs Usage access) and nudges you kindly, at most once every 30 minutes. Routines always remind you.",
@@ -1582,28 +1603,11 @@ private fun ProfilePanel(vm: ArinaEngine, onOpen: (Page) -> Unit, onPower: () ->
             }
             Text("›", color = Color.White, fontSize = 18.sp)
         }
-        PanelRow(Icons.Outlined.ChatBubbleOutline, "Chat", { onOpen(Page.Chat) })
-        PanelRow(Icons.Outlined.Psychology, "Memory", { onOpen(Page.Memory) })
-        PanelRow(Icons.Outlined.Schedule, "Routine", { onOpen(Page.Routine) })
-        PanelRow(Icons.Outlined.CalendarToday, "Today", { onOpen(Page.Today) })
         PanelHead("PHONE")
         PanelRow(Icons.Outlined.HealthAndSafety, "Phone health", { onOpen(Page.Health) })
-        PanelRow(Icons.Filled.Lock, "Permissions", { onOpen(Page.Permissions) })
-        val actx = androidx.compose.ui.platform.LocalContext.current
-        PanelRow(Icons.Outlined.Mic, "Hold Home to open Entrion", {
-            runCatching { actx.startActivity(android.content.Intent(android.provider.Settings.ACTION_VOICE_INPUT_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
-        })
-        PanelRow(Icons.Filled.PowerSettingsNew, "Floating orb", { onPower() }, trailing = {
-            Switch(
-                checked = vm.overlayOn.value, onCheckedChange = { onPower() },
-                colors = SwitchDefaults.colors(checkedTrackColor = ArinaColors.Glow, checkedThumbColor = Color.White)
-            )
-        })
         PanelHead("GENERAL")
         PanelRow(Icons.Outlined.Settings, "Settings", { onOpen(Page.Settings) })
-        PanelRow(Icons.Filled.Person, "Account", { onOpen(Page.Account) })
         if (vm.signedIn.value) {
-            PanelRow(Icons.Outlined.SwapHoriz, "Switch account", { vm.signOut() })
             Row(
                 Modifier.fillMaxWidth().clickable { vm.signOut() }.padding(vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
