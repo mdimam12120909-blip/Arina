@@ -124,6 +124,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -251,7 +252,7 @@ fun MainScreen(
                 }
             }
             if (tabIdx(page) >= 0 && !imeUp) {
-                Box(Modifier.padding(horizontal = 20.dp).padding(top = 8.dp)) {
+                Box(Modifier.padding(horizontal = 16.dp).padding(top = 4.dp)) {
                     Dock(page, vm.micOn.value, vm.level.floatValue, onMicClick) { page = it }
                 }
                 Spacer(Modifier.height(14.dp))
@@ -462,11 +463,11 @@ private fun ActivityCard(vm: ArinaEngine) {
 
 @Composable
 private fun DockItem(icon: ImageVector, label: String, selected: Boolean, modifier: Modifier = Modifier) {
-    val tint by androidx.compose.animation.animateColorAsState(if (selected) ArinaColors.Glow else ArinaColors.Text, tween(220), label = "tint")
-    val lift by androidx.compose.animation.core.animateFloatAsState(if (selected) -2f else 0f, spring(dampingRatio = 0.5f, stiffness = 420f), label = "lift")
+    val tint by androidx.compose.animation.animateColorAsState(if (selected) Color.White else ArinaColors.Muted, tween(220), label = "tint")
+    val pop by androidx.compose.animation.core.animateFloatAsState(if (selected) 1.08f else 1f, spring(dampingRatio = 0.5f, stiffness = 420f), label = "pop")
     Column(modifier.fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Icon(icon, label, tint = tint, modifier = Modifier.size(24.dp).graphicsLayer { translationY = lift * density; scaleX = 1f + (-lift) * 0.06f; scaleY = 1f + (-lift) * 0.06f })
-        Text(label, color = if (selected) ArinaColors.Glow else ArinaColors.Muted, fontSize = 10.5.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, modifier = Modifier.padding(top = 4.dp))
+        Icon(icon, label, tint = tint, modifier = Modifier.size(22.dp).graphicsLayer { scaleX = pop; scaleY = pop })
+        if (selected) Text(label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
     }
 }
 
@@ -487,7 +488,7 @@ private fun Dock(page: Page, micOn: Boolean, level: Float, onMic: () -> Unit, on
     var widthPx by remember { mutableFloatStateOf(0f) }
     val density = androidx.compose.ui.platform.LocalDensity.current
     val padPx = with(density) { 10.dp.toPx() }
-    val blobW = with(density) { 58.dp.toPx() }
+    val blobW = with(density) { 70.dp.toPx() }
     fun centerOf(i: Int): Float {
         var acc = 0f
         for (k in 0 until i) acc += weights[k]
@@ -511,7 +512,7 @@ private fun Dock(page: Page, micOn: Boolean, level: Float, onMic: () -> Unit, on
     val showBlob by androidx.compose.animation.core.animateFloatAsState(if (page == Page.Home) 0f else 1f, tween(240), label = "blobAlpha")
     val dark = ArinaColors.dark
     Box(
-        Modifier.fillMaxWidth().height(80.dp)
+        Modifier.fillMaxWidth().height(90.dp)
             .graphicsLayer {
                 val vn = (x.velocity / 3200f).coerceIn(-1f, 1f)
                 val sq = kotlin.math.abs(vn)
@@ -522,7 +523,6 @@ private fun Dock(page: Page, micOn: Boolean, level: Float, onMic: () -> Unit, on
                 scaleX = 1f - sq * 0.035f
                 scaleY = 1f - sq * 0.07f
             }
-            .glass(RoundedCornerShape(40.dp))
             .onSizeChanged { widthPx = it.width.toFloat() }
             .pointerInput(widthPx) {
                 awaitEachGesture {
@@ -558,33 +558,37 @@ private fun Dock(page: Page, micOn: Boolean, level: Float, onMic: () -> Unit, on
                 }
             }
     ) {
+        // the floating pill
+        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(66.dp).shadow(14.dp, RoundedCornerShape(33.dp), clip = false, ambientColor = Color(0x334F7DFF), spotColor = Color(0x554F7DFF)).glass(RoundedCornerShape(33.dp)))
+        // the active tab: a gradient pill that slides under the finger
         Box(
-            Modifier.padding(top = 10.dp).size(58.dp, 60.dp)
+            Modifier.align(Alignment.BottomStart).padding(bottom = 8.dp).size(70.dp, 50.dp)
                 .graphicsLayer {
                     val sq = (kotlin.math.abs(x.velocity) / 3200f).coerceIn(0f, 1f)
                     translationX = x.value - blobW / 2f
-                    scaleX = 1f + sq * 0.6f
-                    scaleY = 1f - sq * 0.2f
+                    scaleX = 1f + sq * 0.5f
+                    scaleY = 1f - sq * 0.18f
                     alpha = showBlob
                 }
-                .clip(RoundedCornerShape(30.dp))
-                .background(Brush.linearGradient(listOf(Color(0xFF4F7DFF).copy(alpha = if (dark) 0.36f else 0.24f), Color(0xFF8F5BFF).copy(alpha = if (dark) 0.36f else 0.24f))))
-                .border(1.dp, Color.White.copy(alpha = if (dark) 0.32f else 0.85f), RoundedCornerShape(30.dp))
+                .clip(RoundedCornerShape(25.dp))
+                .background(Brush.linearGradient(listOf(Color(0xFF4F7DFF), Color(0xFF6D5BFF), Color(0xFF9B5CFF))))
         )
-        Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(66.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             DockItem(Icons.Outlined.Psychology, "Memory", page == Page.Memory, Modifier.weight(1f))
             DockItem(Icons.Outlined.ChatBubbleOutline, "Chat", page == Page.Chat, Modifier.weight(1f))
             Box(Modifier.weight(1.4f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                Canvas(Modifier.size(92.dp)) {
+                Canvas(Modifier.size(96.dp).offset(y = (-18).dp)) {
                     if (micOn) for (i in 0..1) {
                         val p = (ring + i * 0.5f) % 1f
-                        drawCircle(ArinaColors.Glow.copy(alpha = (1f - p) * 0.45f), radius = size.minDimension * (0.36f + p * 0.16f), center = center, style = Stroke(2.dp.toPx()))
+                        drawCircle(ArinaColors.Glow.copy(alpha = (1f - p) * 0.45f), radius = size.minDimension * (0.34f + p * 0.16f), center = center, style = Stroke(2.dp.toPx()))
                     }
                 }
                 Box(
-                    Modifier.size(62.dp).graphicsLayer { scaleX = scale; scaleY = scale }.clip(CircleShape)
-                        .background(Brush.linearGradient(listOf(Color(0xFF4F7DFF), Color(0xFF8F5BFF))))
-                        .border(1.dp, Color.White.copy(alpha = 0.35f), CircleShape),
+                    Modifier.offset(y = (-18).dp).size(60.dp).graphicsLayer { scaleX = scale; scaleY = scale }
+                        .shadow(12.dp, CircleShape, clip = false, ambientColor = Color(0x666D5BFF), spotColor = Color(0x886D5BFF))
+                        .clip(CircleShape)
+                        .background(Brush.linearGradient(listOf(Color(0xFF4F7DFF), Color(0xFF6D5BFF), Color(0xFF9B5CFF))))
+                        .border(2.dp, Color.White.copy(alpha = if (dark) 0.28f else 0.9f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) { Icon(if (page != Page.Home) Icons.Filled.Home else if (micOn) Icons.Filled.Mic else Icons.Filled.MicOff, "Microphone", tint = Color.White, modifier = Modifier.size(28.dp)) }
             }
