@@ -215,12 +215,13 @@ fun MainScreen(
                             fun depth(p: Page) = if (tabIdx(p) >= 0) 0 else if (p in SETTINGS_SUB) 2 else 1
                             val da = depth(initialState); val db = depth(targetState)
                             val ease = androidx.compose.animation.core.CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
+                            val spr = androidx.compose.animation.core.spring<androidx.compose.ui.unit.IntOffset>(dampingRatio = 0.9f, stiffness = 380f)
                             if (db > da) {
-                                (androidx.compose.animation.fadeIn(tween(380, delayMillis = 40, easing = ease)) + androidx.compose.animation.slideInHorizontally(tween(460, easing = ease)) { it / 3 }) togetherWith
-                                    (androidx.compose.animation.fadeOut(tween(260)) + androidx.compose.animation.slideOutHorizontally(tween(460, easing = ease)) { -it / 6 })
+                                (androidx.compose.animation.fadeIn(tween(320, delayMillis = 60, easing = ease)) + androidx.compose.animation.slideInHorizontally(spr) { it / 2 } + androidx.compose.animation.scaleIn(tween(420, easing = ease), initialScale = 0.94f)) togetherWith
+                                    (androidx.compose.animation.fadeOut(tween(220)) + androidx.compose.animation.slideOutHorizontally(tween(420, easing = ease)) { -it / 4 } + androidx.compose.animation.scaleOut(tween(420, easing = ease), targetScale = 0.93f))
                             } else if (db < da) {
-                                (androidx.compose.animation.fadeIn(tween(380, delayMillis = 40, easing = ease)) + androidx.compose.animation.slideInHorizontally(tween(460, easing = ease)) { -it / 5 }) togetherWith
-                                    (androidx.compose.animation.fadeOut(tween(240)) + androidx.compose.animation.slideOutHorizontally(tween(460, easing = ease)) { it / 3 })
+                                (androidx.compose.animation.fadeIn(tween(320, delayMillis = 60, easing = ease)) + androidx.compose.animation.slideInHorizontally(tween(420, easing = ease)) { -it / 4 } + androidx.compose.animation.scaleIn(tween(420, easing = ease), initialScale = 0.93f)) togetherWith
+                                    (androidx.compose.animation.fadeOut(tween(200)) + androidx.compose.animation.slideOutHorizontally(spr) { it / 2 } + androidx.compose.animation.scaleOut(tween(420, easing = ease), targetScale = 0.94f))
                             } else {
                                 (androidx.compose.animation.fadeIn(tween(340, delayMillis = 60, easing = ease)) + androidx.compose.animation.scaleIn(tween(420, easing = ease), initialScale = 0.96f)) togetherWith
                                     (androidx.compose.animation.fadeOut(tween(200)) + androidx.compose.animation.scaleOut(tween(300), targetScale = 0.98f))
