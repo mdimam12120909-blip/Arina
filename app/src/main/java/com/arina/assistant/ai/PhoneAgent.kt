@@ -43,7 +43,7 @@ class PhoneAgent(
             {"action":"open_url","url":"https://..."}          open a web address; the matching installed app opens it directly
             {"action":"wait_reply"}                            wait until the other AI finishes writing its reply (use right after sending a chat message)
             {"action":"note","text":"..."}                     save one key point from a reply; notes are kept for the final report
-            {"action":"done","bn":"...","en":"...","report":"..."}           goal reached: bn = one short spoken Bengali sentence (Bangla script) saying what you did, en = same in English
+            {"action":"done","evidence":"the exact words or elements on SCREEN that prove the goal is complete","bn":"...","en":"...","report":"..."}           goal reached: bn = one short spoken Bengali sentence (Bangla script) saying what you did, en = same in English
             {"action":"fail","bn":"...","en":"..."}           cannot continue: say why in the same way
             Rules:
             - Use only element numbers that are in the current SCREEN list. Look at PREVIOUS ACTIONS and never repeat a step that did nothing; try something else (another element, scroll, back).
@@ -54,6 +54,10 @@ class PhoneAgent(
             - Never send a message, post, buy, pay, delete or change account settings unless the GOAL says exactly that. If a screen asks for a password, OTP, payment or a decision only the user can make, use fail and explain.
             - As soon as the goal's result is visible on screen (search results are showing, the video is playing, the message is typed), use done at once. Do not keep exploring or tapping extra things.
             - If the current app is the home screen or launcher and the goal was already reached earlier, use done; never reopen an app you already finished with.
+            - ACCURACY FIRST: work like an expert. Read the whole SCREEN before each action. Do exactly what the GOAL says: not more, not less, not a similar thing. If two items could match, choose the one whose text matches the goal best.
+            - After every action check what changed. If nothing changed or you are on the wrong screen, go back one step and try a different way. Never continue from a wrong screen.
+            - Never use done until the SCREEN itself proves the goal (for a toggle, the switch shows the new state; for a sent message, it appears in the chat). Put that proof in "evidence". If you cannot prove it, keep going or use fail and say honestly what is missing.
+            - If you are blocked (login needed, permission dialog you must not accept, unknown screen), use fail and say what the user must do. Never pretend it worked.
             CHAT MODE (only when the task says CHAT MODE): you are talking to another AI app on the user's behalf, in plain text like the user would.
             Open the app, click the message box, type your first message about the topic (clear, specific, in English unless told otherwise) with submit true, or click the send button, then wait_reply, then read the reply on SCREEN and note the key points.
             Ask sensible follow-up questions (at most 6 messages in total), scroll when the reply is long, then finish with done. In done, "report" must be the complete result the user asked for (for example a step by step plan) in plain English text built from your notes, and bn/en are a short spoken summary.
@@ -66,6 +70,7 @@ class PhoneAgent(
         val maxSteps = if (chat) MAX_STEPS_CHAT else MAX_STEPS
         var last = ""
         var repeats = 0
+        var askedProof = false
         for (step in 1..maxSteps) {
             if (cancelled()) return Outcome("থামিয়ে দিলাম।", "Stopped.")
             val svc = ArinaAccessibilityService.instance
@@ -107,7 +112,14 @@ class PhoneAgent(
             var denied = false
             val before = snap.text.hashCode()
             when (action) {
-                "done", "fail" -> return Outcome(a.optString("bn").ifBlank { "শেষ।" }, a.optString("en").ifBlank { "Done." }, a.optString("report"))
+                "done" -> {
+                    if (a.optString("evidence").isBlank() && !askedProof) {
+                        askedProof = true
+                        history += "done REFUSED: no evidence. Look at SCREEN again and either give the exact proof in evidence or keep working"
+                        ok = false
+                    } else return Outcome(a.optString("bn").ifBlank { "শেষ।" }, a.optString("en").ifBlank { "Done." }, a.optString("report"))
+                }
+                "fail" -> return Outcome(a.optString("bn").ifBlank { "শেষ।" }, a.optString("en").ifBlank { "Done." }, a.optString("report"))
                 "note" -> a.optString("text").takeIf { it.isNotBlank() }?.let { notes += it.take(600) }
                 "wait_reply" -> waitForStable(svc, cancelled)
                 "click" -> {

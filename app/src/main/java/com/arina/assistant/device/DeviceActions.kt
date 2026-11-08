@@ -188,4 +188,104 @@ class DeviceActions(private val ctx: Context) {
         val now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy, hh:mm a"))
         return "Time: $now. Battery: $battery%."
     }
+
+    // ---- Direct phone controls: each one changes the setting, then reads it back so the result is the real state. ----
+
+    private val audio get() = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+
+    /** One entry point for the phone's own switches. [value] depends on the action. */
+    @Suppress("DEPRECATION")
+    fun control(action: String, value: String): String {
+        val v = value.trim().lowercase()
+        return when (action.trim().lowercase()) {
+            "brightness" -> {
+                if (!Settings.System.canWrite(ctx)) return needs("Modify system settings", Settings.ACTION_MANAGE_WRITE_SETTINGS)
+                val pct = v.filter { it.isDigit() }.toIntOrNull()?.coerceIn(0, 100) ?: return "ERROR: give a brightness from 0 to 100."
+                Settings.System.putInt(ctx.contentResolver, Settings.System.SCREEN_BRIGHTNESS_MODE, Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL)
+                Settings.System.putInt(ctx.contentResolver, Settings.System.SCREEN_BRIGHTNESS, (pct * 255 / 100).coerceIn(1, 255))
+                val now = Settings.System.getInt(ctx.contentResolver, Settings.System.SCREEN_BRIGHTNESS, 0) * 100 / 255
+                "OK: brightness is now about $now%"
+            }
+            "volume_media", "volume_ring", "volume_alarm", "volume_call" -> {
+                val stream = when (action.trim().lowercase()) {
+                    "volume_ring" -> AudioManager.STREAM_RING
+                    "volume_alarm" -> AudioManager.STREAM_ALARM
+                    "volume_call" -> AudioManager.STREAM_VOICE_CALL
+                    else -> AudioManager.STREAM_MUSIC
+                }
+                val pct = v.filter { it.isDigit() }.toIntOrNull()?.coerceIn(0, 100) ?: return "ERROR: give a volume from 0 to 100."
+                val max = audio.getStreamMaxVolume(stream)
+                audio.setStreamVolume(stream, Math.round(max * pct / 100f), 0)
+                "OK: ${action.removePrefix("volume_")} volume is now ${audio.getStreamVolume(stream) * 100 / max.coerceAtLeast(1)}%"
+            }
+            "ringer" -> {
+                val mode = when (v) {
+                    "normal", "ring", "loud" -> AudioManager.RINGER_MODE_NORMAL
+                    "vibrate" -> AudioManager.RINGER_MODE_VIBRATE
+                    "silent", "mute" -> AudioManager.RINGER_MODE_SILENT
+                    else -> return "ERROR: ringer must be normal, vibrate or silent."
+                }
+                val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                if (mode == AudioManager.RINGER_MODE_SILENT && !nm.isNotificationPolicyAccessGranted)
+                    return needs("Do Not Disturb access", Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+                audio.ringerMode = mode
+                "OK: ringer mode is now ${listOf("silent", "vibrate", "normal")[audio.ringerMode.coerceIn(0, 2)]}"
+            }
+            "dnd" -> {
+                val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                if (!nm.isNotificationPolicyAccessGranted) return needs("Do Not Disturb access", Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+                val on = v in setOf("on", "true", "yes", "1")
+                nm.setInterruptionFilter(if (on) android.app.NotificationManager.INTERRUPTION_FILTER_NONE else android.app.NotificationManager.INTERRUPTION_FILTER_ALL)
+                "OK: Do Not Disturb is now ${if (nm.currentInterruptionFilter == android.app.NotificationManager.INTERRUPTION_FILTER_ALL) "off" else "on"}"
+            }
+            "rotation" -> {
+                if (!Settings.System.canWrite(ctx)) return needs("Modify system settings", Settings.ACTION_MANAGE_WRITE_SETTINGS)
+                val on = v in setOf("on", "true", "yes", "1", "auto")
+                Settings.System.putInt(ctx.contentResolver, Settings.System.ACCELEROMETER_ROTATION, if (on) 1 else 0)
+                "OK: auto-rotate is now ${if (Settings.System.getInt(ctx.contentResolver, Settings.System.ACCELEROMETER_ROTATION, 0) == 1) "on" else "off"}"
+            }
+            "media" -> {
+                val key = when (v) {
+                    "play", "pause", "toggle", "play_pause" -> android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+                    "next" -> android.view.KeyEvent.KEYCODE_MEDIA_NEXT
+                    "previous", "prev" -> android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS
+                    "stop" -> android.view.KeyEvent.KEYCODE_MEDIA_STOP
+                    else -> return "ERROR: media must be play, pause, next, previous or stop."
+                }
+                audio.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, key))
+                audio.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, key))
+                "OK: sent $v to the media player (music is ${if (audio.isMusicActive) "playing" else "not playing"} now)"
+            }
+            "answer_call" -> {
+                if (!has(Manifest.permission.ANSWER_PHONE_CALLS)) return "ERROR: the Phone permission is off. Ask the user to allow it in Permissions."
+                val tm = ctx.getSystemService(Context.TELECOM_SERVICE) as android.telecom.TelecomManager
+                tm.acceptRingingCall()
+                "OK: answered the call"
+            }
+            "end_call" -> {
+                if (!has(Manifest.permission.ANSWER_PHONE_CALLS)) return "ERROR: the Phone permission is off. Ask the user to allow it in Permissions."
+                val tm = ctx.getSystemService(Context.TELECOM_SERVICE) as android.telecom.TelecomManager
+                val ended = tm.endCall()
+                if (ended) "OK: call ended" else "ERROR: there is no call to end"
+            }
+            "speaker" -> {
+                val on = v in setOf("on", "true", "yes", "1")
+                audio.isSpeakerphoneOn = on
+                "OK: speaker is now ${if (audio.isSpeakerphoneOn) "on" else "off"}"
+            }
+            "wifi", "bluetooth", "hotspot", "airplane", "location", "mobile_data" -> {
+                // Android no longer lets apps flip these directly. Open the right screen; the agent then flips the one switch.
+                val r = openSettings(if (action == "hotspot") "mobile_data" else action.trim().lowercase())
+                "$r NEXT: use operate_phone with the goal 'turn ${action.replace('_', ' ')} ${if (v in setOf("on", "true", "yes", "1")) "on" else "off"} on this screen, then confirm the switch shows that state'."
+            }
+            else -> "ERROR: unknown control '$action'."
+        }
+    }
+
+    private fun needs(what: String, settingsAction: String): String {
+        runCatching {
+            launch(Intent(settingsAction).apply { if (settingsAction == Settings.ACTION_MANAGE_WRITE_SETTINGS) data = Uri.parse("package:${ctx.packageName}") })
+        }
+        return "ERROR: needs '$what' access. I opened the page; ask the user to switch it on for Entrion, then try again."
+    }
 }

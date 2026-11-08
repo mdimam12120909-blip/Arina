@@ -109,6 +109,10 @@ class ToolRunner(
         ), required = listOf("title", "time")))
         put(decl("list_routines", "Read the user's routines."))
         put(decl("remove_routine", "Delete a routine.", listOf(Triple("title", "STRING", "Part of the routine's title."))))
+        put(decl("phone_control", "Change a phone setting directly and read the real result back. Prefer this over operate_phone for these. Say what you did only from the returned result; if it starts with ERROR, say so and follow the hint.", listOf(
+            Triple("action", "STRING", "One of: brightness, volume_media, volume_ring, volume_alarm, volume_call, ringer, dnd, rotation, media, answer_call, end_call, speaker, wifi, bluetooth, hotspot, airplane, location, mobile_data."),
+            Triple("value", "STRING", "brightness/volume: 0-100. ringer: normal|vibrate|silent. dnd, rotation, speaker, wifi, bluetooth, hotspot, airplane, location, mobile_data: on|off. media: play|pause|next|previous|stop. Empty for answer_call/end_call.")
+        ), required = listOf("action")))
         put(decl("scan_phone", "Check the installed apps for suspicious ones (heuristic, not an antivirus). Results are listed in Settings, Phone Health."))
         put(decl("termux", "Run one shell command in Termux. The user is asked to allow every command before it runs. Returns the output.", listOf(Triple("command", "STRING", "The bash command line."))))
     }
@@ -121,6 +125,7 @@ class ToolRunner(
             "set_volume" -> device.setVolume(args.optInt("percent", 50))
             "toggle_flashlight" -> device.flashlight(args.optBoolean("on", true))
             "press_button" -> device.pressButton(args.optString("button"))
+            "phone_control" -> device.control(args.optString("action"), args.optString("value"))
             "tap_text" -> device.tapText(args.optString("text"))
             "open_settings" -> device.openSettings(args.optString("section", "main"))
             "research" -> hooks.research(args.optString("question"))
