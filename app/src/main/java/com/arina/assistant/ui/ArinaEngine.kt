@@ -22,6 +22,7 @@ import com.arina.assistant.routine.RoutineStore
 import org.json.JSONArray
 import org.json.JSONObject
 import com.arina.assistant.Keys
+import com.arina.assistant.ai.LearnedPaths
 import com.arina.assistant.ai.DeepResearch
 import com.arina.assistant.ai.Workflow
 import com.arina.assistant.device.FrontCamera
@@ -1294,7 +1295,7 @@ class ArinaEngine private constructor(private val app: Application) {
             val jobId = jobStart(if (chat) "chat" else "operate", goal)
             try {
                 val outcome = withContext(Dispatchers.IO) {
-                    PhoneAgent(gemini, device, confirm = { what -> if (operateMode.value == "auto") true else runBlocking { ask("Allow this?", what, ASK_LINES) } }).run(goal, chat, { line -> agentLine.value = line; jobUpdate(jobId, step = line) }, {
+                    PhoneAgent(gemini, device, confirm = { what -> if (operateMode.value == "auto") true else runBlocking { ask("Allow this?", what, ASK_LINES) } }, paths = LearnedPaths(uiPrefs)).run(goal, chat, { line -> agentLine.value = line; jobUpdate(jobId, step = line) }, {
                         while (agentHold && agentJob?.isActive == true) Thread.sleep(100)
                         agentJob?.isActive != true
                     })

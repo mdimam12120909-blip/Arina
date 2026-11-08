@@ -13,7 +13,9 @@ class PhoneAgent(
     private val gemini: GeminiClient,
     private val device: DeviceActions,
     /** Asked before a risky tap (send, pay, delete...) the user did not ask for. Returns true to go on. */
-    private val confirm: (String) -> Boolean = { true }
+    private val confirm: (String) -> Boolean = { true },
+    /** Saved routes that worked before (per account). */
+    private val paths: LearnedPaths? = null
 ) {
 
     class Outcome(val bn: String, val en: String, val report: String = "")
@@ -73,6 +75,25 @@ class PhoneAgent(
         var last = ""
         var repeats = 0
         var askedProof = false
+        val route = ArrayList<PathStep>()      // what worked in this run, saved when the goal is proven
+        var unchanged = 0                      // actions in a row that left the screen as it was
+        // A route that worked for this exact goal: replay it without asking the model, step by step.
+        val known = if (chat) null else paths?.find(goal)
+        var replayed = false
+        if (known != null) {
+            onStep("Using a saved route")
+            var good = true
+            for (st in known) {
+                if (cancelled()) return Outcome("থামিয়ে দিলাম।", "Stopped.")
+                val svc = ArinaAccessibilityService.instance ?: break
+                val ok = replay(svc, st)
+                if (!ok) { good = false; break }
+                history += "(saved route) ${st.action} ${st.label.ifBlank { st.arg }} -> done"
+                route += st
+                settle(svc, svc.snapshot()?.text.orEmpty().hashCode())
+            }
+            if (!good) { paths?.forget(goal); route.clear(); history += "(saved route no longer fits this screen, continue by looking)" } else replayed = true
+        }
         // Start on the right screen at once: no waiting for the first model answer just to open the app.
         runCatching { device.openMentionedApp(goal) }.getOrNull()?.let { onStep("Opened $it"); Thread.sleep(700) }
         for (step in 1..maxSteps) {
@@ -122,7 +143,10 @@ class PhoneAgent(
                         askedProof = true
                         history += "done REFUSED: no evidence. Look at SCREEN again and either give the exact proof in evidence or keep working"
                         ok = false
-                    } else return Outcome(a.optString("bn").ifBlank { "শেষ।" }, a.optString("en").ifBlank { "Done." }, a.optString("report"))
+                    } else {
+                        if (!chat && a.optString("evidence").isNotBlank() && route.isNotEmpty()) paths?.save(goal, route.toList())
+                        return Outcome(a.optString("bn").ifBlank { "শেষ।" }, a.optString("en").ifBlank { "Done." }, a.optString("report"))
+                    }
                 }
                 "fail" -> return Outcome(a.optString("bn").ifBlank { "শেষ।" }, a.optString("en").ifBlank { "Done." }, a.optString("report"))
                 "note" -> a.optString("text").takeIf { it.isNotBlank() }?.let { notes += it.take(600) }
@@ -147,9 +171,48 @@ class PhoneAgent(
                 else -> ok = false
             }
             history += "$desc -> ${if (denied) "the user did NOT allow this: choose another way or use fail" else if (ok) "done" else "FAILED"}"
-            if (action != "wait" && action != "wait_reply" && action != "wait_long") settle(svc, before)
+            if (ok && !chat) when (action) {
+                "click" -> route += PathStep("click", listOfNotNull(node?.text?.toString(), node?.contentDescription?.toString()).joinToString(" ").trim())
+                "type" -> route += PathStep("type", listOfNotNull(node?.text?.toString(), node?.contentDescription?.toString()).joinToString(" ").trim(), a.optString("text"), if (a.optBoolean("submit")) "submit" else "")
+                "open_app" -> route += PathStep("open_app", arg = a.optString("app"))
+                "open_url" -> route += PathStep("open_url", arg = a.optString("url"))
+                "scroll" -> route += PathStep("scroll", arg = a.optString("direction"))
+                "back" -> route += PathStep("back")
+            }
+            if (action != "wait" && action != "wait_reply" && action != "wait_long") {
+                settle(svc, before)
+                // ERROR RECOVERY: an action that changed nothing, or failed twice, means this road is wrong. Back out.
+                val after = svc.snapshot(textMax = 30, maxNodes = 40)?.text.orEmpty().hashCode()
+                if (!ok || after == before) unchanged++ else unchanged = 0
+                if (unchanged >= 2 && action != "back") {
+                    svc.press("back"); Thread.sleep(500)
+                    history += "STUCK: two actions in a row did nothing, so I pressed back. Take a DIFFERENT route now (other element, other words, search instead of browsing)."
+                    unchanged = 0
+                    if (route.isNotEmpty()) route.removeAt(route.size - 1)
+                }
+            }
         }
         return Outcome("অনেক ধাপ হয়ে গেল, এখানেই থামলাম।", "I reached my step limit and stopped.", notes.joinToString("\n") { "- $it" })
+    }
+
+    /** Does one saved step. Clicks and typing find their element again by the label it had. False = the screen is different. */
+    private fun replay(svc: ArinaAccessibilityService, st: PathStep): Boolean {
+        fun find(): android.view.accessibility.AccessibilityNodeInfo? {
+            val snap = svc.snapshot() ?: return null
+            return snap.nodes.firstOrNull { n ->
+                val l = listOfNotNull(n.text?.toString(), n.contentDescription?.toString()).joinToString(" ").trim()
+                l.isNotEmpty() && l == st.label && (st.action != "type" || n.isEditable)
+            } ?: if (st.action == "type") snap.nodes.firstOrNull { it.isEditable } else null
+        }
+        return when (st.action) {
+            "open_app" -> device.openApp(st.arg).startsWith("OK").also { Thread.sleep(900) }
+            "open_url" -> device.openUrl(st.arg).startsWith("OK").also { Thread.sleep(900) }
+            "back" -> svc.press("back")
+            "scroll" -> svc.swipe(st.arg != "up")
+            "click" -> find()?.let { svc.click(it) } ?: false
+            "type" -> find()?.let { n -> svc.typeInto(n, st.text).also { if (it && st.arg == "submit") { Thread.sleep(400); svc.pressEnter() } } } ?: false
+            else -> false
+        }
     }
 
     /**
