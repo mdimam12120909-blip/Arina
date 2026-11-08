@@ -202,8 +202,13 @@ fun MainScreen(
                         val a = tabIdx(initialState); val b = tabIdx(targetState)
                         if (a >= 0 && b >= 0) {
                             val d = if (b > a) 1 else -1
-                            (androidx.compose.animation.fadeIn(tween(320, delayMillis = 60)) + androidx.compose.animation.slideInHorizontally(tween(420)) { d * it / 4 }) togetherWith
-                                (androidx.compose.animation.fadeOut(tween(180)) + androidx.compose.animation.slideOutHorizontally(tween(320)) { -d * it / 6 })
+                            val ease = androidx.compose.animation.core.CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
+                            (androidx.compose.animation.fadeIn(tween(360, delayMillis = 70, easing = ease)) +
+                                androidx.compose.animation.slideInHorizontally(tween(520, easing = ease)) { d * it / 3 } +
+                                androidx.compose.animation.scaleIn(tween(520, easing = ease), initialScale = 0.94f)) togetherWith
+                                (androidx.compose.animation.fadeOut(tween(200, easing = androidx.compose.animation.core.FastOutLinearInEasing)) +
+                                    androidx.compose.animation.slideOutHorizontally(tween(420, easing = ease)) { -d * it / 5 } +
+                                    androidx.compose.animation.scaleOut(tween(420, easing = ease), targetScale = 0.96f))
                         } else {
                             // Depth: tabs 0, Settings 1, its sub-pages 2. Going deeper slides in from the right with the old page
                             // easing away; going back reverses it; anything else is a soft cross-fade with a tiny scale.
