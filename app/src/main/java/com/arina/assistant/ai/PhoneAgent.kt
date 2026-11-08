@@ -29,8 +29,8 @@ class PhoneAgent(
             Regex("\\b(install|transfer|sign out|log out|logout|factory reset)\\b|ইনস্টল|ট্রান্সফার", RegexOption.IGNORE_CASE) to
                 Regex("install|transfer|sign out|log out|logout|reset|ইনস্টল|ট্রান্সফার", RegexOption.IGNORE_CASE)
         )
-        const val MAX_STEPS = 30
-        const val MAX_STEPS_CHAT = 70
+        const val MAX_STEPS = 45
+        const val MAX_STEPS_CHAT = 120
 
         val SYSTEM = """
             You operate an Android phone for the user, one action at a time, by reading the screen as a numbered list.
@@ -107,6 +107,7 @@ class PhoneAgent(
                 else -> action
             }
             onStep("Step $step: $desc")
+            Diag.log("agent step $step: $desc")
             if (desc == last) { if (++repeats >= 3) return Outcome("এই ধাপে আটকে গেছি, থামলাম।", "I got stuck, so I stopped.") } else { repeats = 0; last = desc }
 
             var ok = true

@@ -86,6 +86,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
@@ -142,19 +144,19 @@ import com.arina.assistant.permissions.PermissionCenter
 private enum class Page(val title: String) {
     Home("Home"), Chat("Chat"), Memory("Memory"), Routine("Routine"), Health("Phone health"), Soul("Soul"),
     Settings("Settings"), Account("Account"), Permissions("Permissions"), Keys("Gemini keys"),
-    Assistant("Assistant"), Admin("Admin"), Today("Today"), Profile("Edit profile")
+    Assistant("Assistant"), Admin("Admin"), Today("Today"), Profile("Edit profile"), Connectors("Connectors")
 }
 
 /** The five bottom tabs, left to right. */
 private fun tabIdx(p: Page): Int = when (p) { Page.Memory -> 0; Page.Chat -> 1; Page.Home -> 2; Page.Today -> 3; Page.Routine -> 4; else -> -1 }
 
 /** Pages that open from Settings: they show a back arrow that returns to Settings. */
-private val SETTINGS_SUB = setOf(Page.Account, Page.Permissions, Page.Keys, Page.Assistant, Page.Admin)
+private val SETTINGS_SUB = setOf(Page.Account, Page.Permissions, Page.Keys, Page.Assistant, Page.Admin, Page.Connectors)
 
 private val Good = Color(0xFF3DDC97)
 private val Warn = Color(0xFFFFB84D)
 
-private fun Modifier.glass(shape: Shape = RoundedCornerShape(22.dp), strong: Boolean = false): Modifier {
+internal fun Modifier.glass(shape: Shape = RoundedCornerShape(22.dp), strong: Boolean = false): Modifier {
     val dark = ArinaColors.dark
     val fill = if (strong) ArinaColors.Glow.copy(alpha = 0.24f) else Color.White.copy(alpha = if (dark) 0.09f else 0.58f)
     val edge = Brush.verticalGradient(listOf(Color.White.copy(alpha = if (dark) 0.32f else 0.95f), Color.White.copy(alpha = if (dark) 0.07f else 0.35f)))
@@ -235,6 +237,7 @@ fun MainScreen(
                         Page.Account -> AccountPage(vm)
                         Page.Permissions -> PermissionsPage(vm, onPermission, onGrantAll, onAppInfo)
                         Page.Keys -> KeysPage(vm)
+                        Page.Connectors -> ConnectorsPage(vm)
                         Page.Assistant -> AssistantPage(vm)
                         Page.Admin -> AdminPage(vm)
                     }
@@ -913,7 +916,7 @@ private fun KeyField(label: String, value: String, secret: Boolean, onChange: (S
 }
 
 @Composable
-private fun PillButton(label: String, onClick: () -> Unit) {
+internal fun PillButton(label: String, onClick: () -> Unit) {
     Text(
         label,
         color = Color.White,
@@ -1035,12 +1038,19 @@ private fun SettingsHome(vm: ArinaEngine, go: (Page) -> Unit) {
         SectionTitle("ASSISTANT")
         Group(
             { NavRow("Assistant", "Companion, skills and speed report", Icons.Filled.Build, flat = true) { go(Page.Assistant) } },
-            { NavRow("Gemini keys", "Your five keys, one for each job", Icons.Outlined.GraphicEq, flat = true) { go(Page.Keys) } }
+            { NavRow("Gemini keys", "Your five keys, one for each job", Icons.Outlined.GraphicEq, flat = true) { go(Page.Keys) } },
+            { NavRow("Connectors", "Apps, services and websites Entrion can use", Icons.Filled.Link, flat = true) { go(Page.Connectors) } }
         )
         SectionTitle("APP")
         Group(
             { NavRow("Account", if (vm.signedIn.value) vm.accountEmail.value else "Sign in to keep your data", Icons.Filled.Person, flat = true) { go(Page.Account) } },
-            { NavRow("Permissions", "Choose what the agent may do on this phone", Icons.Filled.Lock, flat = true) { go(Page.Permissions) } }
+            { NavRow("Permissions", "Choose what the agent may do on this phone", Icons.Filled.Lock, flat = true) { go(Page.Permissions) } },
+            {
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                NavRow("Report a problem", "Send what just happened so it can be fixed", Icons.Filled.BugReport, flat = true) {
+                    com.arina.assistant.ai.Diag.share(ctx, "build " + runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).longVersionCode }.getOrDefault(0L), vm.messages.map { (if (it.fromUser) "You: " else "Entrion: ") + it.text })
+                }
+            }
         )
         if (vm.isAdmin.value) {
             SectionTitle("ADMIN")

@@ -36,6 +36,10 @@ class DeviceActions(private val ctx: Context) {
         }
     }
 
+    /** Apps the user switched off in the Connectors page: Entrion must not open or operate them. */
+    private fun disabledApps(): Set<String> =
+        com.arina.assistant.cloud.Local.prefs(ctx, "arina_ui").getStringSet("conn_disabled", emptySet()).orEmpty()
+
     fun openApp(name: String): String {
         val pm = ctx.packageManager
         val query = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
@@ -47,6 +51,7 @@ class DeviceActions(private val ctx: Context) {
             ?: apps.firstOrNull { label(it).contains(q) }
             ?: apps.firstOrNull { label(it).length >= 3 && q.contains(label(it)) }
             ?: return "ERROR: no installed app matches '$name'"
+        if (match.activityInfo.packageName in disabledApps()) return "ERROR: the user has turned ${match.loadLabel(pm)} off for Entrion in Connectors. Ask them to allow it there."
         val intent = pm.getLaunchIntentForPackage(match.activityInfo.packageName)
             ?: return "ERROR: cannot launch '$name'"
         launch(intent)

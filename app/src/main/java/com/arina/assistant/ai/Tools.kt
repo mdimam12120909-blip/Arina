@@ -118,7 +118,14 @@ class ToolRunner(
         put(decl("termux", "Run one shell command in Termux. The user is asked to allow every command before it runs. Returns the output.", listOf(Triple("command", "STRING", "The bash command line."))))
     }
 
-    fun run(name: String, args: JSONObject): String = try {
+    fun run(name: String, args: JSONObject): String {
+        Diag.log("tool $name ${args.toString().take(120)}")
+        val out = runTool(name, args)
+        Diag.log("  -> ${out.take(160)}")
+        return out
+    }
+
+    private fun runTool(name: String, args: JSONObject): String = try {
         when (name) {
             "open_app" -> device.openApp(args.optString("app_name"))
             "call_contact" -> device.call(args.optString("name_or_number"))
