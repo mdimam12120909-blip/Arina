@@ -38,7 +38,7 @@ class PhoneAgent(
             {"action":"click","index":N}                      tap element N
             {"action":"type","index":N,"text":"...","submit":true|false}   put text in editable element N; submit presses Enter/Search
             {"action":"scroll","direction":"down"|"up"}
-            {"action":"back"} | {"action":"home"} | {"action":"wait"}
+            {"action":"back"} | {"action":"home"} | {"action":"wait"} | {"action":"wait_long"}  (wait_long = 20 seconds, for something slow like a video being generated)
             {"action":"open_app","app":"YouTube"}            app name as on the phone
             {"action":"open_url","url":"https://..."}          open a web address; the matching installed app opens it directly
             {"action":"wait_reply"}                            wait until the other AI finishes writing its reply (use right after sending a chat message)
@@ -59,6 +59,7 @@ class PhoneAgent(
             - After every action check what changed. If nothing changed or you are on the wrong screen, go back one step and try a different way. Never continue from a wrong screen.
             - Never use done until the SCREEN itself proves the goal (for a toggle, the switch shows the new state; for a sent message, it appears in the chat). Put that proof in "evidence". If you cannot prove it, keep going or use fail and say honestly what is missing.
             - If you are blocked (login needed, permission dialog you must not accept, unknown screen), use fail and say what the user must do. Never pretend it worked.
+            - CHECKING PROGRESS: when the GOAL is to check, watch or wait for something (a video generating, a download, an upload), read the SCREEN and report exactly what it shows, with any percentage or message. If it is NOT finished and the GOAL says to wait or tell when done, use wait_long and look again (up to about 15 times). Finish with done only when it is really finished or the user only asked for a status. In bn/en ALWAYS say the status in plain words, for example "still generating, about 40%" or "finished, the video is ready". Never end silently and never call something finished while the screen still shows progress.
             CHAT MODE (only when the task says CHAT MODE): you are talking to another AI app on the user's behalf, in plain text like the user would.
             Open the app, click the message box, type your first message about the topic (clear, specific, in English unless told otherwise) with submit true, or click the send button, then wait_reply, then read the reply on SCREEN and note the key points.
             Ask sensible follow-up questions (at most 6 messages in total), scroll when the reply is long, then finish with done. In done, "report" must be the complete result the user asked for (for example a step by step plan) in plain English text built from your notes, and bn/en are a short spoken summary.
@@ -72,6 +73,8 @@ class PhoneAgent(
         var last = ""
         var repeats = 0
         var askedProof = false
+        // Start on the right screen at once: no waiting for the first model answer just to open the app.
+        runCatching { device.openMentionedApp(goal) }.getOrNull()?.let { onStep("Opened $it"); Thread.sleep(700) }
         for (step in 1..maxSteps) {
             if (cancelled()) return Outcome("থামিয়ে দিলাম।", "Stopped.")
             val svc = ArinaAccessibilityService.instance
@@ -140,10 +143,11 @@ class PhoneAgent(
                 "open_app" -> ok = device.openApp(a.optString("app")).startsWith("OK")
                 "open_url" -> ok = device.openUrl(a.optString("url")).startsWith("OK")
                 "wait" -> Thread.sleep(1500)
+                "wait_long" -> { var t = 0; while (t < 20000 && !cancelled()) { Thread.sleep(250); t += 250 } }
                 else -> ok = false
             }
             history += "$desc -> ${if (denied) "the user did NOT allow this: choose another way or use fail" else if (ok) "done" else "FAILED"}"
-            if (action != "wait" && action != "wait_reply") settle(svc, before)
+            if (action != "wait" && action != "wait_reply" && action != "wait_long") settle(svc, before)
         }
         return Outcome("অনেক ধাপ হয়ে গেল, এখানেই থামলাম।", "I reached my step limit and stopped.", notes.joinToString("\n") { "- $it" })
     }

@@ -293,4 +293,34 @@ class DeviceActions(private val ctx: Context) {
         }
         return "ERROR: needs '$what' access. I opened the page; ask the user to switch it on for Entrion, then try again."
     }
+
+    /** Opens the installed app whose name appears in [goal], so the agent starts on the right screen at once. Null if none. */
+    fun openMentionedApp(goal: String): String? {
+        val pm = ctx.packageManager
+        val q = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val off = disabledApps()
+        val hit = pm.queryIntentActivities(q, 0)
+            .filter { it.activityInfo.packageName != ctx.packageName && it.activityInfo.packageName !in off }
+            .map { it.loadLabel(pm).toString() to it.activityInfo.packageName }
+            .filter { (label, _) -> label.length >= 3 && Regex("(?i)(^|[^a-z0-9])${Regex.escape(label)}($|[^a-z0-9])").containsMatchIn(goal) }
+            .maxByOrNull { it.first.length } ?: return null
+        val intent = pm.getLaunchIntentForPackage(hit.second) ?: return null
+        launch(intent)
+        return hit.first
+    }
+
+    /** Opens an app straight to what is needed with a ready-made intent, no tapping. The person still presses the final send. */
+    fun appAction(action: String, a: String, b: String, c: String): String = try {
+        when (action.trim().lowercase()) {
+            "email" -> { launch(Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:" + Uri.encode(a))).putExtra(Intent.EXTRA_SUBJECT, b).putExtra(Intent.EXTRA_TEXT, c)); "OK: opened a draft email to $a with the subject and text filled in. Nothing was sent; the user must press Send." }
+            "whatsapp" -> { launch(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/" + a.filter { it.isDigit() } + "?text=" + Uri.encode(b)))); "OK: opened WhatsApp with the message ready. Nothing was sent; the user must press Send." }
+            "maps" -> { launch(Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=" + Uri.encode(a)))); "OK: started navigation to $a" }
+            "youtube_search" -> { launch(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(a)))); "OK: opened YouTube results for $a" }
+            "web_search" -> { launch(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=" + Uri.encode(a)))); "OK: opened a web search for $a" }
+            "share" -> { launch(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, a), "Share")); "OK: opened the share sheet. The user chooses where to send it." }
+            "timer" -> { launch(Intent(android.provider.AlarmClock.ACTION_SET_TIMER).putExtra(android.provider.AlarmClock.EXTRA_LENGTH, a.filter { it.isDigit() }.toIntOrNull() ?: 60).putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, b).putExtra(android.provider.AlarmClock.EXTRA_SKIP_UI, true)); "OK: timer started for ${a.filter { it.isDigit() }} seconds" }
+            "calendar_event" -> { launch(Intent(Intent.ACTION_INSERT).setData(android.provider.CalendarContract.Events.CONTENT_URI).putExtra(android.provider.CalendarContract.Events.TITLE, a).putExtra(android.provider.CalendarContract.Events.DESCRIPTION, b)); "OK: opened a new calendar event titled $a. The user picks the time and saves." }
+            else -> "ERROR: unknown app action '$action'."
+        }
+    } catch (e: Exception) { "ERROR: could not do that (${e.message ?: e.javaClass.simpleName})." }
 }

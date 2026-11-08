@@ -109,6 +109,10 @@ class ToolRunner(
         ), required = listOf("title", "time")))
         put(decl("list_routines", "Read the user's routines."))
         put(decl("remove_routine", "Delete a routine.", listOf(Triple("title", "STRING", "Part of the routine's title."))))
+        put(decl("app_action", "Do something in an app WITHOUT touching the screen, using the app's own shortcut. Faster and more reliable than operate_phone for these. Tell the user honestly what the result says (for email and WhatsApp the draft is ready but they press Send).", listOf(
+            Triple("action", "STRING", "email (a=to address, b=subject, c=text) | whatsapp (a=phone number with country code, b=message) | maps (a=place) | youtube_search (a=query) | web_search (a=query) | share (a=text) | timer (a=seconds, b=label) | calendar_event (a=title, b=notes)."),
+            Triple("a", "STRING", "First value, see action."), Triple("b", "STRING", "Second value, see action."), Triple("c", "STRING", "Third value, see action.")
+        ), required = listOf("action")))
         put(decl("look_screen", "Read what is on the phone's screen right now (all visible text and buttons). Use when the user asks what is on the screen, or to check the result of something. You CAN read the screen; never say you cannot."))
         put(decl("phone_control", "Change a phone setting directly and read the real result back. Prefer this over operate_phone for these. Say what you did only from the returned result; if it starts with ERROR, say so and follow the hint.", listOf(
             Triple("action", "STRING", "One of: brightness, volume_media, volume_ring, volume_alarm, volume_call, ringer, dnd, rotation, media, answer_call, end_call, speaker, wifi, bluetooth, hotspot, airplane, location, mobile_data."),
@@ -133,6 +137,7 @@ class ToolRunner(
             "set_volume" -> device.setVolume(args.optInt("percent", 50))
             "toggle_flashlight" -> device.flashlight(args.optBoolean("on", true))
             "press_button" -> device.pressButton(args.optString("button"))
+            "app_action" -> device.appAction(args.optString("action"), args.optString("a"), args.optString("b"), args.optString("c"))
             "look_screen" -> {
                 val svc = com.arina.assistant.device.ArinaAccessibilityService.instance
                 val snap = svc?.snapshot(textMax = 200, maxNodes = 120)
