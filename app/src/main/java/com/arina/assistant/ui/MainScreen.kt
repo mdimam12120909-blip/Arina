@@ -1002,8 +1002,13 @@ private fun AccountCard(vm: ArinaEngine) {
 
 @Composable
 private fun PageColumn(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    // Content eases in (fade, rise, tiny scale) instead of appearing all at once, so a page never looks like it is "loading".
+    val enter = remember { androidx.compose.animation.core.Animatable(0f) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { enter.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.85f, stiffness = 260f)) }
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+        Modifier.fillMaxSize()
+            .graphicsLayer { alpha = enter.value.coerceIn(0f, 1f); translationY = (1f - enter.value) * 36.dp.toPx(); val sc = 0.97f + 0.03f * enter.value; scaleX = sc; scaleY = sc }
+            .verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         content = {
             content()
@@ -1611,8 +1616,12 @@ private fun ProfilePanel(vm: ArinaEngine, onOpen: (Page) -> Unit, onPower: () ->
             }
             Text("›", color = Color.White, fontSize = 18.sp)
         }
-        PanelHead("PHONE")
+        PanelHead("TOOLS")
+        PanelRow(Icons.Outlined.Check, "Tasks", { onOpen(Page.Jobs) })
+        PanelRow(Icons.Filled.Link, "Connectors", { onOpen(Page.Connectors) })
         PanelRow(Icons.Outlined.HealthAndSafety, "Phone health", { onOpen(Page.Health) })
+        PanelRow(Icons.Outlined.Psychology, "Memory", { onOpen(Page.Memory) })
+        PanelRow(Icons.Outlined.CalendarToday, "Today", { onOpen(Page.Today) })
         PanelHead("GENERAL")
         PanelRow(Icons.Outlined.Settings, "Settings", { onOpen(Page.Settings) })
         if (vm.signedIn.value) {

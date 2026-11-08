@@ -45,22 +45,6 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
-/** A service the person can connect to Entrion. [domain] is where its own icon is fetched from, at runtime. */
-private class Service(val name: String, val domain: String, val what: String)
-
-private val SERVICES = listOf(
-    Service("Gmail", "mail.google.com", "Read and write email"),
-    Service("YouTube", "youtube.com", "Upload and manage videos"),
-    Service("Google Drive", "drive.google.com", "Files and documents"),
-    Service("Google Calendar", "calendar.google.com", "Events and reminders"),
-    Service("GitHub", "github.com", "Code, issues and releases"),
-    Service("Canva", "canva.com", "Designs and presentations"),
-    Service("HeyGen", "heygen.com", "AI video"),
-    Service("Notion", "notion.so", "Notes and databases"),
-    Service("Slack", "slack.com", "Team messages"),
-    Service("Figma", "figma.com", "Design files"),
-)
-
 private val iconHttp = OkHttpClient()
 private val iconCache = HashMap<String, ImageBitmap?>()
 
@@ -95,13 +79,13 @@ private fun SoftField(value: String, hint: String, onChange: (String) -> Unit) {
     GlassField(value, onChange, hint)
 }
 
-/** Connectors: the apps on this phone, services that can be connected, and websites Entrion may use. */
+/** Connectors: the apps on this phone and the websites Entrion may use. */
 @Composable
 fun ConnectorsPage(vm: ArinaEngine) {
     var tab by remember { mutableStateOf(0) }
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Row(Modifier.fillMaxWidth().glass(RoundedCornerShape(16.dp)).padding(4.dp)) {
-            listOf("Device apps", "Browse", "Websites").forEachIndexed { i, n ->
+            listOf("Device apps", "Websites").forEachIndexed { i, n ->
                 Box(
                     Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
                         .background(if (tab == i) Brush.linearGradient(listOf(EntrionBlue, EntrionViolet)) else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)))
@@ -113,7 +97,6 @@ fun ConnectorsPage(vm: ArinaEngine) {
         Spacer(Modifier.height(10.dp))
         when (tab) {
             0 -> DeviceApps(vm)
-            1 -> Browse()
             else -> Websites(vm)
         }
     }
@@ -156,35 +139,6 @@ private fun DeviceApps(vm: ArinaEngine) {
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun Browse() {
-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item {
-            Text("SERVICES", color = ArinaColors.Muted, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 4.dp))
-        }
-        item {
-            Column(Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp))) {
-                SERVICES.forEachIndexed { i, sv ->
-                    if (i > 0) Box(Modifier.fillMaxWidth().padding(start = 66.dp).height(1.dp).background(ArinaColors.Muted.copy(alpha = 0.14f)))
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Tile(sv.name, rememberFavicon(sv.domain))
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(sv.name, color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            Text(sv.what, color = ArinaColors.Muted, fontSize = 11.5.sp)
-                        }
-                        Text(
-                            "Coming soon", color = EntrionIndigo, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(EntrionIndigo.copy(alpha = 0.12f)).padding(horizontal = 10.dp, vertical = 6.dp)
-                        )
-                    }
-                }
-            }
-        }
-        item { Text("Each connection will ask for your permission once, belongs to your account only, and can be removed at any time.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 6.dp)) }
     }
 }
 
