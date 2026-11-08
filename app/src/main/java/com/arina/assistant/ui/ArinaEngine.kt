@@ -483,7 +483,7 @@ class ArinaEngine private constructor(private val app: Application) {
     val callName = mutableStateOf(uiPrefs.getString("p_call", "").orEmpty())
     val personality = androidx.compose.runtime.mutableIntStateOf(uiPrefs.getInt("p_pers", 0).coerceIn(0, 5))
     val avatarTone = androidx.compose.runtime.mutableIntStateOf(uiPrefs.getInt("p_avatar", 0).coerceIn(0, 3))
-    init { Identity.callName = callName.value; Identity.personality = PERSONALITIES[personality.intValue].second }
+    init { refreshMainLanguage(); Identity.callName = callName.value; Identity.personality = PERSONALITIES[personality.intValue].second }
 
     /** The name shown in the profile: the one the user typed, else the one from the account. */
     fun displayName(): String {
@@ -504,6 +504,24 @@ class ArinaEngine private constructor(private val app: Application) {
         agentName.value = n.trim()
         uiPrefs.edit().putString("agent_name", n.trim()).apply()
         gemini.reset()
+    }
+
+    /** Counts which language the person speaks (by writing system) and keeps the most used one as their main language. */
+    fun trackLanguage(text: String) {
+        val sc = Identity.scriptOf(text) ?: return
+        if (text.count { it.isLetter() } < 3) return
+        val key = "lang_$sc"
+        uiPrefs.edit().putInt(key, uiPrefs.getInt(key, 0) + 1).apply()
+        refreshMainLanguage()
+    }
+
+    private fun refreshMainLanguage() {
+        val best = uiPrefs.all.filterKeys { it.startsWith("lang_") }.mapValues { (it.value as? Int) ?: 0 }.maxByOrNull { it.value }
+        Identity.mainLanguage = when {
+            best == null || best.value < 3 -> ""
+            best.key == "lang_Latin" -> "" // Latin covers many languages: follow what they say now instead of guessing
+            else -> best.key.removePrefix("lang_")
+        }
     }
 
     /** The agent's character: the admin's published text if there is one, plus the name the user gave it. */
@@ -547,7 +565,7 @@ class ArinaEngine private constructor(private val app: Application) {
 
     fun signOut() {
         cloud.signOut()
-        Identity.userName = ""
+        Identity.userName = ""; Identity.mainLanguage = ""
         // Back to the signed-out (guest) data, which holds nothing of any account.
         switchAccount()
     }
@@ -767,7 +785,7 @@ class ArinaEngine private constructor(private val app: Application) {
                 override fun onToolRunning(name: String) { scope.launch { status.value = Status.Thinking } }
                 override fun onTurn(user: String, model: String) {
                     scope.launch {
-                        if (user.isNotBlank()) messages += ChatMessage(true, user)
+                        if (user.isNotBlank()) { messages += ChatMessage(true, user); trackLanguage(user) }
                         if (model.isNotBlank()) { messages += ChatMessage(false, model); caption.value = model }
                         lastTiming.value = Timing.report()
                         status.value = if (micOn.value) Status.Listening else Status.Idle
@@ -921,7 +939,7 @@ class ArinaEngine private constructor(private val app: Application) {
         if (status.value == Status.Thinking || status.value == Status.Speaking) return
         notice.value = null
         caption.value = ""
-        messages += ChatMessage(true, t)
+        messages += ChatMessage(true, t); trackLanguage(t)
         status.value = Status.Thinking
         liveSession.start()
         if (!micOn.value) liveSession.mute()
