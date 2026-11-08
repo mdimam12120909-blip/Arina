@@ -1003,9 +1003,9 @@ private fun PageColumn(content: @Composable androidx.compose.foundation.layout.C
 }
 
 @Composable
-private fun NavRow(title: String, subtitle: String, icon: ImageVector, onClick: () -> Unit) {
+private fun NavRow(title: String, subtitle: String, icon: ImageVector, flat: Boolean = false, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().glass().clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 14.dp),
+        Modifier.fillMaxWidth().let { if (flat) it else it.glass() }.clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Color(0x594F7DFF), Color(0x598F5BFF)))).border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
@@ -1032,12 +1032,20 @@ private fun SettingsHome(vm: ArinaEngine, go: (Page) -> Unit) {
             }
             Text("\u203A", color = ArinaColors.Muted, fontSize = 24.sp)
         }
-        SectionTitle("GENERAL")
-        NavRow("Account", if (vm.signedIn.value) vm.accountEmail.value else "Sign in to keep your data", Icons.Filled.Person) { go(Page.Account) }
-        NavRow("Permissions", "Choose what the agent may do on this phone", Icons.Filled.Lock) { go(Page.Permissions) }
-        NavRow("Gemini keys", "Your five keys, one for each job", Icons.Outlined.GraphicEq) { go(Page.Keys) }
-        NavRow("Assistant", "Companion, skills and speed report", Icons.Filled.Build) { go(Page.Assistant) }
-        if (vm.isAdmin.value) NavRow("Admin", "Settings published to every user", Icons.Filled.Info) { go(Page.Admin) }
+        SectionTitle("ASSISTANT")
+        Group(
+            { NavRow("Assistant", "Companion, skills and speed report", Icons.Filled.Build, flat = true) { go(Page.Assistant) } },
+            { NavRow("Gemini keys", "Your five keys, one for each job", Icons.Outlined.GraphicEq, flat = true) { go(Page.Keys) } }
+        )
+        SectionTitle("APP")
+        Group(
+            { NavRow("Account", if (vm.signedIn.value) vm.accountEmail.value else "Sign in to keep your data", Icons.Filled.Person, flat = true) { go(Page.Account) } },
+            { NavRow("Permissions", "Choose what the agent may do on this phone", Icons.Filled.Lock, flat = true) { go(Page.Permissions) } }
+        )
+        if (vm.isAdmin.value) {
+            SectionTitle("ADMIN")
+            Group({ NavRow("Admin", "Settings published to every user", Icons.Filled.Info, flat = true) { go(Page.Admin) } })
+        }
     }
 }
 
@@ -1253,8 +1261,9 @@ private fun PermissionsPage(vm: ArinaEngine, onPermission: (PermItem) -> Unit, o
             Spacer(Modifier.width(10.dp))
             PillButton("Allow all") { onGrantAll() }
         }
+        SectionTitle("SPECIAL ACCESS")
+        PermGroup(PermissionCenter.special, vm, onPermission)
         PermissionCenter.special.forEach { item ->
-            PermRow(item, vm.perms[item.id] == true, onPermission)
             if (item.id == "accessibility" && vm.perms[item.id] != true) {
                 Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Device control will not switch on?", color = Warn, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
@@ -1270,8 +1279,9 @@ private fun PermissionsPage(vm: ArinaEngine, onPermission: (PermItem) -> Unit, o
                 }
             }
         }
+        SectionTitle("PERMISSIONS")
+        PermGroup(PermissionCenter.runtime, vm, onPermission)
         PermissionCenter.runtime.forEach { item ->
-            PermRow(item, vm.perms[item.id] == true, onPermission)
             if (item.id == "termux") {
                 Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("One-time Termux setup", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
@@ -1300,9 +1310,9 @@ private fun PermissionsPage(vm: ArinaEngine, onPermission: (PermItem) -> Unit, o
 }
 
 @Composable
-private fun ChoiceCard(title: String, detail: String, selected: Boolean, onClick: () -> Unit) {
+private fun ChoiceCard(title: String, detail: String, selected: Boolean, flat: Boolean = false, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().glass(strong = selected).clickable(onClick = onClick).padding(14.dp),
+        Modifier.fillMaxWidth().let { if (flat) it else it.glass(strong = selected) }.clickable(onClick = onClick).padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
@@ -1360,14 +1370,18 @@ private fun AssistantPage(vm: ArinaEngine) {
         ) { vm.setProactive(it) }
 
         SectionTitle("WHEN IT OPERATES YOUR PHONE")
-        ChoiceCard("Smart (recommended)", "Starts at once. Asks only before a risky tap you did not ask for: send, pay, buy, delete, install.", vm.operateMode.value == "smart") { vm.setOperateMode("smart") }
-        ChoiceCard("Ask me every time", "Shows a question before every phone task.", vm.operateMode.value == "ask") { vm.setOperateMode("ask") }
-        ChoiceCard("Never ask", "Does everything without asking. Only use this if you fully trust your commands.", vm.operateMode.value == "auto") { vm.setOperateMode("auto") }
+        Group(
+            { ChoiceCard("Smart (recommended)", "Starts at once. Asks only before a risky tap you did not ask for: send, pay, buy, delete, install.", vm.operateMode.value == "smart", flat = true) { vm.setOperateMode("smart") } },
+            { ChoiceCard("Ask me every time", "Shows a question before every phone task.", vm.operateMode.value == "ask", flat = true) { vm.setOperateMode("ask") } },
+            { ChoiceCard("Never ask", "Does everything without asking. Only use this if you fully trust your commands.", vm.operateMode.value == "auto", flat = true) { vm.setOperateMode("auto") } }
+        )
 
         SectionTitle("WHILE IT RUNS IN THE BACKGROUND")
-        ChoiceCard("Quiet (recommended)", "Nothing on screen while it waits. A small status pill and a thin edge light show only while it speaks or works.", vm.bgStyle.value == "quiet") { vm.setBgStyle("quiet") }
-        ChoiceCard("Orb", "The orb rises from the bottom when it wakes, then melts away, with a soft sound.", vm.bgStyle.value == "orb") { vm.setBgStyle("orb") }
-        ChoiceCard("Nothing", "No picture at all. Only the notification shows it is on.", vm.bgStyle.value == "off") { vm.setBgStyle("off") }
+        Group(
+            { ChoiceCard("Quiet (recommended)", "Nothing on screen while it waits. A small status pill and a thin edge light show only while it speaks or works.", vm.bgStyle.value == "quiet", flat = true) { vm.setBgStyle("quiet") } },
+            { ChoiceCard("Orb", "The orb rises from the bottom when it wakes, then melts away, with a soft sound.", vm.bgStyle.value == "orb", flat = true) { vm.setBgStyle("orb") } },
+            { ChoiceCard("Nothing", "No picture at all. Only the notification shows it is on.", vm.bgStyle.value == "off", flat = true) { vm.setBgStyle("off") } }
+        )
 
         SectionTitle("SKILLS")
         SkillsCard(vm)
@@ -1384,7 +1398,18 @@ private fun AssistantPage(vm: ArinaEngine) {
 
 @Composable
 private fun SectionTitle(text: String, modifier: Modifier = Modifier) {
-    Text(text, color = ArinaColors.Glow, fontSize = 11.sp, letterSpacing = 3.sp, fontWeight = FontWeight.SemiBold, modifier = modifier.padding(top = 6.dp))
+    Text(text, color = ArinaColors.Muted, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold, modifier = modifier.padding(start = 4.dp, top = 8.dp))
+}
+
+/** One glass card holding several rows with thin dividers between them (the grouped look used on every page). */
+@Composable
+private fun Group(vararg rows: @Composable () -> Unit) {
+    Column(Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp))) {
+        rows.forEachIndexed { i, row ->
+            if (i > 0) Box(Modifier.fillMaxWidth().padding(start = 70.dp).height(1.dp).background(ArinaColors.Muted.copy(alpha = 0.14f)))
+            row()
+        }
+    }
 }
 
 @Composable
@@ -1398,8 +1423,18 @@ private fun StatusLine(label: String, ok: Boolean) {
 }
 
 @Composable
-private fun PermRow(item: PermItem, ok: Boolean, onPermission: (PermItem) -> Unit) {
-    Row(Modifier.fillMaxWidth().glass(strong = ok).padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun PermGroup(items: List<PermItem>, vm: ArinaEngine, onPermission: (PermItem) -> Unit) {
+    Column(Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp))) {
+        items.forEachIndexed { i, item ->
+            if (i > 0) Box(Modifier.fillMaxWidth().padding(start = 36.dp).height(1.dp).background(ArinaColors.Muted.copy(alpha = 0.14f)))
+            PermRow(item, vm.perms[item.id] == true, flat = true, onPermission = onPermission)
+        }
+    }
+}
+
+@Composable
+private fun PermRow(item: PermItem, ok: Boolean, flat: Boolean = false, onPermission: (PermItem) -> Unit) {
+    Row(Modifier.fillMaxWidth().let { if (flat) it else it.glass(strong = ok) }.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(10.dp).clip(CircleShape).background(if (ok) Good else Warn))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
