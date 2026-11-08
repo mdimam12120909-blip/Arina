@@ -45,6 +45,7 @@ class PhoneAgent(
             {"action":"note","text":"..."}                     save one key point from a reply; notes are kept for the final report
             {"action":"done","evidence":"the exact words or elements on SCREEN that prove the goal is complete","bn":"...","en":"...","report":"..."}           goal reached: bn = one short spoken Bengali sentence (Bangla script) saying what you did, en = same in English
             {"action":"fail","bn":"...","en":"..."}           cannot continue: say why in the same way
+            ${AppKnowledge.TEXT}
             Rules:
             - Use only element numbers that are in the current SCREEN list. Look at PREVIOUS ACTIONS and never repeat a step that did nothing; try something else (another element, scroll, back).
             - BE FAST. Use the fewest steps. To search, prefer open_url with a search address over clicking through the app:

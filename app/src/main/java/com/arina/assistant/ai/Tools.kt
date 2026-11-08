@@ -109,6 +109,7 @@ class ToolRunner(
         ), required = listOf("title", "time")))
         put(decl("list_routines", "Read the user's routines."))
         put(decl("remove_routine", "Delete a routine.", listOf(Triple("title", "STRING", "Part of the routine's title."))))
+        put(decl("look_screen", "Read what is on the phone's screen right now (all visible text and buttons). Use when the user asks what is on the screen, or to check the result of something. You CAN read the screen; never say you cannot."))
         put(decl("phone_control", "Change a phone setting directly and read the real result back. Prefer this over operate_phone for these. Say what you did only from the returned result; if it starts with ERROR, say so and follow the hint.", listOf(
             Triple("action", "STRING", "One of: brightness, volume_media, volume_ring, volume_alarm, volume_call, ringer, dnd, rotation, media, answer_call, end_call, speaker, wifi, bluetooth, hotspot, airplane, location, mobile_data."),
             Triple("value", "STRING", "brightness/volume: 0-100. ringer: normal|vibrate|silent. dnd, rotation, speaker, wifi, bluetooth, hotspot, airplane, location, mobile_data: on|off. media: play|pause|next|previous|stop. Empty for answer_call/end_call.")
@@ -125,6 +126,13 @@ class ToolRunner(
             "set_volume" -> device.setVolume(args.optInt("percent", 50))
             "toggle_flashlight" -> device.flashlight(args.optBoolean("on", true))
             "press_button" -> device.pressButton(args.optString("button"))
+            "look_screen" -> {
+                val svc = com.arina.assistant.device.ArinaAccessibilityService.instance
+                val snap = svc?.snapshot(textMax = 200, maxNodes = 120)
+                if (svc == null) "ERROR: Device Control is off. Ask the user to turn it on in Permissions."
+                else if (snap == null) "ERROR: the screen could not be read right now."
+                else "SCREEN of ${snap.app}:\n${snap.text}"
+            }
             "phone_control" -> device.control(args.optString("action"), args.optString("value"))
             "tap_text" -> device.tapText(args.optString("text"))
             "open_settings" -> device.openSettings(args.optString("section", "main"))
