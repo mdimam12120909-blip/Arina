@@ -217,7 +217,7 @@ class GeminiClient(
         val generation = JSONObject().put("temperature", 0.7)
         if (o.json) generation.put("responseMimeType", "application/json")
         // Lower thinking = faster answers. "minimal" is documented for 3.5-flash-lite and 3.6-flash; 3.8-flash and others take "low".
-        if (withThinking) generation.put("thinkingConfig", JSONObject().put("thinkingLevel", if (o.slow) "high" else if (model.contains("3.5-flash-lite") || model.contains("3.6-flash")) "minimal" else "low"))
+        if (withThinking) generation.put("thinkingConfig", JSONObject().put("thinkingLevel", if (o.slow) "high" else if (o.role != KeyRole.Agent && (model.contains("3.5-flash-lite") || model.contains("3.6-flash"))) "minimal" else "low"))
 
         val body = JSONObject()
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
@@ -264,12 +264,15 @@ class GeminiClient(
     private fun callApi(system: String, contents: JSONArray, withTools: Boolean, o: Opts = Opts()): JSONObject {
         var last: IOException? = null
         val deadline = System.currentTimeMillis() + if (o.slow) 170_000L else TOTAL_MILLIS
-        val order = listOfNotNull(activeModel) + MODELS.filter { it != activeModel }
+        // Operating the phone needs careful reading, not raw speed: start from the stronger models for that job.
+        val base = if (o.role == KeyRole.Agent) listOf("gemini-3.8-flash", "gemini-3.6-flash", "gemini-flash-latest", "gemini-2.5-flash", "gemini-3.5-flash-lite") else MODELS
+        val first = if (o.role == KeyRole.Agent) null else activeModel
+        val order = listOfNotNull(first) + base.filter { it != first }
         for (m in order) {
             if (System.currentTimeMillis() > deadline) break
             try {
                 val r = callModel(m, system, contents, withTools, o)
-                activeModel = m
+                if (o.role != KeyRole.Agent) activeModel = m
                 return r
             } catch (e: ModelUnavailable) {
                 last = e
