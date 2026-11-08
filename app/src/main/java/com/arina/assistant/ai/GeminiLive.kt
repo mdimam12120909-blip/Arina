@@ -203,6 +203,7 @@ class GeminiLive(
         if (parts != null) for (i in 0 until parts.length()) {
             val data = parts.getJSONObject(i).optJSONObject("inlineData")?.optString("data").orEmpty()
             if (data.isEmpty()) continue
+            spokenSince = System.currentTimeMillis()
             if (!modelAudioThisTurn) {
                 modelAudioThisTurn = true
                 Timing.mark("live first audio")
@@ -248,8 +249,25 @@ class GeminiLive(
                     )
                 )
                 socket?.send(reply.toString())
+                guardSpeech(name, result)
             }
         }
+    }
+
+    /** Tools whose result the user is waiting to hear. If the model stays silent after one, it is nudged to say it. */
+    private val MUST_SPEAK = setOf("look_screen", "look_camera", "get_status", "read_notifications", "list_tasks", "list_routines",
+        "list_skills", "phone_control", "app_action", "scan_phone", "termux", "tap_text", "press_button", "open_settings")
+    @Volatile private var spokenSince = 0L
+    private val guardHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    private fun guardSpeech(name: String, result: String) {
+        if (name !in MUST_SPEAK || result.contains("ALREADY told")) return
+        val mark = System.currentTimeMillis()
+        guardHandler.postDelayed({
+            if (spokenSince < mark && ready && socket != null) {
+                sendText("You did not tell the user the result of $name yet. Say it now in one or two short sentences, in the language he speaks. Result: ${result.take(500)}")
+            }
+        }, 6500)
     }
 
     // ---- microphone --------------------------------------------------------------------------
