@@ -176,6 +176,29 @@ class ArinaEngine private constructor(private val app: Application) {
     val facts = mutableStateListOf<Memory.Fact>().also { it.addAll(memory.facts()) }
     val researchActive = mutableStateOf(false)
 
+    // ---- Jobs: every big task is recorded with its steps and result ----
+    private val jobStore by lazy { com.arina.assistant.ai.JobStore(uiPrefs) }
+    val jobs = androidx.compose.runtime.mutableStateListOf<com.arina.assistant.ai.Job>().also { it.addAll(jobStore.load()) }
+    private fun jobStart(kind: String, goal: String): String {
+        val id = System.currentTimeMillis().toString(36)
+        scope.launch { jobs.add(0, com.arina.assistant.ai.Job(id, kind, goal, "running", emptyList(), "", System.currentTimeMillis())); jobStore.save(jobs) }
+        return id
+    }
+    private fun jobUpdate(id: String, status: String? = null, step: String? = null, result: String? = null) {
+        scope.launch {
+            val i = jobs.indexOfFirst { it.id == id }
+            if (i < 0) return@launch
+            val j = jobs[i]
+            jobs[i] = j.copy(status = status ?: j.status, steps = if (step != null) (j.steps + step).takeLast(40) else j.steps, result = result ?: j.result)
+            if (status != null) jobStore.save(jobs)
+        }
+    }
+    fun clearJobs() { jobs.clear(); jobStore.save(jobs) }
+
+    /** Runs a saved job's goal again. */
+    fun retryJob(j: com.arina.assistant.ai.Job): String =
+        if (j.kind == "workflow") startWorkflow(j.goal, null) else startOperate(j.goal, j.kind == "chat")
+
     /** What the current research is doing, shown live on screen: a title and the steps so far. */
     val researchTitle = mutableStateOf("")
     val researchSteps = androidx.compose.runtime.mutableStateListOf<String>()
@@ -1161,6 +1184,7 @@ class ArinaEngine private constructor(private val app: Application) {
         val g = goal.trim()
         if (g.isEmpty()) return "ERROR: no goal given."
         ack(DEEP_LINES)
+        val jobId = jobStart("workflow", g)
         scope.launch {
             val me = coroutineContext[Job]!!
             researchJobs += me
@@ -1169,16 +1193,19 @@ class ArinaEngine private constructor(private val app: Application) {
                 val result = withContext(Dispatchers.IO) {
                     Workflow.run(
                         goal = g, gemini = gemini, skill = skill,
-                        onProgress = { done, total, line -> scope.launch { caption.value = "Working: step $done of $total, $line" } },
+                        onProgress = { done, total, line -> jobUpdate(jobId, step = "Step $done of $total: $line"); scope.launch { caption.value = "Working: step $done of $total, $line" } },
                         cancelled = { !me.isActive }
                     )
                 }
+                jobUpdate(jobId, status = "done", result = result.output)
                 openCard(Card(CardKind.Text, "Result: ${g.take(36)}", text = result.output, seconds = 0))
                 withContext(Dispatchers.IO) { gemini.noteResearch(g, Reply("", result.bn, result.en)) }
                 announce(Reply("", result.bn.ifBlank { "কাজ শেষ, ফলাফল স্ক্রিনে আছে।" }, result.en.ifBlank { "Done. The result is on screen." }))
             } catch (e: CancellationException) {
+                jobUpdate(jobId, status = "stopped")
                 throw e
             } catch (e: Exception) {
+                jobUpdate(jobId, status = "failed", result = e.message.orEmpty())
                 notice.value = "Workflow failed: ${(e.message ?: e.javaClass.simpleName).take(200)}"
             } finally {
                 researchJobs.remove(me)
@@ -1253,19 +1280,23 @@ class ArinaEngine private constructor(private val app: Application) {
             } else ack(ON_IT_LINES)
             agentActive.value = true
             agentLine.value = "Starting…"
+            val jobId = jobStart(if (chat) "chat" else "operate", goal)
             try {
                 val outcome = withContext(Dispatchers.IO) {
-                    PhoneAgent(gemini, device, confirm = { what -> if (operateMode.value == "auto") true else runBlocking { ask("Allow this?", what, ASK_LINES) } }).run(goal, chat, { line -> agentLine.value = line }, {
+                    PhoneAgent(gemini, device, confirm = { what -> if (operateMode.value == "auto") true else runBlocking { ask("Allow this?", what, ASK_LINES) } }).run(goal, chat, { line -> agentLine.value = line; jobUpdate(jobId, step = line) }, {
                         while (agentHold && agentJob?.isActive == true) Thread.sleep(100)
                         agentJob?.isActive != true
                     })
                 }
                 agentActive.value = false
+                jobUpdate(jobId, status = if (outcome.en.startsWith("Stopped") || outcome.en.contains("stuck") || outcome.en.contains("step limit") || outcome.en.contains("off")) "failed" else "done", result = outcome.report.ifBlank { outcome.en })
                 if (outcome.report.isNotBlank()) openCard(Card(CardKind.Text, "Result", text = outcome.report, seconds = 0))
                 announce(Reply("", outcome.bn, outcome.en))
             } catch (e: CancellationException) {
+                jobUpdate(jobId, status = "stopped")
                 throw e
             } catch (e: Exception) {
+                jobUpdate(jobId, status = "failed", result = e.message.orEmpty())
                 notice.value = "Phone control stopped: ${(e.message ?: e.javaClass.simpleName).take(160)}"
             } finally {
                 agentActive.value = false

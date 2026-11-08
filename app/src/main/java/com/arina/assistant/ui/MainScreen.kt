@@ -144,14 +144,14 @@ import com.arina.assistant.permissions.PermissionCenter
 private enum class Page(val title: String) {
     Home("Home"), Chat("Chat"), Memory("Memory"), Routine("Routine"), Health("Phone health"), Soul("Soul"),
     Settings("Settings"), Account("Account"), Permissions("Permissions"), Keys("Gemini keys"),
-    Assistant("Assistant"), Admin("Admin"), Today("Today"), Profile("Edit profile"), Connectors("Connectors")
+    Assistant("Assistant"), Admin("Admin"), Today("Today"), Profile("Edit profile"), Connectors("Connectors"), Jobs("Tasks")
 }
 
 /** The five bottom tabs, left to right. */
 private fun tabIdx(p: Page): Int = when (p) { Page.Memory -> 0; Page.Chat -> 1; Page.Home -> 2; Page.Today -> 3; Page.Routine -> 4; else -> -1 }
 
 /** Pages that open from Settings: they show a back arrow that returns to Settings. */
-private val SETTINGS_SUB = setOf(Page.Account, Page.Permissions, Page.Keys, Page.Assistant, Page.Admin, Page.Connectors)
+private val SETTINGS_SUB = setOf(Page.Account, Page.Permissions, Page.Keys, Page.Assistant, Page.Admin, Page.Connectors, Page.Jobs)
 
 private val Good = Color(0xFF3DDC97)
 private val Warn = Color(0xFFFFB84D)
@@ -238,6 +238,7 @@ fun MainScreen(
                         Page.Permissions -> PermissionsPage(vm, onPermission, onGrantAll, onAppInfo)
                         Page.Keys -> KeysPage(vm)
                         Page.Connectors -> ConnectorsPage(vm)
+                        Page.Jobs -> JobsPage(vm)
                         Page.Assistant -> AssistantPage(vm, onPower)
                         Page.Admin -> AdminPage(vm)
                     }
@@ -1039,7 +1040,8 @@ private fun SettingsHome(vm: ArinaEngine, go: (Page) -> Unit) {
         Group(
             { NavRow("Assistant", "Companion, skills and speed report", Icons.Filled.Build, flat = true) { go(Page.Assistant) } },
             { NavRow("Gemini keys", "Your five keys, one for each job", Icons.Outlined.GraphicEq, flat = true) { go(Page.Keys) } },
-            { NavRow("Connectors", "Apps, services and websites Entrion can use", Icons.Filled.Link, flat = true) { go(Page.Connectors) } }
+            { NavRow("Connectors", "Apps, services and websites Entrion can use", Icons.Filled.Link, flat = true) { go(Page.Connectors) } },
+            { NavRow("Tasks", "Big jobs Entrion did: steps, results, run again", Icons.Filled.Build, flat = true) { go(Page.Jobs) } }
         )
         SectionTitle("APP")
         Group(
