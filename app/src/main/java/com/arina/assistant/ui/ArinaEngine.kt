@@ -176,6 +176,28 @@ class ArinaEngine private constructor(private val app: Application) {
     val facts = mutableStateListOf<Memory.Fact>().also { it.addAll(memory.facts()) }
     val researchActive = mutableStateOf(false)
 
+    /** What the current research is doing, shown live on screen: a title and the steps so far. */
+    val researchTitle = mutableStateOf("")
+    val researchSteps = androidx.compose.runtime.mutableStateListOf<String>()
+    private fun rStart(title: String) { scope.launch { researchTitle.value = title; researchSteps.clear() } }
+    private fun rStep(line: String) { scope.launch { researchSteps += line } }
+    private fun rEnd(line: String) {
+        scope.launch {
+            researchSteps += line
+            delay(3500)
+            if (!researchActive.value) { researchSteps.clear(); researchTitle.value = "" }
+        }
+    }
+    private fun <T> retryOnce(block: () -> T): T = try { block() } catch (e: java.io.IOException) { Thread.sleep(900); block() }
+
+    /** Before slow work starts: one short spoken line saying what is being looked up and roughly how long it takes. */
+    private fun ackTopic(topic: String, long: Boolean) {
+        if (liveSession.active) {
+            status.value = Status.Speaking
+            liveSession.sendText("Say ONE short sentence now, in the language the user speaks, in your own words: tell them what you are about to look up (${topic.take(80)}) and that it takes ${if (long) "a few minutes" else "a moment"}. Say nothing else.")
+        }
+    }
+
     // ---- Cards, approvals and big jobs ---------------------------------------------------------
     val card = mutableStateOf<Card?>(null)
     val approval = mutableStateOf<Approval?>(null)
@@ -914,6 +936,16 @@ class ArinaEngine private constructor(private val app: Application) {
         approval.value?.answer?.complete(false)
         sound.stop()
         researchActive.value = false
+        researchSteps.clear(); researchTitle.value = ""
+    }
+
+    /** "Stop" on the live research panel. */
+    fun stopResearch() {
+        researchJobs.toList().forEach { it.cancel() }
+        researchJobs.clear()
+        sound.stop()
+        researchActive.value = false
+        researchSteps.clear(); researchTitle.value = ""
     }
 
     private fun startListening() {
@@ -963,6 +995,7 @@ class ArinaEngine private constructor(private val app: Application) {
         val q = question.trim()
         if (q.isEmpty()) return "ERROR: no question given."
         if (!cloud.signedIn) return "ERROR: web search needs a signed-in account. Tell him to sign in from Settings."
+        rStart(q.take(60)); rStep("Searching the web")
         scope.launch {
             val me = coroutineContext[Job]!!
             researchJobs += me
@@ -974,14 +1007,20 @@ class ArinaEngine private constructor(private val app: Application) {
                 }
             }
             try {
+                var urls = emptyList<String>()
                 val reply = withContext(Dispatchers.IO) {
-                    val material = TavilySearch.search(q)
+                    val material = retryOnce { TavilySearch.search(q) }
+                    urls = Regex("\\((https?://[^)\\s]+)\\)").findAll(material).map { it.groupValues[1] }.distinct().toList()
+                    rStep("${urls.size} sources found")
+                    rStep("Reading and checking them")
                     gemini.summarize(q, material)
                 }
                 hum.cancel()
                 sound.stop()
                 withContext(Dispatchers.IO) { gemini.noteResearch(q, reply) }
+                rEnd("Done")
                 announce(reply)
+                if (urls.isNotEmpty()) messages += ChatMessage(false, "Sources:\n" + urls.take(5).joinToString("\n") { "- $it" })
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -989,6 +1028,7 @@ class ArinaEngine private constructor(private val app: Application) {
                 sound.stop()
                 notice.value = "Research failed: ${(e.message ?: e.javaClass.simpleName).take(200)}"
                 messages += ChatMessage(false, "I couldn't finish the research: ${(e.message ?: "unknown error").take(160)}")
+                rEnd("Could not finish")
             } finally {
                 hum.cancel()
                 researchJobs.remove(me)
@@ -998,7 +1038,7 @@ class ArinaEngine private constructor(private val app: Application) {
                 }
             }
         }
-        ack(SEARCH_LINES)
+        ackTopic(q, false)
         return TOLD
     }
 
@@ -1152,7 +1192,8 @@ class ArinaEngine private constructor(private val app: Application) {
         val t = topic.trim()
         if (t.isEmpty()) return "ERROR: no topic given."
         if (!cloud.signedIn) return "ERROR: web search needs a signed-in account. Tell him to sign in from Settings."
-        ack(DEEP_LINES)
+        ackTopic(t, true)
+        rStart(t.take(60)); rStep("Planning the searches")
         scope.launch {
             val me = coroutineContext[Job]!!
             researchJobs += me
@@ -1168,11 +1209,14 @@ class ArinaEngine private constructor(private val app: Application) {
                     DeepResearch.run(t, gemini, { round, total, sources ->
                         scope.launch {
                             caption.value = "Deep research: round $round of $total, $sources sources"
+                            rStep("Round $round of $total: $sources sources so far")
+                            if (round == total) rStep("Writing the report")
                             if (round == 2 || round == 3) announce(Reply("", "", fresh(PROGRESS_LINES) + " ($sources sources so far)"))
                         }
                     }, { !me.isActive })
                 }
                 hum.cancel(); sound.stop()
+                rEnd("Done, ${result.sources} sources")
                 openCard(Card(CardKind.Text, "Research: ${t.take(36)}", text = result.report, seconds = 0))
                 withContext(Dispatchers.IO) { gemini.noteResearch(t, Reply("", result.bn, result.en)) }
                 announce(Reply("", result.bn.ifBlank { "গবেষণা শেষ, রিপোর্ট স্ক্রিনে আছে।" }, result.en.ifBlank { "Research finished. The report is on screen." }))
@@ -1181,6 +1225,7 @@ class ArinaEngine private constructor(private val app: Application) {
             } catch (e: Exception) {
                 hum.cancel(); sound.stop()
                 notice.value = "Deep research failed: ${(e.message ?: e.javaClass.simpleName).take(200)}"
+                rEnd("Could not finish")
             } finally {
                 hum.cancel()
                 researchJobs.remove(me)

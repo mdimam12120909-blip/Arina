@@ -27,8 +27,8 @@ object DeepResearch {
     private val REPORT = """
         You are a careful research analyst. Use ONLY the research material given; never invent facts or numbers.
         Reply with JSON only: {"report": "...", "bn": "...", "en": "..."}.
-        report: a thorough, well organised plain-text report in English: a title line, a short summary, then clearly headed sections with the key findings and numbers, disagreements or uncertainty between sources, a conclusion, and a final "Sources" list with the web addresses you used. Use plain text and dashes, no markdown symbols.
-        bn: 3 to 5 natural spoken Bengali sentences (Bangla script) giving the most important findings.
+        report: a thorough, well organised plain-text report in English: a title line, a short summary, then clearly headed sections with the key findings and numbers (choose the shape that fits the topic: a comparison as aligned dash lists per option, news as a dated timeline, a how-to as numbered steps), disagreements or uncertainty between sources, a conclusion, and a final "Sources" list with the web addresses you used. Prefer official, research and well-known sources; mark weak ones. Give dates for anything that changes. If the material does not support a claim, leave it out and say what is missing. Use plain text and dashes, no markdown symbols.
+        bn: 3 to 5 natural spoken sentences giving the most important findings, in the language the person speaks (Bengali in Bangla script if you cannot tell). The field is named bn for historical reasons.
         en: the same summary in short English.
     """.trimIndent()
 

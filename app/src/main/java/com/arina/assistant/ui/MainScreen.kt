@@ -192,6 +192,7 @@ fun MainScreen(
     ) {
         Column(Modifier.fillMaxSize().imePadding()) {
             Header(vm, page, onAvatar = { panelOpen = true }, onBack = { page = if (page in SETTINGS_SUB) Page.Settings else Page.Home }, modifier = Modifier.statusBarsPadding())
+            ResearchPanel(vm)
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 androidx.compose.animation.AnimatedContent(
                     targetState = page,
@@ -1641,5 +1642,45 @@ private fun TodayPage(vm: ArinaEngine) {
         }
         TasksCard(vm, accent, Modifier.fillMaxWidth())
         HeadlinesCard(vm, accent, Modifier.fillMaxWidth())
+    }
+}
+
+
+/** Live view of a running research: the topic, the steps so far, and a Stop button. */
+@Composable
+private fun ResearchPanel(vm: ArinaEngine) {
+    val steps = vm.researchSteps
+    androidx.compose.animation.AnimatedVisibility(
+        visible = steps.isNotEmpty(),
+        enter = fadeIn(tween(250)) + androidx.compose.animation.expandVertically(tween(300)),
+        exit = fadeOut(tween(200)) + androidx.compose.animation.shrinkVertically(tween(250))
+    ) {
+        Column(
+            Modifier.padding(horizontal = 20.dp, vertical = 6.dp).fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(Brush.linearGradient(listOf(Color(0xFF4F7DFF).copy(alpha = 0.14f), Color(0xFF8F5BFF).copy(alpha = 0.14f))))
+                .border(1.dp, Color(0xFF6D5BFF).copy(alpha = 0.25f), RoundedCornerShape(20.dp))
+                .padding(14.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("RESEARCH", color = ArinaColors.Muted, fontSize = 10.sp, letterSpacing = 2.sp)
+                    Text(vm.researchTitle.value, color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                }
+                if (vm.researchActive.value) Text(
+                    "Stop", color = Color(0xFF6D5BFF), fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { vm.stopResearch() }.padding(horizontal = 10.dp, vertical = 6.dp)
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            steps.takeLast(4).forEachIndexed { i, line ->
+                val last = i == steps.takeLast(4).lastIndex
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
+                    Box(Modifier.size(7.dp).clip(CircleShape).background(if (last) Color(0xFF6D5BFF) else ArinaColors.Muted.copy(alpha = 0.4f)))
+                    Spacer(Modifier.width(10.dp))
+                    Text(line, color = if (last) ArinaColors.Text else ArinaColors.Muted, fontSize = 13.sp)
+                }
+            }
+        }
     }
 }
