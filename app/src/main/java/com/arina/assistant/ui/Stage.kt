@@ -174,9 +174,9 @@ private fun PresentCard(card: Card, onClose: () -> Unit) {
             if (card.seconds > 0) Text("${left}s", color = ArinaColors.Muted, fontSize = 12.sp)
             Spacer(Modifier.width(10.dp))
             Box(
-                Modifier.size(30.dp).clip(CircleShape).background(Color(0x33FFFFFF)).clickable(onClick = onClose),
+                Modifier.size(34.dp).clip(CircleShape).background(ArinaColors.Muted.copy(alpha = 0.2f)).clickable(onClick = onClose),
                 contentAlignment = Alignment.Center
-            ) { Icon(Icons.Outlined.Close, "Close", tint = Color.White, modifier = Modifier.size(18.dp)) }
+            ) { Icon(Icons.Outlined.Close, "Close", tint = ArinaColors.Text, modifier = Modifier.size(20.dp)) }
         }
         Spacer(Modifier.height(8.dp))
         Box(Modifier.fillMaxWidth().height(380.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xFF020817))) {
