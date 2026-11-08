@@ -1700,6 +1700,20 @@ private fun TodayPage(vm: ArinaEngine) {
 /** Live view of a running research: the topic, the steps so far, and a Stop button. */
 @Composable
 private fun ResearchPanel(vm: ArinaEngine) {
+    val offer = vm.resumeOffer.value
+    if (offer != null) {
+        Column(
+            Modifier.padding(horizontal = 20.dp, vertical = 6.dp).fillMaxWidth().glass(RoundedCornerShape(20.dp)).padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("UNFINISHED TASK", color = ArinaColors.Muted, fontSize = 10.sp, letterSpacing = 2.sp)
+            Text(offer.goal.take(140), color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 3)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PillButton("Continue") { vm.resumeJob() }
+                PillButton("Dismiss") { vm.dismissResume() }
+            }
+        }
+    }
     val steps = vm.researchSteps
     androidx.compose.animation.AnimatedVisibility(
         visible = steps.isNotEmpty(),

@@ -195,9 +195,20 @@ class ArinaEngine private constructor(private val app: Application) {
     }
     fun clearJobs() { jobs.clear(); jobStore.save(jobs) }
 
-    /** Runs a saved job's goal again. */
-    fun retryJob(j: com.arina.assistant.ai.Job): String =
-        if (j.kind == "workflow") startWorkflow(j.goal, null) else startOperate(j.goal, j.kind == "chat")
+    /** A task that was cut off (app closed, phone restarted): offered again on the next start so nothing is forgotten. */
+    val resumeOffer = mutableStateOf<com.arina.assistant.ai.Job?>(
+        jobs.firstOrNull { it.status == "interrupted" && System.currentTimeMillis() - it.at < 24 * 3600_000L }
+    )
+    fun dismissResume() { resumeOffer.value?.let { j -> val i = jobs.indexOfFirst { it.id == j.id }; if (i >= 0) { jobs[i] = j.copy(status = "stopped"); jobStore.save(jobs) } }; resumeOffer.value = null }
+    fun resumeJob() { val j = resumeOffer.value ?: return; resumeOffer.value = null; retryJob(j, resume = true) }
+
+    /** Runs a saved job again. With [resume] it continues from where it stopped instead of starting over. */
+    fun retryJob(j: com.arina.assistant.ai.Job, resume: Boolean = false): String {
+        val goal = if (resume && j.steps.isNotEmpty())
+            j.goal + "\n\nRESUMING: this task was cut off. Look at the current SCREEN first. These steps were already done, do not repeat them, continue from the right point:\n" + j.steps.takeLast(12).joinToString("\n") { "- $it" }
+        else j.goal
+        return if (j.kind == "workflow") startWorkflow(goal, null) else startOperate(goal, j.kind == "chat")
+    }
 
     /** What the current research is doing, shown live on screen: a title and the steps so far. */
     val researchTitle = mutableStateOf("")
