@@ -49,11 +49,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
-import androidx.lifecycle.ViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
-import androidx.savedstate.ViewTreeSavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.arina.assistant.MainActivity
 import com.arina.assistant.ui.ArinaColors
 import com.arina.assistant.ui.ArinaEngine
@@ -93,11 +93,11 @@ class EntrionAssistSession(context: Context) : VoiceInteractionSession(context),
 
     override fun onCreateContentView(): View {
         val view = ComposeView(context)
-        ViewTreeLifecycleOwner.set(view, this)
-        ViewTreeSavedStateRegistryOwner.set(view, this)
+        view.setViewTreeLifecycleOwner(this)
+        view.setViewTreeSavedStateRegistryOwner(this)
         (window as? android.app.Dialog)?.window?.decorView?.let {
-            ViewTreeLifecycleOwner.set(it, this)
-            ViewTreeSavedStateRegistryOwner.set(it, this)
+            it.setViewTreeLifecycleOwner(this)
+            it.setViewTreeSavedStateRegistryOwner(this)
         }
         view.setContent { AssistPopup(onOpenApp = { openApp() }, onClose = { finish() }) }
         return view
