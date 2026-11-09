@@ -218,7 +218,7 @@ class ArinaEngine private constructor(private val app: Application) {
     private fun rStep(line: String) { scope.launch { researchSteps += line } }
     private fun rEnd(line: String) {
         // Tell the user even if the app is in the background.
-        runCatching { com.arina.assistant.routine.Routines.notify(app, "Entrion", if (line.startsWith("Could")) "The research could not finish." else "Your research is ready. Open Entrion to read it.", 7421) }
+        runCatching { com.arina.assistant.routine.RoutineScheduler.notify(app, "Entrion", if (line.startsWith("Could")) "The research could not finish." else "Your research is ready. Open Entrion to read it.", 7421) }
         scope.launch {
             researchSteps += line
             delay(3500)
