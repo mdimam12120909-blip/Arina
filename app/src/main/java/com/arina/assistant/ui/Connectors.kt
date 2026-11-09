@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -85,7 +86,7 @@ fun ConnectorsPage(vm: ArinaEngine) {
     var tab by remember { mutableStateOf(0) }
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Row(Modifier.fillMaxWidth().glass(RoundedCornerShape(16.dp)).padding(4.dp)) {
-            listOf("Device apps", "Websites").forEachIndexed { i, n ->
+            listOf("Device apps", "Websites", "MCP").forEachIndexed { i, n ->
                 Box(
                     Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
                         .background(if (tab == i) Brush.linearGradient(listOf(EntrionBlue, EntrionViolet)) else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)))
@@ -97,7 +98,8 @@ fun ConnectorsPage(vm: ArinaEngine) {
         Spacer(Modifier.height(10.dp))
         when (tab) {
             0 -> DeviceApps(vm)
-            else -> Websites(vm)
+            1 -> Websites(vm)
+            else -> McpServers(vm)
         }
     }
 }
@@ -169,6 +171,59 @@ private fun Websites(vm: ArinaEngine) {
                         Spacer(Modifier.width(12.dp))
                         Text(host, color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1)
                         Text("Remove", color = ArinaColors.Muted, fontSize = 12.sp, modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable { sites.remove(host); save() }.padding(8.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun McpServers(vm: ArinaEngine) {
+    val store = remember { com.arina.assistant.ai.McpStore(vm.uiPrefs) }
+    val list = remember { mutableStateListOf<com.arina.assistant.ai.McpServer>().also { it.addAll(store.load()) } }
+    var name by remember { mutableStateOf("") }
+    var url by remember { mutableStateOf("") }
+    var token by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item {
+            Column(Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Connect an MCP server", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text("Paste the server's web address. Entrion reads its tools and can use them when you ask. Add a key only if the server needs one.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
+                SoftField(name, "Name, e.g. Notes") { name = it }
+                SoftField(url, "https://example.com/mcp") { url = it }
+                SoftField(token, "Access key (optional)") { token = it }
+                PillButton(if (busy) "Checking…" else "Connect") {
+                    if (!busy && name.isNotBlank() && url.trim().startsWith("http")) {
+                        busy = true; status = ""
+                        val sv = com.arina.assistant.ai.McpServer(name.trim(), url.trim(), token.trim())
+                        scope.launch {
+                            val r = withContext(Dispatchers.IO) { vm.mcp.test(sv) }
+                            if (r.startsWith("OK")) {
+                                list.removeAll { it.name == sv.name }; list.add(sv); store.save(list.toList())
+                                name = ""; url = ""; token = ""; vm.refreshMcp()
+                            }
+                            status = r; busy = false
+                        }
+                    }
+                }
+                if (status.isNotBlank()) Text(status, color = if (status.startsWith("OK")) ArinaColors.Glow else ArinaColors.Muted, fontSize = 12.sp)
+            }
+        }
+        item { Text("YOUR MCP SERVERS · ${list.size}", color = ArinaColors.Muted, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 4.dp)) }
+        if (list.isNotEmpty()) item {
+            Column(Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp))) {
+                list.toList().forEachIndexed { i, sv ->
+                    if (i > 0) Box(Modifier.fillMaxWidth().padding(start = 16.dp).height(1.dp).background(ArinaColors.Muted.copy(alpha = 0.14f)))
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(sv.name, color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                            Text(sv.url, color = ArinaColors.Muted, fontSize = 11.sp, maxLines = 1)
+                        }
+                        Text("Remove", color = ArinaColors.Muted, fontSize = 12.sp, modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable { list.remove(sv); store.save(list.toList()); vm.refreshMcp() }.padding(8.dp))
                     }
                 }
             }

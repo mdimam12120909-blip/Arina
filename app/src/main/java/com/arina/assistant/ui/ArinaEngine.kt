@@ -496,9 +496,13 @@ class ArinaEngine private constructor(private val app: Application) {
         }
     }
 
+    /** The user's MCP servers (per account); their tools are offered to the assistant. */
+    internal val mcp = com.arina.assistant.ai.McpHub(com.arina.assistant.ai.McpStore(uiPrefs)).also { hub -> Thread { runCatching { hub.refresh() } }.start() }
+    fun refreshMcp() { Thread { runCatching { mcp.refresh() } }.start() }
+
     private val gemini: GeminiClient = GeminiClient(
         { role -> keyForRole(role) },
-        ToolRunner(device, memory, { scope.launch { reloadFacts() } }, hooks),
+        ToolRunner(device, memory, { scope.launch { reloadFacts() } }, hooks, mcp),
         { memory.promptBlock() },
         { currentIntro() },
         { skillStore.index() }
@@ -833,7 +837,7 @@ class ArinaEngine private constructor(private val app: Application) {
         GeminiLive(
             { keyForRole(KeyRole.Talk) },
             { gemini.liveSystemPrompt() },
-            ToolRunner(device, memory, { scope.launch { reloadFacts() } }, hooks),
+            ToolRunner(device, memory, { scope.launch { reloadFacts() } }, hooks, mcp),
             { if (persona.value == Persona.Aurion) Cloud.cfg(app, "live_voice_male", Defaults.LIVE_VOICE_AURION) else Cloud.cfg(app, "live_voice_female", Defaults.LIVE_VOICE_ARINA) },
             object : GeminiLive.Callbacks {
                 override fun onLevel(level: Float) { scope.launch { if (status.value == Status.Listening) this@ArinaEngine.level.floatValue = level } }

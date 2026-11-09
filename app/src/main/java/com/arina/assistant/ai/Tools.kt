@@ -34,7 +34,9 @@ class ToolRunner(
     private val device: DeviceActions,
     private val memory: Memory,
     private val onMemoryChanged: () -> Unit,
-    private val hooks: ToolHooks
+    private val hooks: ToolHooks,
+    /** The user's MCP servers; their tools are offered to Gemini beside the built-in ones. */
+    val mcp: McpHub? = null
 ) {
 
     private fun decl(
@@ -58,6 +60,7 @@ class ToolRunner(
     }
 
     fun declarations(): JSONArray = JSONArray().apply {
+        mcp?.declarations()?.let { for (i in 0 until it.length()) put(it.get(i)) }
         put(decl("open_app", "Open an installed app.", listOf(Triple("app_name", "STRING", "App name in English as shown on the phone, e.g. WhatsApp, YouTube, Camera, Chrome."))))
         put(decl("call_contact", "Call a saved contact or a phone number.", listOf(Triple("name_or_number", "STRING", "Contact name as spoken, or digits of a phone number."))))
         put(decl("send_sms", "Send an SMS text message.", listOf(
@@ -130,6 +133,13 @@ class ToolRunner(
     }
 
     private fun runTool(name: String, args: JSONObject): String = try {
+        when {
+            mcp != null && mcp.owns(name) -> mcp.call(name, args)
+            else -> runBuiltin(name, args)
+        }
+    } catch (e: Exception) { "ERROR: ${e.message}" }
+
+    private fun runBuiltin(name: String, args: JSONObject): String = try {
         when (name) {
             "open_app" -> device.openApp(args.optString("app_name"))
             "call_contact" -> device.call(args.optString("name_or_number"))
