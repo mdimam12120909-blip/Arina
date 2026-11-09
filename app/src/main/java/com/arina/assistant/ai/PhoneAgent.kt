@@ -100,7 +100,7 @@ class PhoneAgent(
             if (cancelled()) return Outcome("থামিয়ে দিলাম।", "Stopped.")
             val svc = ArinaAccessibilityService.instance
                 ?: return Outcome("ডিভাইস কন্ট্রোল বন্ধ, চালু করুন।", "Device control is off. Turn it on in Settings.")
-            val snap = if (chat) svc.snapshot(textMax = 700, maxNodes = 90) else svc.snapshot()
+            val snap = if (chat) svc.snapshot(textMax = 700, maxNodes = 90) else svc.snapshot(textMax = 60, maxNodes = 60)
             if (snap == null) { Thread.sleep(800); continue }
             if (snap.app == "com.arina.assistant" && step <= 2) {
                 svc.press("home"); Thread.sleep(800); continue
@@ -109,7 +109,7 @@ class PhoneAgent(
                 append(if (chat) "CHAT MODE\n" else "").append("GOAL: ").append(goal).append("\nSTEP ").append(step).append(" of ").append(maxSteps)
                 if (notes.isNotEmpty()) append("\nNOTES SO FAR:\n").append(notes.joinToString("\n") { "- $it" })
                 append("\nCURRENT APP: ").append(snap.app)
-                append("\nPREVIOUS ACTIONS:\n").append(history.takeLast(8).joinToString("\n").ifBlank { "(none yet)" })
+                append("\nPREVIOUS ACTIONS:\n").append(history.takeLast(6).joinToString("\n").ifBlank { "(none yet)" })
                 append("\n\nSCREEN:\n").append(snap.text.ifBlank { "(nothing readable)" })
             }
             val raw = gemini.generate(SYSTEM, prompt, json = true, role = KeyRole.Agent)
