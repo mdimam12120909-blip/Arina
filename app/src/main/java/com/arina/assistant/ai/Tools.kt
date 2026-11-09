@@ -27,6 +27,7 @@ interface ToolHooks {
     fun listRoutines(): String
     fun removeRoutine(title: String): String
     fun scanPhone(): String
+    fun youtubeUpload(video: String, title: String, description: String, tags: String, privacy: String): String
 }
 
 /** Describes the phone tools to Gemini and runs them when Gemini asks. */
@@ -121,6 +122,13 @@ class ToolRunner(
             Triple("action", "STRING", "One of: brightness, volume_media, volume_ring, volume_alarm, volume_call, ringer, dnd, rotation, media, answer_call, end_call, speaker, wifi, bluetooth, hotspot, airplane, location, mobile_data."),
             Triple("value", "STRING", "brightness/volume: 0-100. ringer: normal|vibrate|silent. dnd, rotation, speaker, wifi, bluetooth, hotspot, airplane, location, mobile_data: on|off. media: play|pause|next|previous|stop. Empty for answer_call/end_call.")
         ), required = listOf("action")))
+        put(decl("youtube_upload", "Upload a video file from the phone to the user's OWN YouTube channel directly (needs YouTube connected in Connectors). Much faster and more reliable than operating the YouTube app. Runs in the background; the result is announced when finished. Returns at once.", listOf(
+            Triple("video", "STRING", "Part of the video file name on the phone (Downloads, Movies, DCIM...)."),
+            Triple("title", "STRING", "Video title."),
+            Triple("description", "STRING", "Video description, may include hashtags."),
+            Triple("tags", "STRING", "Comma-separated tags."),
+            Triple("privacy", "STRING", "public, unlisted or private. Use private unless the user clearly said public.")
+        ), required = listOf("video", "title")))
         put(decl("scan_phone", "Check the installed apps for suspicious ones (heuristic, not an antivirus). Results are listed in Settings, Phone Health."))
         put(decl("termux", "Run one shell command in Termux. The user is asked to allow every command before it runs. Returns the output.", listOf(Triple("command", "STRING", "The bash command line."))))
     }
@@ -175,6 +183,7 @@ class ToolRunner(
             "list_routines" -> hooks.listRoutines()
             "remove_routine" -> hooks.removeRoutine(args.optString("title"))
             "scan_phone" -> hooks.scanPhone()
+            "youtube_upload" -> hooks.youtubeUpload(args.optString("video"), args.optString("title"), args.optString("description"), args.optString("tags"), args.optString("privacy", "private"))
             "add_task" -> hooks.addTask(args.optString("text"))
             "complete_task" -> hooks.completeTask(args.optString("text"))
             "list_tasks" -> hooks.listTasks()

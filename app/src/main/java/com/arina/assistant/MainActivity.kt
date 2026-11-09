@@ -61,9 +61,34 @@ class MainActivity : FragmentActivity() {
         if (wantsToStart) startArina()
     }
 
+    private var ytCallback: ((String?, String) -> Unit)? = null
+    private val ytLauncher = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
+        val cb = ytCallback; ytCallback = null
+        if (cb != null) runCatching {
+            val r = com.google.android.gms.auth.api.identity.Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(res.data)
+            cb(r.accessToken, "")
+        }.onFailure { cb(null, it.message.orEmpty()) }
+    }
+
+    /** Asks for the YouTube upload permission. If already granted this is silent; otherwise Google's screen opens. */
+    private fun authorizeYouTube(cb: (String?, String) -> Unit) {
+        val req = com.google.android.gms.auth.api.identity.AuthorizationRequest.builder()
+            .setRequestedScopes(listOf(com.google.android.gms.common.api.Scope(com.arina.assistant.cloud.YouTubeApi.SCOPE))).build()
+        com.google.android.gms.auth.api.identity.Identity.getAuthorizationClient(this).authorize(req)
+            .addOnSuccessListener { r ->
+                val pi = r.pendingIntent
+                if (r.hasResolution() && pi != null) {
+                    ytCallback = cb
+                    ytLauncher.launch(androidx.activity.result.IntentSenderRequest.Builder(pi.intentSender).build())
+                } else cb(r.accessToken, "")
+            }
+            .addOnFailureListener { cb(null, it.message.orEmpty()) }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        engine.ytAuthorizer = { cb -> runOnUiThread { authorizeYouTube(cb) } }
         engine.refreshSetup()
         engine.refreshCloud()
         // Signing in, signing out or switching account: swap to a fresh engine and redraw, without leaving the app.

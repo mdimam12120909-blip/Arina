@@ -86,7 +86,7 @@ fun ConnectorsPage(vm: ArinaEngine) {
     var tab by remember { mutableStateOf(0) }
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Row(Modifier.fillMaxWidth().glass(RoundedCornerShape(16.dp)).padding(4.dp)) {
-            listOf("Device apps", "Websites", "MCP").forEachIndexed { i, n ->
+            listOf("Device apps", "Websites", "Connect").forEachIndexed { i, n ->
                 Box(
                     Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
                         .background(if (tab == i) Brush.linearGradient(listOf(EntrionBlue, EntrionViolet)) else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)))
@@ -188,7 +188,24 @@ private fun McpServers(vm: ArinaEngine) {
     var status by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var ytOn by remember { mutableStateOf(vm.uiPrefs.getBoolean("yt_connected", false)) }
+    var ytMsg by remember { mutableStateOf("") }
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item {
+            Column(Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("YouTube", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text("Lets Entrion upload videos to your own channel, with the title, description and tags you ask for. Nothing is uploaded without you asking.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
+                PillButton(if (ytOn) "Reconnect YouTube" else "Connect YouTube") {
+                    ytMsg = ""
+                    vm.ytAuthorizer?.invoke { t, err ->
+                        ytOn = t != null; vm.uiPrefs.edit().putBoolean("yt_connected", t != null).apply()
+                        ytMsg = if (t != null) "YouTube is connected." else "Not connected. ${err.take(100)}"
+                    }
+                }
+                if (ytMsg.isNotBlank()) Text(ytMsg, color = if (ytOn) ArinaColors.Glow else ArinaColors.Muted, fontSize = 12.sp)
+                if (ytOn && ytMsg.isBlank()) Text("Connected", color = ArinaColors.Glow, fontSize = 12.sp)
+            }
+        }
         item {
             Column(Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Connect an MCP server", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)

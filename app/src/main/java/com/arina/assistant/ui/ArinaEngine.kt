@@ -484,6 +484,22 @@ class ArinaEngine private constructor(private val app: Application) {
             scope.launch { deleteRoutine(hit.id) }
             return "OK: removed ${hit.title}."
         }
+        override fun youtubeUpload(video: String, title: String, description: String, tags: String, privacy: String): String {
+            val authorize = ytAuthorizer ?: return "ERROR: open Entrion once, then try again."
+            if (!uiPrefs.getBoolean("yt_connected", false)) return "ERROR: YouTube is not connected. Ask the user to open Connectors, Connect tab, and press Connect YouTube."
+            val f = show.findFile(video) ?: return "ERROR: no video file matching '$video' in Downloads, Movies or DCIM."
+            val pv = privacy.lowercase().let { if (it in setOf("public", "unlisted", "private")) it else "private" }
+            scope.launch(Dispatchers.IO) {
+                val res = runCatching {
+                    val token = kotlinx.coroutines.suspendCancellableCoroutine<String?> { c -> authorize { t, _ -> if (c.isActive) c.resumeWith(Result.success(t)) } }
+                        ?: throw java.io.IOException("YouTube was not allowed. Connect YouTube again in Connectors.")
+                    com.arina.assistant.cloud.YouTubeApi.upload(token, f, title, description, tags.split(',').map { it.trim().removePrefix("#") }.filter { it.isNotEmpty() }, pv)
+                }
+                val r = res.fold({ link -> Reply("", "ভিডিও আপলোড হয়েছে ($pv)।", "The video \"${title.take(60)}\" is uploaded as $pv: $link") }, { e -> Reply("", "আপলোড হয়নি।", "The upload did not work: ${e.message}") })
+                announce(r)
+            }
+            return "OK: upload of ${f.name} started in the background; it can take a few minutes. Tell the user once that it started; the result will be announced."
+        }
         override fun scanPhone(): String {
             val list = PhoneHealth.scan(app)
             scope.launch { healthFindings.clear(); healthFindings.addAll(list) }
@@ -500,6 +516,8 @@ class ArinaEngine private constructor(private val app: Application) {
 
     /** The user's MCP servers (per account); their tools are offered to the assistant. */
     internal val mcp = com.arina.assistant.ai.McpHub(com.arina.assistant.ai.McpStore(uiPrefs)).also { hub -> Thread { runCatching { hub.refresh() } }.start() }
+    /** Set by the activity: asks Google for permission to upload to YouTube and returns an access token (null = refused). */
+    var ytAuthorizer: (((String?, String) -> Unit) -> Unit)? = null
     fun refreshMcp() { Thread { runCatching { mcp.refresh() } }.start() }
 
     private val gemini: GeminiClient = GeminiClient(
