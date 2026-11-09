@@ -47,10 +47,18 @@ class DeviceActions(private val ctx: Context) {
         val q = name.trim().lowercase()
         if (q.isEmpty()) return "ERROR: no app name given"
         fun label(i: android.content.pm.ResolveInfo) = i.loadLabel(pm).toString().lowercase()
-        val match = apps.firstOrNull { label(it) == q }
-            ?: apps.firstOrNull { label(it).contains(q) }
-            ?: apps.firstOrNull { label(it).length >= 3 && q.contains(label(it)) }
+        // Names people say that differ from the label on the home screen.
+        val aliasPkg = when (q.replace("youtube", "yt").replace(" ", "")) {
+            "ytstudio", "ytcreator", "studio" -> "com.google.android.apps.youtube.creator"
+            else -> null
+        }
+        val match = (if (aliasPkg != null) apps.firstOrNull { it.activityInfo.packageName == aliasPkg } else null)
+            ?: apps.firstOrNull { label(it) == q }
+            ?: apps.filter { label(it).contains(q) }.minByOrNull { label(it).length }
+            ?: apps.filter { label(it).length >= 3 && q.contains(label(it)) }.maxByOrNull { label(it).length }
             ?: return "ERROR: no installed app matches '$name'"
+        // "YouTube Studio" asked but only plain YouTube matched: say so instead of silently opening the wrong app.
+        if (aliasPkg != null && match.activityInfo.packageName != aliasPkg) return "ERROR: '$name' is not installed (the YouTube Studio app is missing). Offer the website studio.youtube.com in Chrome."
         if (match.activityInfo.packageName in disabledApps()) return "ERROR: the user has turned ${match.loadLabel(pm)} off for Entrion in Connectors. Ask them to allow it there."
         val intent = pm.getLaunchIntentForPackage(match.activityInfo.packageName)
             ?: return "ERROR: cannot launch '$name'"

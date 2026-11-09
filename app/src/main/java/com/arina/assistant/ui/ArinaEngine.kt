@@ -873,7 +873,17 @@ class ArinaEngine private constructor(private val app: Application) {
                     }
                 }
                 override fun onError(message: String) {
-                    scope.launch { fail(message); turnOff() }
+                    scope.launch {
+                        // A dropped connection (phone slept, network blinked): reconnect quietly, up to twice, instead of switching off.
+                        val dropped = message.contains("abort", true) || message.contains("reset", true) || message.contains("closed", true) || message.contains("Unable to resolve", true) || message.contains("timeout", true)
+                        if (dropped && micOn.value && liveRetries < 2) {
+                            liveRetries++
+                            delay(1200)
+                            if (micOn.value) { liveSession.start(); return@launch }
+                        }
+                        liveRetries = 0
+                        fail(message); turnOff()
+                    }
                 }
             }
         )
@@ -881,6 +891,7 @@ class ArinaEngine private constructor(private val app: Application) {
     private val researchJobs = mutableListOf<Job>()
     private var job: Job? = null
     private var failStreak = 0
+    private var liveRetries = 0
 
     /** Switches between Arina (female) and Aurion (male): voice, avatar and personality change together. */
     fun switchPersona(p: Persona) {
@@ -1304,7 +1315,7 @@ class ArinaEngine private constructor(private val app: Application) {
         if (ArinaAccessibilityService.instance == null) {
             return "ERROR: Device control (Accessibility) is off. Tell him to turn it on in the Settings tab."
         }
-        if (agentJob?.isActive == true) return "ERROR: already operating the phone. Tell him to press STOP first."
+        if (agentJob?.isActive == true) return "BUSY: Entrion is still working on the previous phone task. Do NOT start another or repeat this one. Wait for its result, then continue. Use look_screen if you want to see the progress."
         agentJob = scope.launch {
             val mode = operateMode.value
             if (mode == "ask") {

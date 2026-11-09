@@ -34,6 +34,7 @@ object Workflow {
     private val MERGE = """
         You deliver the final result of a multi-step job. Merge the step outputs into one clean deliverable.
         Reply with JSON only: {"output":"...","bn":"...","en":"..."}.
+        HONESTY: the steps can only search, think and write text or code. They can NOT create videos, images, files or change anything on a phone. Never say a video, image, file or app action was made or done. If the goal asked for one, deliver the text part (script, shot list, prompts, code) and say plainly in output, bn and en that the actual video/file still has to be made in an app.
         output: the finished result in plain text (code stays as code), organised with short headed sections, no filler, no intro or outro.
         bn: 1 to 3 crisp spoken Bengali sentences (Bangla script): what is done and the key result.
         en: the same in short English.
