@@ -238,6 +238,8 @@ class ArinaEngine private constructor(private val app: Application) {
     // ---- Cards, approvals and big jobs ---------------------------------------------------------
     val card = mutableStateOf<Card?>(null)
     val approval = mutableStateOf<Approval?>(null)
+    /** A setting the user must switch on by hand; shown over any app so it can be done from where they are. */
+    val permAsk = mutableStateOf<PermRequest?>(null)
     val agentActive = mutableStateOf(false)
     val agentLine = mutableStateOf("")
     /** Goes up each time the screen-edge glow should play. */
@@ -1318,8 +1320,10 @@ class ArinaEngine private constructor(private val app: Application) {
             if (on) repeat(8) { if (ArinaAccessibilityService.instance == null) Thread.sleep(500) }
             if (ArinaAccessibilityService.instance == null) {
                 if (!on) {
-                    runCatching { app.startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
-                    return "ERROR: Device control is off. I opened the Accessibility settings page: tell him to open Entrion there and switch it on, then say the task again."
+                    val i = android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    permAsk.value = PermRequest("Turn on Device control", "Entrion needs Accessibility to tap and type for you. Open Settings, choose Entrion and switch it on.", i) { ArinaAccessibilityService.instance != null }
+                    runCatching { app.startActivity(android.content.Intent(i).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    return "ERROR: Device control is off. I opened the Accessibility settings page and a card asks him to switch Entrion on: tell him to do that, then say the task again."
                 }
                 return "ERROR: Device control is switched on but the service has not started (Android sometimes stops it). Tell him to switch Entrion's Accessibility OFF and ON once in Settings, then say the task again."
             }

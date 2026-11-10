@@ -212,7 +212,7 @@ class OverlayService : Service() {
         val width = (resources.displayMetrics.widthPixels * 0.94f).toInt()
 
         scope.launch {
-            snapshotFlow { engine.approval.value != null || engine.card.value != null || engine.agentActive.value }
+            snapshotFlow { engine.approval.value != null || engine.card.value != null || engine.permAsk.value != null || engine.agentActive.value }
                 .collect { visible ->
                     if (visible && stageView == null) {
                         val lp = WindowManager.LayoutParams(

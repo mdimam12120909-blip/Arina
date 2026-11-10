@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -72,6 +73,9 @@ class Card(
 /** A big action waiting for the user's yes or no. */
 class Approval(val title: String, val detail: String, val answer: CompletableDeferred<Boolean>)
 
+/** A system setting the user must switch on by hand. [intent] opens the right settings page; [granted] says when to close the card. */
+class PermRequest(val title: String, val detail: String, val intent: android.content.Intent, val granted: () -> Boolean)
+
 private val Good = Color(0xFF3DDC97)
 private val Bad = Color(0xFFFF5C6C)
 
@@ -104,8 +108,18 @@ private fun StageImage(src: String) {
 fun Stage(engine: ArinaEngine, modifier: Modifier = Modifier) {
     val approval = engine.approval.value
     val card = engine.card.value
-    if (approval == null && card == null && !engine.agentActive.value) return
+    val perm = engine.permAsk.value
+    if (approval == null && card == null && perm == null && !engine.agentActive.value) return
+    val ctx = LocalContext.current
+    // Close the card by itself once the user has switched the setting on.
+    if (perm != null) LaunchedEffect(perm) {
+        while (!perm.granted()) delay(700)
+        engine.permAsk.value = null
+    }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (perm != null) PermissionRequestCard(perm,
+            onOpen = { runCatching { ctx.startActivity(perm.intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } },
+            onDismiss = { engine.permAsk.value = null })
         if (approval != null) ApprovalCard(approval) { engine.answerApproval(it) }
         if (engine.agentActive.value) AgentBar(engine.agentLine.value) { engine.stopAgent() }
         if (card != null) PresentCard(card) { engine.closeCard() }
@@ -114,34 +128,71 @@ fun Stage(engine: ArinaEngine, modifier: Modifier = Modifier) {
 
 private fun panel(strong: Boolean = false): Modifier =
     Modifier
-        .clip(RoundedCornerShape(22.dp))
-        .background(if (strong) ArinaColors.Surface.copy(alpha = 0.99f) else ArinaColors.Surface.copy(alpha = 0.97f))
-        .border(if (strong) 1.5.dp else 1.dp, ArinaColors.Glow.copy(alpha = if (strong) 0.8f else 0.5f), RoundedCornerShape(22.dp))
+        .clip(RoundedCornerShape(28.dp))
+        .background(ArinaColors.Surface.copy(alpha = 0.99f))
+        .border(if (strong) 1.5.dp else 1.dp, Brand, RoundedCornerShape(28.dp))
+
+private val Brand = Brush.linearGradient(listOf(Color(0xFF4F7DFF), Color(0xFF6D5BFF), Color(0xFF9B5CFF)))
+
+/** The round badge at the top of a permission card. */
+@Composable
+private fun Badge(icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    Box(Modifier.size(44.dp).clip(CircleShape).background(Brand), contentAlignment = Alignment.Center) {
+        Icon(icon, null, tint = Color.White, modifier = Modifier.size(24.dp))
+    }
+}
+
+@Composable
+private fun CardButtons(primary: String, secondary: String, onPrimary: () -> Unit, onSecondary: () -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+        Text(
+            secondary, color = ArinaColors.Text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
+            modifier = Modifier.weight(1f).clip(RoundedCornerShape(50)).border(1.dp, ArinaColors.Muted.copy(alpha = 0.4f), RoundedCornerShape(50))
+                .clickable(onClick = onSecondary).padding(vertical = 12.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+        Text(
+            primary, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
+            modifier = Modifier.weight(1.3f).clip(RoundedCornerShape(50)).background(Brand)
+                .clickable(onClick = onPrimary).padding(vertical = 12.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+    }
+}
 
 @Composable
 private fun ApprovalCard(a: Approval, onAnswer: (Boolean) -> Unit) {
-    Column(panel(strong = true).fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("PERMISSION NEEDED", color = ArinaColors.Glow, fontSize = 10.sp, letterSpacing = 3.sp, fontWeight = FontWeight.SemiBold)
-        Text(a.title, color = ArinaColors.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+    Column(panel(strong = true).fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Badge(Icons.Outlined.Shield)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("ENTRION NEEDS YOUR OK", color = ArinaColors.Glow, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold)
+                Text(a.title, color = ArinaColors.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
+            }
+        }
         Text(
-            a.detail, color = ArinaColors.Muted, fontSize = 13.sp, lineHeight = 18.sp,
+            a.detail, color = ArinaColors.Muted, fontSize = 13.sp, lineHeight = 19.sp,
             modifier = Modifier.heightIn(max = 140.dp).verticalScroll(rememberScrollState())
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            Text(
-                "Allow", color = ArinaColors.Background, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
-                modifier = Modifier.weight(1f).clip(RoundedCornerShape(50)).background(Good)
-                    .clickable { onAnswer(true) }.padding(vertical = 10.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
-            Text(
-                "Deny", color = ArinaColors.Text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
-                modifier = Modifier.weight(1f).clip(RoundedCornerShape(50))
-                    .border(1.dp, Bad, RoundedCornerShape(50))
-                    .clickable { onAnswer(false) }.padding(vertical = 10.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
+        CardButtons("Allow", "Not now", { onAnswer(true) }, { onAnswer(false) })
+    }
+}
+
+/** Entrion needs an Android setting that only the user can switch on (Accessibility, display over apps...). Works over any app. */
+@Composable
+private fun PermissionRequestCard(r: PermRequest, onOpen: () -> Unit, onDismiss: () -> Unit) {
+    Column(panel(strong = true).fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Badge(Icons.Outlined.Shield)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("PERMISSION NEEDED", color = ArinaColors.Glow, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold)
+                Text(r.title, color = ArinaColors.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
+            }
         }
+        Text(r.detail, color = ArinaColors.Muted, fontSize = 13.sp, lineHeight = 19.sp)
+        CardButtons("Open settings", "Not now", onOpen, onDismiss)
     }
 }
 
