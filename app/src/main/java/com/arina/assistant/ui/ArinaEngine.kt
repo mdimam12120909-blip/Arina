@@ -241,6 +241,7 @@ class ArinaEngine private constructor(private val app: Application) {
     /** A setting the user must switch on by hand; shown over any app so it can be done from where they are. */
     val permAsk = mutableStateOf<PermRequest?>(null)
     val agentActive = mutableStateOf(false)
+    val agentGoal = mutableStateOf("")
     val agentLine = mutableStateOf("")
     /** Goes up each time the screen-edge glow should play. */
     val glow = mutableIntStateOf(0)
@@ -501,6 +502,18 @@ class ArinaEngine private constructor(private val app: Application) {
                 announce(r)
             }
             return "OK: upload of ${f.name} started in the background; it can take a few minutes. Tell the user once that it started; the result will be announced."
+        }
+        override fun taskStatus(): String {
+            val lines = ArrayList<String>()
+            if (agentActive.value) lines += "Phone task running: ${agentGoal.value.ifBlank { "(goal not recorded)" }}. Latest step: ${agentLine.value.ifBlank { "starting" }}."
+            if (researchActive.value) lines += "Research running: ${researchTitle.value}. Latest: ${researchSteps.lastOrNull().orEmpty().ifBlank { "starting" }}."
+            jobs.filter { it.status == "running" }.forEach { j -> if (lines.none { it.contains(j.goal.take(20)) }) lines += "Job (${j.kind}) running: ${j.goal.take(120)}. Steps so far: ${j.steps.size}." }
+            return if (lines.isEmpty()) "Nothing is running in the background right now." else lines.joinToString("\n")
+        }
+        override fun stopTasks(): String {
+            val any = agentActive.value || researchActive.value
+            stopAgent(); stopResearch()
+            return if (any) "OK: stopped everything that was running." else "Nothing was running."
         }
         override fun scanPhone(): String {
             val list = PhoneHealth.scan(app)
@@ -1338,7 +1351,7 @@ class ArinaEngine private constructor(private val app: Application) {
                     return@launch
                 }
             } else ack(ON_IT_LINES)
-            agentActive.value = true
+            agentActive.value = true; agentGoal.value = goal
             agentLine.value = "Starting…"
             val jobId = jobStart(if (chat) "chat" else "operate", goal)
             try {

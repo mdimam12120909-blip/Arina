@@ -27,6 +27,8 @@ interface ToolHooks {
     fun listRoutines(): String
     fun removeRoutine(title: String): String
     fun scanPhone(): String
+    fun taskStatus(): String
+    fun stopTasks(): String
     fun youtubeUpload(video: String, title: String, description: String, tags: String, privacy: String): String
 }
 
@@ -84,6 +86,8 @@ class ToolRunner(
             Triple("label", "STRING", "Optional alarm name.")
         ), required = listOf("hour", "minute")))
         put(decl("read_notifications", "Read the latest notifications on the phone (needs Notification access)."))
+        put(decl("task_status", "What Entrion is doing in the background RIGHT NOW (phone task, research, workflow): the goal, the latest step and how long it has run. Call it whenever the user asks 'what are you doing', 'how far', 'is it done' while a task runs. You can talk and answer other questions while tasks run; this lets you answer honestly."))
+        put(decl("stop_tasks", "Stop everything running in the background (phone task and research) when the user says stop, cancel or leave it."))
         put(decl("get_status", "Get the current date, time and battery level."))
         put(decl("deep_research", "Start a long, thorough research job in the background (many web searches over a few minutes, then a full written report on screen and a spoken summary). Use for big questions, comparisons, 'research X for me', study-style tasks. Returns at once.", listOf(Triple("topic", "STRING", "The full topic or question to research, with any details the user gave."))))
         put(decl("run_workflow", "Do a big multi-part TEXT job on its own (it only searches, analyses, writes text and code; it cannot make videos, images or files, and cannot touch apps; for those use operate_phone): it plans the steps, runs independent steps in parallel in the background (web look-ups, analysis, writing, coding, debugging), then shows the finished result on screen. Use for 'build / write / fix / compare / prepare X' jobs that would take a person an hour or more. Returns at once.", listOf(Triple("goal", "STRING", "The complete goal with every detail the user gave."))))
@@ -203,6 +207,8 @@ class ToolRunner(
             "read_notifications" -> ArinaNotificationListener.instance?.summary()
                 ?: "ERROR: Notification access is off. Ask the user to turn it on in the Settings tab."
             "get_status" -> device.status()
+            "task_status" -> hooks.taskStatus()
+            "stop_tasks" -> hooks.stopTasks()
             else -> "ERROR: unknown tool $name"
         }
     } catch (e: Exception) {
