@@ -245,6 +245,12 @@ class GeminiLive(
                     "toolResponse", JSONObject().put(
                         "functionResponses", JSONArray().put(
                             JSONObject().put("id", id).put("name", name).put("response", JSONObject().put("result", result))
+                                // gemini-3.8-live runs tools asynchronously: say how the answer should be delivered.
+                                .put("scheduling", when {
+                                    result.contains("ALREADY told") || result.startsWith("BUSY") -> "SILENT"
+                                    name in MUST_SPEAK -> "INTERRUPT"
+                                    else -> "WHEN_IDLE"
+                                })
                         )
                     )
                 )
