@@ -140,7 +140,15 @@ class ArinaAccessibilityService : AccessibilityService() {
         val args = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         }
-        return target?.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args) == true
+        if (target?.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args) == true) return true
+        // Some apps (and Bengali text in some fields) refuse SET_TEXT: paste it instead.
+        return runCatching {
+            val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("entrion", text))
+            target?.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            target?.performAction(AccessibilityNodeInfo.ACTION_SELECT_ALL)
+            target?.performAction(AccessibilityNodeInfo.ACTION_PASTE) == true
+        }.getOrDefault(false)
     }
 
     /** Presses the keyboard's Enter/Search key on the focused field (Android 11+). */
