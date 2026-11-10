@@ -126,6 +126,11 @@ class ArinaEngine private constructor(private val app: Application) {
     val orbVisible = mutableStateOf(false)
     /** How the agent shows itself over other apps: "quiet" (a small status pill and edge light only while it works), "orb", or "off". */
     val bgStyle = mutableStateOf(com.arina.assistant.cloud.Local.prefs(app, "arina_ui").getString("bg_style", "quiet") ?: "quiet")
+    val replyLength = mutableStateOf(com.arina.assistant.cloud.Local.prefs(app, "arina_ui").getString("reply_len", "normal") ?: "normal")
+    val replyTone = mutableStateOf(com.arina.assistant.cloud.Local.prefs(app, "arina_ui").getString("reply_tone", "friendly") ?: "friendly")
+    init { Identity.replyLength = replyLength.value; Identity.replyTone = replyTone.value }
+    fun setReplyLength(v: String) { replyLength.value = v; Identity.replyLength = v; com.arina.assistant.cloud.Local.prefs(app, "arina_ui").edit().putString("reply_len", v).apply() }
+    fun setReplyTone(v: String) { replyTone.value = v; Identity.replyTone = v; com.arina.assistant.cloud.Local.prefs(app, "arina_ui").edit().putString("reply_tone", v).apply() }
     fun setBgStyle(v: String) { bgStyle.value = v; uiPrefs.edit().putString("bg_style", v).apply() }
     /** Phone control permission: "ask" every time, "smart" (ask only before risky taps), or "auto" (never ask). */
     val operateMode = mutableStateOf(com.arina.assistant.cloud.Local.prefs(app, "arina_ui").getString("operate_mode", "smart") ?: "smart")

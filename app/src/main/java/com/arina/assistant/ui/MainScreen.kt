@@ -1433,6 +1433,19 @@ private fun AssistantPage(vm: ArinaEngine, onPower: () -> Unit) {
             vm.proactiveOn.value
         ) { vm.setProactive(it) }
 
+        SectionTitle("HOW IT ANSWERS")
+        Group(
+            { ChoiceCard("Short", "One or two sentences. Fast and to the point.", vm.replyLength.value == "short", flat = true) { vm.setReplyLength("short") } },
+            { ChoiceCard("Balanced (recommended)", "Brief by default, longer when you ask.", vm.replyLength.value == "normal", flat = true) { vm.setReplyLength("normal") } },
+            { ChoiceCard("Detailed", "Fuller answers with reasons.", vm.replyLength.value == "detailed", flat = true) { vm.setReplyLength("detailed") } }
+        )
+        Group(
+            { ChoiceCard("Friendly", "Warm and natural.", vm.replyTone.value == "friendly", flat = true) { vm.setReplyTone("friendly") } },
+            { ChoiceCard("Professional", "Calm and precise.", vm.replyTone.value == "professional", flat = true) { vm.setReplyTone("professional") } },
+            { ChoiceCard("Playful", "Light and witty.", vm.replyTone.value == "playful", flat = true) { vm.setReplyTone("playful") } }
+        )
+        Text("Takes effect the next time you start talking.", color = ArinaColors.Muted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 4.dp))
+
         SectionTitle("WHEN IT OPERATES YOUR PHONE")
         Group(
             { ChoiceCard("Smart (recommended)", "Starts at once. Asks only before a risky tap you did not ask for: send, pay, buy, delete, install.", vm.operateMode.value == "smart", flat = true) { vm.setOperateMode("smart") } },
