@@ -1368,22 +1368,38 @@ private fun ToggleCard(title: String, detail: String, checked: Boolean, onChange
 @Composable
 private fun KeysPage(vm: ArinaEngine) {
     val gemini = remember { mutableStateListOf(*vm.geminiSlots.toTypedArray()) }
+    val jobs = listOf(
+        "Key 1" to "Female voice agent. Also used when another key is empty.",
+        "Key 2" to "Male voice agent.",
+        "Key 3" to "Research.",
+        "Key 4" to "Workflows and skills.",
+        "Key 5" to "Phone agent, camera and background work."
+    )
     PageColumn {
-        Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Your keys are stored only on this phone, under your account.", color = ArinaColors.Muted, fontSize = 12.sp)
-            val keyJobs = listOf(
-                "Key 1: female agent (conversation, also the fallback)",
-                "Key 2: male agent (conversation)",
-                "Key 3: research",
-                "Key 4: workflows and skills",
-                "Key 5: phone agent, camera, background"
-            )
-            Text("Each key has one job, so nothing waits for another job. An empty key uses key 1.", color = ArinaColors.Muted, fontSize = 12.sp)
-            gemini.forEachIndexed { i, v -> KeyField(keyJobs.getOrElse(i) { "Key ${i + 1}" }, v, true) { gemini[i] = it } }
-            PillButton("Save") { vm.saveKeys(gemini.toList()) }
-            vm.notice.value?.let { Text(it, color = Warn, fontSize = 12.sp, lineHeight = 17.sp) }
-            StatusLine("Keys set: " + vm.geminiKeyCount + " of 5", vm.geminiKeySet)
-        }
+        SectionTitle("STATUS")
+        Group({
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(9.dp).clip(CircleShape).background(if (vm.geminiKeySet) Good else Warn))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("${vm.geminiKeyCount} of 5 keys set", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text("Stored only on this phone, under your account.", color = ArinaColors.Muted, fontSize = 12.sp)
+                }
+            }
+        })
+        SectionTitle("YOUR GEMINI KEYS")
+        Text("Each key has one job so nothing waits for another. An empty key uses Key 1.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 4.dp))
+        Group(*gemini.indices.map { i ->
+            val row: @Composable () -> Unit = {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(jobs.getOrNull(i)?.second.orEmpty(), color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 16.sp)
+                    KeyField(jobs.getOrNull(i)?.first ?: "Key ${i + 1}", gemini[i], true) { gemini[i] = it }
+                }
+            }
+            row
+        }.toTypedArray())
+        PillButton("Save keys") { vm.saveKeys(gemini.toList()) }
+        vm.notice.value?.let { Text(it, color = Warn, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 4.dp)) }
     }
 }
 
