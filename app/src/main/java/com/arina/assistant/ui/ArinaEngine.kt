@@ -1313,7 +1313,16 @@ class ArinaEngine private constructor(private val app: Application) {
 
     private fun startOperate(goal: String, chat: Boolean): String {
         if (ArinaAccessibilityService.instance == null) {
-            return "ERROR: Device control (Accessibility) is off. Tell him to turn it on in the Settings tab."
+            val on = PermissionCenter.accessibilityEnabled(app)
+            // Just switched on: the service needs a moment to start. Wait for it before giving up.
+            if (on) repeat(8) { if (ArinaAccessibilityService.instance == null) Thread.sleep(500) }
+            if (ArinaAccessibilityService.instance == null) {
+                if (!on) {
+                    runCatching { app.startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    return "ERROR: Device control is off. I opened the Accessibility settings page: tell him to open Entrion there and switch it on, then say the task again."
+                }
+                return "ERROR: Device control is switched on but the service has not started (Android sometimes stops it). Tell him to switch Entrion's Accessibility OFF and ON once in Settings, then say the task again."
+            }
         }
         if (agentJob?.isActive == true) return "BUSY: Entrion is still working on the previous phone task. Do NOT start another or repeat this one. Wait for its result, then continue. Use look_screen if you want to see the progress."
         agentJob = scope.launch {
