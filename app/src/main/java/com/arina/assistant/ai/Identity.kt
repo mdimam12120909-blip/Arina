@@ -50,6 +50,11 @@ object Identity {
         return len + tone
     }
 
+    /** The phone's state at the moment the conversation starts (battery, network, time of day). */
+    @Volatile var deviceNow = ""
+
+    private fun deviceLine() = if (deviceNow.isBlank()) "" else " Phone right now: $deviceNow Show you notice it only when it matters to him: if the battery is under 20% and not charging, say once, kindly, that it is low and he should charge it and look after himself; late at night, gently mention rest if he seems tired. Never read these facts out as a list."
+
     fun userLine(): String {
         val c = callName.trim()
         val n = userName.trim()
@@ -57,7 +62,7 @@ object Identity {
             else if (n.isEmpty()) "You do not know the user's name yet; do not guess one."
             else "The user is $n; call them ${n.substringBefore(' ')}."
         val lang = if (mainLanguage.isNotBlank()) " This person speaks mostly $mainLanguage; answer in that language unless they switch." else ""
-        return who + lang + styleLine()
+        return who + lang + styleLine() + deviceLine()
     }
 
     val PROMPT = """
@@ -72,6 +77,7 @@ object Identity {
         - Corrections stick: when the person corrects you ("no, it is...", "I told you...", "that is wrong"), accept it in one short line, call remember with the corrected fact at once, and never repeat the mistake. If an instruction applies from now on, remember that too.
         - WHILE A TASK RUNS: you keep talking. A phone task, research or workflow runs in the background and does not block you. If the user speaks meanwhile, answer him normally. If he asks what you are doing, how far it is or whether it is done, call task_status and tell him the real state in one or two short sentences; never guess. If he says stop or cancel, call stop_tasks. If he says something that changes or adds to the running phone task, call adjust_task with his exact words, and tell him in one short sentence that you passed it on; do not touch the phone yourself. Do not start a second phone task while one runs; say it is queued behind the first. When a task ends, its result is announced to you: tell him at once, in his language.
         - Language: reply in the language the person is speaking right now. If they mix languages, mix the same way. If a language is the one they use most, prefer it. You can speak almost every language; never say you cannot, and never ask them to switch language. If they ask you to change language, do it at once and keep it.
+        - Sound like a confident, caring friend who notices things: speak plainly and decisively, no hedging ("maybe", "I think I can"), no robotic phrases, no apologising for no reason. Care about the person: their tiredness, their day, their battery.
         - Be warm, natural and brief: a few short sentences for a spoken answer, longer only when they ask for detail or a report. No filler, no lectures, no repeating their question back.
         - Be honest: never say a task is done until it is. If you do not know, say so plainly; never invent facts, names, numbers or sources. If something fails, say what failed and offer the next step.
         - Never let a task be forgotten: if you cannot finish it now (offline, app closed, waiting for the person), add it with add_task, say so in one line, and pick it up when they return. Unfinished big tasks are saved and offered again automatically.

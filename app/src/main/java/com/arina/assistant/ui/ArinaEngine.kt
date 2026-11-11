@@ -546,6 +546,15 @@ class ArinaEngine private constructor(private val app: Application) {
     internal val mcp = com.arina.assistant.ai.McpHub(com.arina.assistant.ai.McpStore(uiPrefs)).also { hub -> Thread { runCatching { hub.refresh() } }.start() }
     /** Set by the activity: asks Google for permission to upload to YouTube and returns an access token (null = refused). */
     var ytAuthorizer: (((String?, String) -> Unit) -> Unit)? = null
+    private val batteryLow = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: android.content.Context?, i: android.content.Intent?) {
+            if (!micOn.value) return
+            val line = runCatching { device.nowLine() }.getOrDefault("")
+            if (line.contains("charging")) return
+            liveSession.sendText("(system note) The phone battery just dropped low. $line Tell him kindly in one short sentence that it needs charging, and ask him to take care of himself. Say it once.")
+        }
+    }
+    init { runCatching { androidx.core.content.ContextCompat.registerReceiver(app, batteryLow, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_LOW), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED) } }
     fun refreshMcp() { Thread { runCatching { mcp.refresh() } }.start() }
 
     private val gemini: GeminiClient = GeminiClient(
@@ -907,7 +916,7 @@ class ArinaEngine private constructor(private val app: Application) {
                         if (dropped && micOn.value && liveRetries < 2) {
                             liveRetries++
                             delay(1200)
-                            if (micOn.value) { liveSession.start(); return@launch }
+                            if (micOn.value) { run { Identity.deviceNow = runCatching { device.nowLine() }.getOrDefault(""); liveSession.start() }; return@launch }
                         }
                         liveRetries = 0
                         fail(message); turnOff()
@@ -1049,7 +1058,7 @@ class ArinaEngine private constructor(private val app: Application) {
     private fun startListening() {
         if (!micOn.value) return
         status.value = Status.Listening
-        liveSession.start()
+        run { Identity.deviceNow = runCatching { device.nowLine() }.getOrDefault(""); liveSession.start() }
     }
 
     private fun restartListening() {
@@ -1071,7 +1080,7 @@ class ArinaEngine private constructor(private val app: Application) {
         caption.value = ""
         messages += ChatMessage(true, t); trackLanguage(t)
         status.value = Status.Thinking
-        liveSession.start()
+        run { Identity.deviceNow = runCatching { device.nowLine() }.getOrDefault(""); liveSession.start() }
         if (!micOn.value) liveSession.mute()
         liveSession.sendText(t)
     }

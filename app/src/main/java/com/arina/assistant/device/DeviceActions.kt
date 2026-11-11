@@ -195,6 +195,24 @@ class DeviceActions(private val ctx: Context) {
         }
     }
 
+    /** What is true about the phone right now, so Entrion can mention it naturally (low battery, night, no internet). */
+    fun nowLine(): String {
+        val bm = ctx.getSystemService(BatteryManager::class.java)
+        val pct = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        val charging = runCatching { bm.isCharging }.getOrDefault(false)
+        val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+        val net = when {
+            caps == null -> "offline"
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) -> "on Wi-Fi"
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) -> "on mobile data"
+            else -> "online"
+        }
+        val h = java.time.LocalTime.now().hour
+        val part = when (h) { in 5..11 -> "morning"; in 12..16 -> "afternoon"; in 17..20 -> "evening"; else -> "night" }
+        return "Battery $pct%${if (charging) " (charging)" else ""}, $net, it is $part (${java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("hh:mm a"))})."
+    }
+
     fun status(): String {
         val bm = ctx.getSystemService(BatteryManager::class.java)
         val battery = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
