@@ -118,7 +118,9 @@ class PhoneAgent(
                 append("\nPREVIOUS ACTIONS:\n").append(history.takeLast(6).joinToString("\n").ifBlank { "(none yet)" })
                 append("\n\nSCREEN:\n").append(snap.text.ifBlank { "(nothing readable)" })
             }
+            val tModel = System.currentTimeMillis()
             val raw = gemini.generate(SYSTEM, prompt, json = true, role = KeyRole.Agent)
+            val modelMs = System.currentTimeMillis() - tModel
             val a = runCatching {
                 JSONObject(raw.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim())
             }.getOrNull()
@@ -137,7 +139,7 @@ class PhoneAgent(
                 else -> action
             }
             onStep("Step $step: $desc")
-            Diag.log("agent step $step: $desc")
+            Diag.log("agent step $step: $desc  [thinking ${modelMs} ms, prompt ${prompt.length} chars]")
             if (desc == last) { if (++repeats >= 3) return Outcome("এই ধাপে আটকে গেছি, থামলাম।", "I got stuck, so I stopped.") } else { repeats = 0; last = desc }
 
             var ok = true
@@ -186,7 +188,9 @@ class PhoneAgent(
                 "back" -> route += PathStep("back")
             }
             if (action != "wait" && action != "wait_reply" && action != "wait_long") {
+                val tSettle = System.currentTimeMillis()
                 settle(svc, before)
+                Diag.log("  step $step screen settled in ${System.currentTimeMillis() - tSettle} ms")
                 // ERROR RECOVERY: an action that changed nothing, or failed twice, means this road is wrong. Back out.
                 val after = svc.snapshot(textMax = 30, maxNodes = 40)?.text.orEmpty().hashCode()
                 if (!ok || after == before) unchanged++ else unchanged = 0
