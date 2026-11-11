@@ -28,6 +28,7 @@ interface ToolHooks {
     fun removeRoutine(title: String): String
     fun scanPhone(): String
     fun taskStatus(): String
+    fun adjustTask(note: String): String
     fun phoneBusy(): Boolean
     fun stopTasks(): String
     fun youtubeUpload(video: String, title: String, description: String, tags: String, privacy: String): String
@@ -88,6 +89,7 @@ class ToolRunner(
         ), required = listOf("hour", "minute")))
         put(decl("read_notifications", "Read the latest notifications on the phone (needs Notification access)."))
         put(decl("task_status", "What Entrion is doing in the background RIGHT NOW (phone task, research, workflow): the goal, the latest step and how long it has run. Call it whenever the user asks 'what are you doing', 'how far', 'is it done' while a task runs. You can talk and answer other questions while tasks run; this lets you answer honestly."))
+        put(decl("adjust_task", "Change a phone task that is ALREADY running, without stopping it: use it when the user says something about the running task ('not that one', 'send this instead', 'also do...', 'use the other app'). Pass his words clearly in the note. The task follows it at its next step.", listOf(Triple("note", "STRING", "What the user wants changed, in plain words, with every detail he gave.")), required = listOf("note")))
         put(decl("stop_tasks", "Stop everything running in the background (phone task and research) when the user says stop, cancel or leave it."))
         put(decl("get_status", "Get the current date, time and battery level."))
         put(decl("deep_research", "Start a long, thorough research job in the background (many web searches over a few minutes, then a full written report on screen and a spoken summary). Use for big questions, comparisons, 'research X for me', study-style tasks. Returns at once.", listOf(Triple("topic", "STRING", "The full topic or question to research, with any details the user gave."))))
@@ -214,6 +216,7 @@ class ToolRunner(
             "get_status" -> device.status()
             "task_status" -> hooks.taskStatus()
             "stop_tasks" -> hooks.stopTasks()
+            "adjust_task" -> hooks.adjustTask(args.optString("note"))
             else -> "ERROR: unknown tool $name"
         }
     } catch (e: Exception) {

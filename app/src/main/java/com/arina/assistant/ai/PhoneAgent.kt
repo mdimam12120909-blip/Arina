@@ -17,6 +17,9 @@ class PhoneAgent(
     /** Saved routes that worked before (per account). */
     private val paths: LearnedPaths? = null
 ) {
+    private val steerQueue = java.util.concurrent.ConcurrentLinkedQueue<String>()
+    /** The user spoke while the task runs ("not that one", "send this instead"): the next step obeys it. */
+    fun steer(note: String) { if (note.isNotBlank()) steerQueue.add(note.trim().take(400)) }
 
     class Outcome(val bn: String, val en: String, val report: String = "")
 
@@ -75,6 +78,7 @@ class PhoneAgent(
         var last = ""
         var repeats = 0
         var askedProof = false
+        val userSays = ArrayList<String>()
         val route = ArrayList<PathStep>()      // what worked in this run, saved when the goal is proven
         var unchanged = 0                      // actions in a row that left the screen as it was
         // A route that worked for this exact goal: replay it without asking the model, step by step.
@@ -105,8 +109,10 @@ class PhoneAgent(
             if (snap.app == "com.arina.assistant" && step <= 2) {
                 svc.press("home"); Thread.sleep(800); continue
             }
+            while (true) { val n = steerQueue.poll() ?: break; userSays += n; history += "THE USER JUST TOLD YOU: $n" }
             val prompt = buildString {
                 append(if (chat) "CHAT MODE\n" else "").append("GOAL: ").append(goal).append("\nSTEP ").append(step).append(" of ").append(maxSteps)
+                if (userSays.isNotEmpty()) append("\nTHE USER'S NEW INSTRUCTIONS WHILE YOU WORK (they override the goal wherever they differ; follow them now):\n").append(userSays.joinToString("\n") { "- $it" })
                 if (notes.isNotEmpty()) append("\nNOTES SO FAR:\n").append(notes.joinToString("\n") { "- $it" })
                 append("\nCURRENT APP: ").append(snap.app)
                 append("\nPREVIOUS ACTIONS:\n").append(history.takeLast(6).joinToString("\n").ifBlank { "(none yet)" })

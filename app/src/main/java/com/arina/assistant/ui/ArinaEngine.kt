@@ -247,6 +247,7 @@ class ArinaEngine private constructor(private val app: Application) {
     val permAsk = mutableStateOf<PermRequest?>(null)
     val agentActive = mutableStateOf(false)
     val agentGoal = mutableStateOf("")
+    @Volatile private var runningAgent: PhoneAgent? = null
     val agentLine = mutableStateOf("")
     /** Goes up each time the screen-edge glow should play. */
     val glow = mutableIntStateOf(0)
@@ -509,6 +510,12 @@ class ArinaEngine private constructor(private val app: Application) {
             return "OK: upload of ${f.name} started in the background; it can take a few minutes. Tell the user once that it started; the result will be announced."
         }
         override fun phoneBusy(): Boolean = agentActive.value
+        override fun adjustTask(note: String): String {
+            val a = runningAgent
+            if (!agentActive.value || a == null) return "No phone task is running; do what he asks as a new request."
+            a.steer(note)
+            return "OK: the running task will follow this at its next step. Tell him in one short sentence that you passed it on."
+        }
         override fun taskStatus(): String {
             val lines = ArrayList<String>()
             if (agentActive.value) lines += "Phone task running: ${agentGoal.value.ifBlank { "(goal not recorded)" }}. Latest step: ${agentLine.value.ifBlank { "starting" }}."
@@ -1362,7 +1369,7 @@ class ArinaEngine private constructor(private val app: Application) {
             val jobId = jobStart(if (chat) "chat" else "operate", goal)
             try {
                 val outcome = withContext(Dispatchers.IO) {
-                    PhoneAgent(gemini, device, confirm = { what -> if (operateMode.value == "auto") true else runBlocking { ask("Allow this?", what, ASK_LINES) } }, paths = LearnedPaths(uiPrefs)).run(goal, chat, { line -> agentLine.value = line; jobUpdate(jobId, step = line) }, {
+                    PhoneAgent(gemini, device, confirm = { what -> if (operateMode.value == "auto") true else runBlocking { ask("Allow this?", what, ASK_LINES) } }, paths = LearnedPaths(uiPrefs)).also { runningAgent = it }.run(goal, chat, { line -> agentLine.value = line; jobUpdate(jobId, step = line) }, {
                         while (agentHold && agentJob?.isActive == true) Thread.sleep(100)
                         agentJob?.isActive != true
                     })
