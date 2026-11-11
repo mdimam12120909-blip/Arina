@@ -50,6 +50,7 @@ class PhoneAgent(
             {"action":"note","text":"..."}                     save one key point from a reply; notes are kept for the final report
             {"action":"done","evidence":"the exact words or elements on SCREEN that prove the goal is complete","bn":"...","en":"...","report":"..."}           goal reached: bn = one short spoken Bengali sentence (Bangla script) saying what you did, en = same in English
             {"action":"fail","bn":"...","en":"..."}           cannot continue: say why in the same way
+            SPEED-UP: any action may also carry "next":[ ... ] with up to 3 follow-up steps, each {"action":"click","label":"exact visible text"} or {"action":"type","label":"exact text/hint of the field","text":"...","submit":true}. Use it ONLY when you are certain those elements will exist right after the first action (you know this app's flow). They run at once, found by their visible text, without asking you again; if one is missing they stop and you look again. This saves whole minutes: use it for known flows.
             ${AppKnowledge.TEXT}
             Rules:
             - Use only element numbers that are in the current SCREEN list. Look at PREVIOUS ACTIONS and never repeat a step that did nothing; try something else (another element, scroll, back).
@@ -199,6 +200,22 @@ class PhoneAgent(
                     history += "STUCK: two actions in a row did nothing, so I pressed back. Take a DIFFERENT route now (other element, other words, search instead of browsing)."
                     unchanged = 0
                     if (route.isNotEmpty()) route.removeAt(route.size - 1)
+                }
+            }
+            // SPEED-UP: follow-up steps the model was sure about run now, by visible text, with no model call in between.
+            if (ok && !denied && action != "done") a.optJSONArray("next")?.let { nx ->
+                for (i in 0 until minOf(nx.length(), 3)) {
+                    if (cancelled()) break
+                    val n = nx.optJSONObject(i) ?: break
+                    val st = PathStep(n.optString("action"), n.optString("label"), n.optString("text"), if (n.optBoolean("submit")) "submit" else n.optString("app", n.optString("url", n.optString("direction"))))
+                    if (st.action == "done" || st.action == "fail" || (st.action in setOf("click", "type") && st.label.isBlank())) break
+                    // A risky tap (send, pay, delete) is never batched: it goes through the normal step, with its check.
+                    if (RISKY.any { (what, allowed) -> what.containsMatchIn(st.label) && !allowed.containsMatchIn(goal) }) break
+                    val before2 = svc.snapshot(textMax = 30, maxNodes = 40)?.text.orEmpty().hashCode()
+                    if (!replay(svc, st)) { history += "(planned next step '${st.action} ${st.label}' was not possible on this screen: look again)"; break }
+                    history += "${st.action} ${st.label.ifBlank { st.arg }} -> done (planned)"
+                    if (!chat) route += st
+                    settle(svc, before2)
                 }
             }
         }
