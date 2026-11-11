@@ -1363,7 +1363,11 @@ class ArinaEngine private constructor(private val app: Application) {
                 return "ERROR: Device control is switched on but the service has not started (Android sometimes stops it). Tell him to switch Entrion's Accessibility OFF and ON once in Settings, then say the task again."
             }
         }
-        if (agentJob?.isActive == true) return "BUSY: Entrion is still working on the previous phone task. Do NOT start another or repeat this one. Wait for its result, then continue. Use look_screen if you want to see the progress."
+        if (agentJob?.isActive == true) {
+            // A new task while one runs: keep it in line and start it by itself when the first one ends.
+            if (queuedGoals.none { it.first == goal }) queuedGoals.add(goal to chat)
+            return "OK: queued. The phone is busy with the previous task, so this one starts by itself right after it. Tell him so in one short sentence. If it was meant to CHANGE the running task, call adjust_task instead."
+        }
         agentJob = scope.launch {
             val mode = operateMode.value
             if (mode == "ask") {
@@ -1395,10 +1399,15 @@ class ArinaEngine private constructor(private val app: Application) {
                 notice.value = "Phone control stopped: ${(e.message ?: e.javaClass.simpleName).take(160)}"
             } finally {
                 agentActive.value = false
+                // Next task in line, if the user asked for more while this one ran.
+                val next = queuedGoals.poll()
+                if (next != null) scope.launch { delay(600); startOperate(next.first, next.second) }
             }
         }
         return TOLD
     }
+
+    private val queuedGoals = java.util.concurrent.ConcurrentLinkedQueue<Pair<String, Boolean>>()
 
     /** The STOP button: cut off whatever is being said or worked on right now, keep the mic as it is. */
     fun interrupt() {
