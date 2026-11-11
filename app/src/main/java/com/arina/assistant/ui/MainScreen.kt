@@ -1062,6 +1062,7 @@ private fun SettingsHome(vm: ArinaEngine, go: (Page) -> Unit) {
         Group(
             { NavRow("Account", if (vm.signedIn.value) vm.accountEmail.value else "Sign in to keep your data", Icons.Filled.Person, flat = true) { go(Page.Account) } },
             { NavRow("Permissions", "Choose what the agent may do on this phone", Icons.Filled.Lock, flat = true) { go(Page.Permissions) } },
+            { HealthCheckCard(vm) },
             {
                 val ctx = androidx.compose.ui.platform.LocalContext.current
                 NavRow("Report a problem", "Send what just happened so it can be fixed", Icons.Filled.BugReport, flat = true) {

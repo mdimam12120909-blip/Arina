@@ -555,6 +555,7 @@ class ArinaEngine private constructor(private val app: Application) {
         }
     }
     init { runCatching { androidx.core.content.ContextCompat.registerReceiver(app, batteryLow, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_LOW), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED) } }
+    fun deviceNow(): String = device.nowLine()
     fun refreshMcp() { Thread { runCatching { mcp.refresh() } }.start() }
 
     private val gemini: GeminiClient = GeminiClient(
