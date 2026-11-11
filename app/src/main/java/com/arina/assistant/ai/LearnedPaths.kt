@@ -36,6 +36,14 @@ class LearnedPaths(private val prefs: SharedPreferences) {
         prefs.edit().putString("paths", all.toString()).apply()
     }
 
+    /** Every saved route: the goal (as normalised) and how many steps it has, newest first. */
+    fun all(): List<Pair<String, Int>> {
+        val o = runCatching { JSONObject(prefs.getString("paths", "{}")) }.getOrNull() ?: return emptyList()
+        return o.keys().asSequence().map { it to o.getJSONObject(it) }
+            .sortedByDescending { it.second.optLong("at") }
+            .map { it.first to (it.second.optJSONArray("steps")?.length() ?: 0) }.toList()
+    }
+
     fun forget(goal: String) {
         val all = runCatching { JSONObject(prefs.getString("paths", "{}")) }.getOrDefault(JSONObject())
         all.remove(key(goal))

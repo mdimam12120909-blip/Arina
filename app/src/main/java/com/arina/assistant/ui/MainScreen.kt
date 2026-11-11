@@ -1463,6 +1463,24 @@ private fun AssistantPage(vm: ArinaEngine, onPower: () -> Unit) {
         SectionTitle("SKILLS")
         SkillsCard(vm)
 
+        SectionTitle("ROUTES IT LEARNED")
+        val learned = remember { com.arina.assistant.ai.LearnedPaths(vm.uiPrefs) }
+        val routes = remember { mutableStateListOf<Pair<String, Int>>().also { it.addAll(learned.all()) } }
+        if (routes.isEmpty()) {
+            Text("When a phone task works, Entrion remembers the way and repeats it faster next time. They will appear here.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 4.dp))
+        } else Group(*routes.toList().map { r ->
+            val row: @Composable () -> Unit = {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(r.first, color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 2)
+                        Text("${r.second} steps", color = ArinaColors.Muted, fontSize = 11.sp)
+                    }
+                    Text("Forget", color = ArinaColors.Muted, fontSize = 12.sp, modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable { learned.forget(r.first); routes.remove(r) }.padding(8.dp))
+                }
+            }
+            row
+        }.toTypedArray())
+
         SectionTitle("SPEED (LAST REPLY)")
         Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
