@@ -262,21 +262,30 @@ class GeminiClient(
         throw IOException(text)
     }
 
+    @Volatile private var agentModel: String? = null
+    private val slowUntil = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
     private fun callApi(system: String, contents: JSONArray, withTools: Boolean, o: Opts = Opts()): JSONObject {
         var last: IOException? = null
         val deadline = System.currentTimeMillis() + if (o.slow) 170_000L else TOTAL_MILLIS
         // Operating the phone needs careful reading, not raw speed: start from the stronger models for that job.
         val base = if (o.role == KeyRole.Agent) listOf("gemini-3.8-flash", "gemini-3.6-flash", "gemini-flash-latest", "gemini-2.5-flash", "gemini-3.5-flash-lite") else MODELS
-        val first = if (o.role == KeyRole.Agent) null else activeModel
-        val order = listOfNotNull(first) + base.filter { it != first }
+        // The phone agent calls this on every step. A model that was too slow or refused is put at the back for
+        // 10 minutes, and the one that worked last goes first: otherwise every step waits out the slow model again.
+        val now = System.currentTimeMillis()
+        val first = if (o.role == KeyRole.Agent) agentModel else activeModel
+        val usable = base.filter { it != first && (o.role != KeyRole.Agent || (slowUntil[it] ?: 0L) < now) }
+        val resting = if (o.role == KeyRole.Agent) base.filter { it != first && (slowUntil[it] ?: 0L) >= now } else emptyList()
+        val order = listOfNotNull(first) + usable + resting
         for (m in order) {
             if (System.currentTimeMillis() > deadline) break
             try {
                 val r = callModel(m, system, contents, withTools, o)
-                if (o.role != KeyRole.Agent) activeModel = m
+                if (o.role != KeyRole.Agent) activeModel = m else agentModel = m
                 return r
             } catch (e: ModelUnavailable) {
                 last = e
+                if (o.role == KeyRole.Agent) { slowUntil[m] = System.currentTimeMillis() + 10 * 60_000L; if (agentModel == m) agentModel = null }
             }
         }
         activeModel = null
