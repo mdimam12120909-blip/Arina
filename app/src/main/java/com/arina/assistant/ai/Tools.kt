@@ -28,6 +28,7 @@ interface ToolHooks {
     fun removeRoutine(title: String): String
     fun scanPhone(): String
     fun taskStatus(): String
+    fun phoneBusy(): Boolean
     fun stopTasks(): String
     fun youtubeUpload(video: String, title: String, description: String, tags: String, privacy: String): String
 }
@@ -146,10 +147,14 @@ class ToolRunner(
 
     private fun runTool(name: String, args: JSONObject): String = try {
         when {
+            // The phone task is using the screen: touching it from here would wreck its work.
+            name in SCREEN_TOOLS && hooks.phoneBusy() -> "BUSY: the phone task is using the screen right now. Do not tap, open or press anything yourself. Use task_status to see its progress and wait for its result."
             mcp != null && mcp.owns(name) -> mcp.call(name, args)
             else -> runBuiltin(name, args)
         }
     } catch (e: Exception) { "ERROR: ${e.message}" }
+
+    private val SCREEN_TOOLS = setOf("tap_text", "press_button", "open_app", "open_url", "app_action", "phone_control", "open_settings")
 
     private fun runBuiltin(name: String, args: JSONObject): String = try {
         when (name) {

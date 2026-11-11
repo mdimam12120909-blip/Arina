@@ -508,6 +508,7 @@ class ArinaEngine private constructor(private val app: Application) {
             }
             return "OK: upload of ${f.name} started in the background; it can take a few minutes. Tell the user once that it started; the result will be announced."
         }
+        override fun phoneBusy(): Boolean = agentActive.value
         override fun taskStatus(): String {
             val lines = ArrayList<String>()
             if (agentActive.value) lines += "Phone task running: ${agentGoal.value.ifBlank { "(goal not recorded)" }}. Latest step: ${agentLine.value.ifBlank { "starting" }}."
