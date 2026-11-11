@@ -146,7 +146,11 @@ class ArinaAccessibilityService : AccessibilityService() {
             val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
             cm.setPrimaryClip(android.content.ClipData.newPlainText("entrion", text))
             target?.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-            target?.performAction(AccessibilityNodeInfo.ACTION_SELECT_ALL)
+            val sel = Bundle().apply {
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 0)
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, target?.text?.length ?: 0)
+            }
+            target?.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, sel)
             target?.performAction(AccessibilityNodeInfo.ACTION_PASTE) == true
         }.getOrDefault(false)
     }
