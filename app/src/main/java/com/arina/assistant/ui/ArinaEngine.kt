@@ -521,6 +521,7 @@ class ArinaEngine private constructor(private val app: Application) {
             if (agentActive.value) lines += "Phone task running: ${agentGoal.value.ifBlank { "(goal not recorded)" }}. Latest step: ${agentLine.value.ifBlank { "starting" }}."
             if (researchActive.value) lines += "Research running: ${researchTitle.value}. Latest: ${researchSteps.lastOrNull().orEmpty().ifBlank { "starting" }}."
             jobs.filter { it.status == "running" }.forEach { j -> if (lines.none { it.contains(j.goal.take(20)) }) lines += "Job (${j.kind}) running: ${j.goal.take(120)}. Steps so far: ${j.steps.size}." }
+            com.arina.assistant.ai.ExecTrace.line().takeIf { it.isNotBlank() }?.let { lines += it }
             return if (lines.isEmpty()) "Nothing is running in the background right now." else lines.joinToString("\n")
         }
         override fun stopTasks(): String {

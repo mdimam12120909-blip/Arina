@@ -72,6 +72,14 @@ class PhoneAgent(
         """.trimIndent()
     }
 
+    /** True when at least one meaningful word of the claimed proof is really on the screen now. */
+    private fun evidenceOnScreen(evidence: String, screen: String): Boolean {
+        val words = evidence.split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length >= 3 }
+        if (words.isEmpty()) return true
+        val low = screen.lowercase()
+        return words.any { low.contains(it.lowercase()) }
+    }
+
     fun run(goal: String, chat: Boolean, onStep: (String) -> Unit, cancelled: () -> Boolean): Outcome {
         val history = ArrayList<String>()
         val notes = ArrayList<String>()
@@ -79,6 +87,8 @@ class PhoneAgent(
         var last = ""
         var repeats = 0
         var askedProof = false
+        var checkedScreen = false
+        ExecTrace.set(ExecState.UNDERSTANDING, goal.take(80))
         val userSays = ArrayList<String>()
         val route = ArrayList<PathStep>()      // what worked in this run, saved when the goal is proven
         var unchanged = 0                      // actions in a row that left the screen as it was
@@ -152,12 +162,18 @@ class PhoneAgent(
                         askedProof = true
                         history += "done REFUSED: no evidence. Look at SCREEN again and either give the exact proof in evidence or keep working"
                         ok = false
+                    } else if (!checkedScreen && a.optString("evidence").isNotBlank() && !evidenceOnScreen(a.optString("evidence"), snap.text)) {
+                        checkedScreen = true
+                        ExecTrace.set(ExecState.RECOVERING, "evidence not on screen")
+                        history += "done REFUSED: none of the words in your evidence are on SCREEN now. Do not claim success from memory. Either point to text that IS on SCREEN, or keep working, or use fail"
+                        ok = false
                     } else {
+                        ExecTrace.set(ExecState.COMPLETED, a.optString("en").take(80))
                         if (!chat && a.optString("evidence").isNotBlank() && route.isNotEmpty()) paths?.save(goal, route.toList())
                         return Outcome(a.optString("bn").ifBlank { "শেষ।" }, a.optString("en").ifBlank { "Done." }, a.optString("report"))
                     }
                 }
-                "fail" -> return Outcome(a.optString("bn").ifBlank { "শেষ।" }, a.optString("en").ifBlank { "Done." }, a.optString("report"))
+                "fail" -> { ExecTrace.set(ExecState.FAILED, a.optString("en").take(80)); return Outcome(a.optString("bn").ifBlank { "শেষ।" }, a.optString("en").ifBlank { "Done." }, a.optString("report")) }
                 "note" -> a.optString("text").takeIf { it.isNotBlank() }?.let { notes += it.take(600) }
                 "wait_reply" -> waitForStable(svc, cancelled)
                 "click" -> {
@@ -167,7 +183,14 @@ class PhoneAgent(
                     else ok = node != null && svc.click(node)
                 }
                 "type" -> {
+                    ExecTrace.set(ExecState.EXECUTING, "typing")
                     ok = node != null && svc.typeInto(node, a.optString("text"))
+                    if (ok) {   // typing counts only if the text really is in the field
+                        Thread.sleep(150)
+                        val want = a.optString("text").take(12)
+                        val has = svc.snapshot()?.nodes?.any { it.isEditable && (it.text?.toString() ?: "").contains(want) } == true
+                        if (!has && want.isNotBlank()) { Diag.log("agent: typed text not visible in field"); history += "type: text did NOT appear in the field, try again or click the field first"; ok = false }
+                    }
                     if (ok && a.optBoolean("submit")) { Thread.sleep(400); svc.pressEnter() }
                 }
                 "scroll" -> ok = svc.swipe(a.optString("direction") != "up")

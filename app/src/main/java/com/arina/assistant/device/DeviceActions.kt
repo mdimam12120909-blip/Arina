@@ -90,6 +90,43 @@ class DeviceActions(private val ctx: Context) {
         }
     }
 
+    /** Every contact whose name contains [name]: (display name, number), one per distinct number. */
+    fun findContacts(name: String): List<Pair<String, String>> {
+        if (!has(Manifest.permission.READ_CONTACTS)) return emptyList()
+        val out = LinkedHashMap<String, Pair<String, String>>()
+        ctx.contentResolver.query(
+            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER),
+            "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?", arrayOf("%${name.trim()}%"), null
+        )?.use {
+            while (it.moveToNext()) {
+                val n = it.getString(0) ?: continue
+                val num = it.getString(1) ?: continue
+                out.putIfAbsent(num.filter { c -> c.isDigit() }, n to num)
+            }
+        }
+        return out.values.toList()
+    }
+
+    /** International digits for wa.me: a saved local number (0171...) gets this phone's country code. */
+    fun internationalDigits(number: String): String {
+        val tm = ctx.getSystemService(Context.TELEPHONY_SERVICE) as? android.telephony.TelephonyManager
+        val iso = (tm?.simCountryIso?.takeIf { it.isNotBlank() } ?: tm?.networkCountryIso?.takeIf { it.isNotBlank() } ?: java.util.Locale.getDefault().country).uppercase()
+        val e164 = runCatching { android.telephony.PhoneNumberUtils.formatNumberToE164(number, iso) }.getOrNull()
+        return (e164 ?: number).filter { it.isDigit() }
+    }
+
+    fun openWhatsAppChat(digits: String, text: String): String? {
+        val uri = Uri.parse("https://wa.me/$digits?text=" + Uri.encode(text))
+        for (pkg in listOf("com.whatsapp", "com.whatsapp.w4b")) {
+            if (runCatching { ctx.packageManager.getPackageInfo(pkg, 0) }.isSuccess) {
+                launch(Intent(Intent.ACTION_VIEW, uri).setPackage(pkg))
+                return pkg
+            }
+        }
+        return null
+    }
+
     private fun resolveNumber(target: String): String? {
         val digits = cleanNumber(target)
         return if (digits.count { it.isDigit() } >= 5) digits else lookupNumber(target)
