@@ -12,6 +12,8 @@ object Timing {
     private val notes = ConcurrentHashMap<String, String>()
     @Volatile private var t0 = 0L
 
+    @Volatile var liveReadyMs = -1L
+
     fun start() {
         marks.clear()
         notes.clear()

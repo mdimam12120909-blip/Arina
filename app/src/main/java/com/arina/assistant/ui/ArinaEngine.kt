@@ -910,7 +910,7 @@ class ArinaEngine private constructor(private val app: Application) {
                         if (user.isNotBlank()) { messages += ChatMessage(true, user); trackLanguage(user) }
                         if (model.isNotBlank()) { messages += ChatMessage(false, model); caption.value = model }
                         lastTiming.value = Timing.report()
-                        com.arina.assistant.ai.Diag.log("metric turn firstAudioMs=${Timing.since("live first audio")} readyMs=${Timing.since("live ready")}")
+                        com.arina.assistant.ai.Diag.log("metric turn firstAudioMs=${Timing.since("live first audio")} connectMs=${Timing.liveReadyMs}")
                         status.value = if (micOn.value) Status.Listening else Status.Idle
                     }
                 }

@@ -163,7 +163,7 @@ class ToolRunner(
         val t0 = System.currentTimeMillis()
         val out = runTool(name, args)
         Diag.log("  -> ${out.take(160)}")
-        Diag.log("metric tool=$name ms=${System.currentTimeMillis() - t0} ok=${out.startsWith("OK")}")
+        Diag.log("metric tool=$name ms=${System.currentTimeMillis() - t0} ok=${!out.startsWith("ERROR") && !out.startsWith("NOT CONFIRMED")}")
         return out
     }
 

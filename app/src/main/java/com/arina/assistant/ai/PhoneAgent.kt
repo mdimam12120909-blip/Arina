@@ -58,6 +58,7 @@ class PhoneAgent(
               YouTube https://www.youtube.com/results?search_query=QUERY, Google https://www.google.com/search?q=QUERY, Google Maps https://www.google.com/maps/search/?api=1&query=QUERY (replace spaces with +). Then click the wanted result.
             - To search inside an app that has no such address: click the search icon/box, type the query with submit true, then click the wanted result.
             - Only use wait when the screen is clearly still loading.
+            - NEVER INVENT TEXT. Type only words that are in the GOAL or in THE USER'S INSTRUCTIONS (a search query taken from the goal is fine). If the text to write is not given yet, do not type anything (no "Hello", no placeholders): use wait and look again, the user may tell you.
             - Never send a message, post, buy, pay, delete or change account settings unless the GOAL says exactly that. If a screen asks for a password, OTP, payment or a decision only the user can make, use fail and explain.
             - As soon as the goal's result is visible on screen (search results are showing, the video is playing, the message is typed), use done at once. Do not keep exploring or tapping extra things.
             - If the current app is the home screen or launcher and the goal was already reached earlier, use done; never reopen an app you already finished with.
@@ -184,12 +185,22 @@ class PhoneAgent(
                 }
                 "type" -> {
                     ExecTrace.set(ExecState.EXECUTING, "typing")
+                    val typed = a.optString("text")
+                    val known = (goal + " " + userSays.joinToString(" ")).lowercase()
+                    val grounded = chat || typed.isBlank() || typed.split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length >= 3 }.let { w -> w.isEmpty() || w.any { known.contains(it.lowercase()) } }
+                    if (!grounded) {
+                        history += "type REFUSED: that text is not from the GOAL or the user's instructions. Do not invent text. Use wait and look again"
+                        Diag.log("agent: refused to type invented text '${typed.take(40)}'")
+                        ok = false
+                        Thread.sleep(1500)
+                    } else {
                     ok = node != null && svc.typeInto(node, a.optString("text"))
                     if (ok) {   // typing counts only if the text really is in the field
                         Thread.sleep(150)
                         val want = a.optString("text").take(12)
                         val has = svc.snapshot()?.nodes?.any { it.isEditable && (it.text?.toString() ?: "").contains(want) } == true
                         if (!has && want.isNotBlank()) { Diag.log("agent: typed text not visible in field"); history += "type: text did NOT appear in the field, try again or click the field first"; ok = false }
+                    }
                     }
                     if (ok && a.optBoolean("submit")) { Thread.sleep(400); svc.pressEnter() }
                 }

@@ -81,6 +81,7 @@ class GeminiLive(
     // Keeps a long conversation alive: Google can hand back a resume token, so a dropped connection continues with its memory.
     @Volatile private var resumeHandle: String? = null
     @Volatile private var usedHandleNotReady = false
+    @Volatile private var connectStartedAt = 0L
 
     /** Opens the conversation if it is not open and un-mutes the microphone. */
     @Synchronized
@@ -96,6 +97,7 @@ class GeminiLive(
         ready = false
         usedHandleNotReady = resumeHandle != null
         Timing.mark("live socket opening")
+        connectStartedAt = System.currentTimeMillis()
         socket = http.newWebSocket(Request.Builder().url("$URL?key=$k").build(), Listener(mine))
     }
 
@@ -201,6 +203,7 @@ class GeminiLive(
             usedHandleNotReady = false
             ready = true
             Timing.mark("live ready")
+            Timing.liveReadyMs = System.currentTimeMillis() - connectStartedAt
             while (true) { val t = waiting.poll() ?: break; socket?.send(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) }
             startMic(mine)
             return

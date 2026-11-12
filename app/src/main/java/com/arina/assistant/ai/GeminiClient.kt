@@ -280,7 +280,9 @@ class GeminiClient(
         for (m in order) {
             if (System.currentTimeMillis() > deadline) break
             try {
+                val t0 = System.currentTimeMillis()
                 val r = callModel(m, system, contents, withTools, o)
+                Diag.log("metric model=$m role=${o.role.label} ms=${System.currentTimeMillis() - t0}")
                 if (o.role != KeyRole.Agent) activeModel = m else agentModel = m
                 return r
             } catch (e: ModelUnavailable) {
