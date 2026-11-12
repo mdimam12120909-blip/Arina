@@ -78,6 +78,10 @@ class GeminiLive(
 
     val active: Boolean get() = socket != null
 
+    // Keeps a long conversation alive: Google can hand back a resume token, so a dropped connection continues with its memory.
+    @Volatile private var resumeHandle: String? = null
+    @Volatile private var usedHandleNotReady = false
+
     /** Opens the conversation if it is not open and un-mutes the microphone. */
     @Synchronized
     fun start() {
@@ -90,6 +94,7 @@ class GeminiLive(
         }
         val mine = ++generation
         ready = false
+        usedHandleNotReady = resumeHandle != null
         Timing.mark("live socket opening")
         socket = http.newWebSocket(Request.Builder().url("$URL?key=$k").build(), Listener(mine))
     }
@@ -102,6 +107,7 @@ class GeminiLive(
     /** Ends the conversation completely. */
     @Synchronized
     fun stop() {
+        resumeHandle = null
         generation++
         ready = false
         runCatching { socket?.close(1000, "bye") }
@@ -146,6 +152,9 @@ class GeminiLive(
             .put("realtimeInputConfig", JSONObject().put("automaticActivityDetection", vad))
             .put("inputAudioTranscription", JSONObject())
             .put("outputAudioTranscription", JSONObject())
+            // Without compression an audio session is cut after about 15 minutes.
+            .put("contextWindowCompression", JSONObject().put("slidingWindow", JSONObject()))
+            .put("sessionResumption", JSONObject().apply { resumeHandle?.let { put("handle", it) } })
         return JSONObject().put("setup", setup).toString()
     }
 
@@ -172,6 +181,7 @@ class GeminiLive(
     private fun end(mine: Int, message: String) {
         synchronized(this) {
             if (generation != mine) return
+            if (usedHandleNotReady) { resumeHandle = null; usedHandleNotReady = false }   // a stale token must not trap the next try
             generation++
             ready = false
             socket = null
@@ -183,7 +193,12 @@ class GeminiLive(
     private fun handle(mine: Int, raw: String) {
         if (generation != mine) return
         val msg = runCatching { JSONObject(raw) }.getOrNull() ?: return
+        msg.optJSONObject("sessionResumptionUpdate")?.let { u ->
+            if (u.optBoolean("resumable", false)) u.optString("newHandle").takeIf { it.isNotEmpty() }?.let { resumeHandle = it }
+        }
+        msg.optJSONObject("goAway")?.let { Diag.log("live: server will close the session soon (${it.optString("timeLeft")}); resume token ${if (resumeHandle != null) "saved" else "missing"}") }
         if (msg.has("setupComplete")) {
+            usedHandleNotReady = false
             ready = true
             Timing.mark("live ready")
             while (true) { val t = waiting.poll() ?: break; socket?.send(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) }
@@ -282,7 +297,7 @@ class GeminiLive(
     private fun startMic(mine: Int) {
         Thread {
             val min = AudioRecord.getMinBufferSize(IN_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-            val chunk = IN_RATE / 10   // 100 ms
+            val chunk = IN_RATE / 25   // 40 ms: Google advises 20-40 ms chunks
             val rec = try {
                 // VOICE_COMMUNICATION turns on the phone's echo cancellation, so Gemini does not hear itself.
                 AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, IN_RATE, AudioFormat.CHANNEL_IN_MONO,
