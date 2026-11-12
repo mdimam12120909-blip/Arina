@@ -44,11 +44,13 @@ class DiagramData(title: String) {
      */
     fun addOutline(outline: String) {
         val fresh = HashSet<Int>()
-        fun get(name: String): DNode { find(name)?.let { return it }; return add(name.trim().take(60), 0f, 0f).also { fresh += it.id } }
+        fun get(name: String): DNode { find(name)?.let { return it }; return add(name.trim().take(60), 0f, 0f).also { fresh.add(it.id) } }
         val stack = ArrayList<Pair<Int, DNode>>()
         for (raw in outline.lines()) {
             if (raw.isBlank()) continue
-            val indent = raw.takeWhile { it == ' ' || it == '\t' }.sumOf { if (it == '\t') 2 else 1 } / 2
+            var sp = 0
+            for (ch in raw) { if (ch == ' ') sp++ else if (ch == '\t') sp += 2 else break }
+            val indent = sp / 2
             val line = raw.trim().trimStart('-', '*', '•').trim()
             if (line.contains("->")) {
                 val chain = line.split("->").map { it.trim() }.filter { it.isNotEmpty() }
@@ -58,7 +60,7 @@ class DiagramData(title: String) {
             val n = get(line)
             while (stack.isNotEmpty() && stack.last().first >= indent) stack.removeAt(stack.size - 1)
             stack.lastOrNull()?.let { connect(it.second.id, n.id) }
-            stack += indent to n
+            stack.add(Pair(indent, n))
         }
         layout(fresh)
     }
