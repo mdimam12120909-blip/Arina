@@ -15,6 +15,8 @@ interface ToolHooks {
     fun saveSkill(name: String, whenText: String, steps: String): String
     fun listSkills(): String
     fun showImage(query: String): String
+    fun generateImage(prompt: String, changeLast: Boolean): String
+    fun diagram(title: String, outline: String, mode: String, remove: String): String
     fun showGallery(album: String, count: Int): String
     fun showFile(name: String): String
     fun showLink(url: String): String
@@ -99,6 +101,16 @@ class ToolRunner(
         put(decl("save_skill", "Save a new skill: a name and the step-by-step instructions for doing that kind of work, so it can be reused.", listOf(Triple("name", "STRING", "Short skill name."), Triple("when", "STRING", "One line: when this skill applies."), Triple("steps", "STRING", "Numbered step-by-step instructions."))))
         put(decl("list_skills", "List the saved skills."))
         put(decl("show_image", "Find pictures on the web and show them on screen for one minute. Use when the user asks to see a photo or picture of someone or something.", listOf(Triple("query", "STRING", "Web image search query in English, e.g. 'Lionel Messi photo'."))))
+        put(decl("generate_image", "MAKE a brand-new picture from a description (art, logo idea, poster, scene), or change the last picture you made. It is saved to his gallery and shown on screen. Not for finding existing photos of real people or things: use show_image for that. Write 'prompt' in English, rich and specific. Set change_last true to edit the previous picture (e.g. 'make it darker').", listOf(
+            Triple("prompt", "STRING", "What to draw, in detail, in English."),
+            Triple("change_last", "BOOLEAN", "true to modify the last generated picture instead of making a new one.")
+        ), required = listOf("prompt")))
+        put(decl("diagram", "Make or change a mind-map / flowchart the user can also edit by hand on screen. 'outline': one box per line, two spaces of indent = child of the line above; 'A -> B -> C' draws arrows. mode 'new' replaces the diagram, 'add' adds boxes to the one on screen (existing boxes keep their place). 'remove' lists box names to delete, separated by commas. With an empty outline it just opens the current diagram.", listOf(
+            Triple("title", "STRING", "Short title (new diagrams only)."),
+            Triple("outline", "STRING", "The boxes and links."),
+            Triple("mode", "STRING", "new or add"),
+            Triple("remove", "STRING", "Box names to delete, comma separated.")
+        ), required = listOf("outline")))
         put(decl("show_gallery", "Show the user's own recent photos from the phone gallery on screen for one minute.", listOf(
             Triple("album", "STRING", "Album/folder name such as Camera, Screenshots, WhatsApp; empty for all photos."),
             Triple("count", "INTEGER", "How many newest photos, 1 to 8.")
@@ -192,6 +204,8 @@ class ToolRunner(
             "save_skill" -> hooks.saveSkill(args.optString("name"), args.optString("when"), args.optString("steps"))
             "list_skills" -> hooks.listSkills()
             "show_image" -> hooks.showImage(args.optString("query"))
+            "generate_image" -> hooks.generateImage(args.optString("prompt"), args.optBoolean("change_last", false))
+            "diagram" -> hooks.diagram(args.optString("title"), args.optString("outline"), args.optString("mode", "new"), args.optString("remove"))
             "show_gallery" -> hooks.showGallery(args.optString("album"), args.optInt("count", 4))
             "show_file" -> hooks.showFile(args.optString("name"))
             "show_link" -> hooks.showLink(args.optString("url"))

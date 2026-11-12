@@ -260,6 +260,7 @@ fun MainScreen(
             Spacer(Modifier.navigationBarsPadding())
         }
         Stage(vm, Modifier.align(Alignment.Center).padding(horizontal = 14.dp))
+        vm.diagram.value?.let { DiagramEditor(vm, it) }
 
         androidx.compose.animation.AnimatedVisibility(
             visible = panelOpen,

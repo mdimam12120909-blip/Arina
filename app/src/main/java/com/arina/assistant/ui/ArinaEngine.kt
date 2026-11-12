@@ -470,6 +470,8 @@ class ArinaEngine private constructor(private val app: Application) {
             if (addSkill(name, whenText, steps)) "OK: skill '${name.trim()}' saved." else "ERROR: the skill needs a new name and steps (built-in names cannot be replaced)."
         override fun listSkills(): String = skillStore.all().joinToString("\n") { "- ${it.name}: ${it.when_}" }
         override fun showImage(query: String) = doShowImage(query)
+        override fun generateImage(prompt: String, changeLast: Boolean) = doGenerateImage(prompt, changeLast)
+        override fun diagram(title: String, outline: String, mode: String, remove: String) = doDiagram(title, outline, mode, remove)
         override fun showGallery(album: String, count: Int) = doShowGallery(album, count)
         override fun showFile(name: String) = doShowFile(name)
         override fun showLink(url: String) = doShowLink(url)
@@ -1205,6 +1207,31 @@ class ArinaEngine private constructor(private val app: Application) {
     fun closeCard() {
         cardTimer?.cancel()
         card.value = null
+    }
+
+    val diagram = mutableStateOf<com.arina.assistant.ai.DiagramData?>(null)
+    private val imageGen by lazy { com.arina.assistant.ai.ImageGen(app) { keyForRole(com.arina.assistant.ai.KeyRole.Talk) } }
+
+    private fun doGenerateImage(prompt: String, changeLast: Boolean): String {
+        if (prompt.isBlank()) return "ERROR: I need a description of the picture."
+        val r = imageGen.make(prompt, changeLast)
+        val f = r.file ?: return "ERROR: the picture could not be made (${r.error}). Tell him briefly; do not pretend it worked."
+        scope.launch { openCard(Card(CardKind.Images, "Image", listOf(f.path), seconds = 120)) }
+        return "OK: the picture was made, saved in his gallery (Pictures/Entrion) and is on screen. Say so in one short sentence."
+    }
+
+    private fun doDiagram(title: String, outline: String, mode: String, remove: String): String {
+        val cur = diagram.value ?: com.arina.assistant.ai.DiagramData.load(app)
+        val d = if (mode == "add" && cur != null) cur else if (outline.isBlank() && cur != null) cur else com.arina.assistant.ai.DiagramData(title.ifBlank { "Diagram" })
+        remove.split(',').map { it.trim() }.filter { it.isNotEmpty() }.forEach { n -> d.find(n)?.let { d.remove(it.id) } }
+        if (outline.isNotBlank()) d.addOutline(outline)
+        if (d.nodes.isEmpty()) return "ERROR: there is no diagram yet and the outline was empty."
+        com.arina.assistant.ai.DiagramData.save(app, d)
+        scope.launch {
+            diagram.value = d
+            runCatching { app.startActivity(android.content.Intent(app, com.arina.assistant.MainActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)) }
+        }
+        return "OK: the diagram '${d.title}' is on screen and he can edit it by hand. Now: ${d.outlineText().take(400)}. Say so in one short sentence."
     }
 
     private fun doShowImage(query: String): String {
