@@ -58,7 +58,7 @@ class MessageSender(private val device: DeviceActions) {
         var draft = false
         val t0 = System.currentTimeMillis()
         while (System.currentTimeMillis() - t0 < 9000) {
-            Thread.sleep(250)
+            Thread.sleep(120)
             val s = shot() ?: continue
             if (s.app.startsWith("com.whatsapp") && s.nodes.any { it.isEditable && (it.text?.toString() ?: "").contains(probe) }) { draft = true; break }
         }
@@ -98,7 +98,7 @@ class MessageSender(private val device: DeviceActions) {
             ExecTrace.set(ExecState.VERIFYING, "did it send?")
             val t1 = System.currentTimeMillis()
             while (System.currentTimeMillis() - t1 < 4500) {
-                Thread.sleep(300)
+                Thread.sleep(150)
                 val v = shot() ?: continue
                 cleared = v.nodes.none { it.isEditable && (it.text?.toString() ?: "").contains(probe) }
                 bubble = v.nodes.any { !it.isEditable && label(it).contains(msg.take(40)) }

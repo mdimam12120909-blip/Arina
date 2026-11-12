@@ -19,6 +19,7 @@ import java.time.format.DateTimeFormatter
 
 /** Everything Arina can actually do on the phone. Each function returns a short result string for Gemini. */
 class DeviceActions(private val ctx: Context) {
+    val context: Context get() = ctx
 
     private fun launch(intent: Intent) {
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

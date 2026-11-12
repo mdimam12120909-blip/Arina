@@ -276,7 +276,7 @@ class GeminiLive(
     }
 
     /** Tools whose result the user is waiting to hear. If the model stays silent after one, it is nudged to say it. */
-    private val MUST_SPEAK = setOf("generate_image", "diagram", "send_message", "look_screen", "look_camera", "get_status", "task_status", "read_notifications", "list_tasks", "list_routines",
+    private val MUST_SPEAK = setOf("play_song", "generate_image", "diagram", "send_message", "look_screen", "look_camera", "get_status", "task_status", "read_notifications", "list_tasks", "list_routines",
         "list_skills", "phone_control", "app_action", "scan_phone", "termux", "tap_text", "press_button", "open_settings")
     @Volatile private var spokenSince = 0L
     private val guardHandler = android.os.Handler(android.os.Looper.getMainLooper())

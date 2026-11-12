@@ -101,6 +101,7 @@ class ToolRunner(
         put(decl("save_skill", "Save a new skill: a name and the step-by-step instructions for doing that kind of work, so it can be reused.", listOf(Triple("name", "STRING", "Short skill name."), Triple("when", "STRING", "One line: when this skill applies."), Triple("steps", "STRING", "Numbered step-by-step instructions."))))
         put(decl("list_skills", "List the saved skills."))
         put(decl("show_image", "Find pictures on the web and show them on screen for one minute. Use when the user asks to see a photo or picture of someone or something.", listOf(Triple("query", "STRING", "Web image search query in English, e.g. 'Lionel Messi photo'."))))
+        put(decl("play_song", "Play a song or video in YouTube in ONE step: it searches, taps the first real result and checks that it is really playing. Use this for 'play X', 'গান চালাও'. Result says CONFIRMED only when proven playing.", listOf(Triple("query", "STRING", "Song and artist, e.g. 'Sunflower Post Malone'."))))
         put(decl("generate_image", "MAKE a brand-new picture from a description (art, logo idea, poster, scene), or change the last picture you made. It is saved to his gallery and shown on screen. Not for finding existing photos of real people or things: use show_image for that. Write 'prompt' in English, rich and specific. Set change_last true to edit the previous picture (e.g. 'make it darker').", listOf(
             Triple("prompt", "STRING", "What to draw, in detail, in English."),
             Triple("change_last", "BOOLEAN", "true to modify the last generated picture instead of making a new one.")
@@ -176,7 +177,8 @@ class ToolRunner(
     } catch (e: Exception) { "ERROR: ${e.message}" }
 
     private val messenger by lazy { MessageSender(device) }
-    private val SCREEN_TOOLS = setOf("send_message", "tap_text", "press_button", "open_app", "open_url", "app_action", "phone_control", "open_settings")
+    private val song by lazy { SongPlayer(device.context, device) }
+    private val SCREEN_TOOLS = setOf("play_song", "send_message", "tap_text", "press_button", "open_app", "open_url", "app_action", "phone_control", "open_settings")
 
     private fun runBuiltin(name: String, args: JSONObject): String = try {
         when (name) {
@@ -206,6 +208,7 @@ class ToolRunner(
             "save_skill" -> hooks.saveSkill(args.optString("name"), args.optString("when"), args.optString("steps"))
             "list_skills" -> hooks.listSkills()
             "show_image" -> hooks.showImage(args.optString("query"))
+            "play_song" -> song.play(args.optString("query"))
             "generate_image" -> hooks.generateImage(args.optString("prompt"), args.optBoolean("change_last", false))
             "diagram" -> hooks.diagram(args.optString("title"), args.optString("outline"), args.optString("mode", "new"), args.optString("remove"))
             "show_gallery" -> hooks.showGallery(args.optString("album"), args.optInt("count", 4))
