@@ -26,6 +26,9 @@ object Timing {
         notes[key] = value
     }
 
+    /** Milliseconds from [start] to the first time [name] was marked, or -1. */
+    fun since(name: String): Long = marks[name]?.let { (it - t0) / 1_000_000 } ?: -1L
+
     fun report(): String {
         if (t0 == 0L) return ""
         val steps = marks.entries.sortedBy { it.value }

@@ -159,8 +159,10 @@ class ToolRunner(
 
     fun run(name: String, args: JSONObject): String {
         Diag.log("tool $name ${args.toString().take(120)}")
+        val t0 = System.currentTimeMillis()
         val out = runTool(name, args)
         Diag.log("  -> ${out.take(160)}")
+        Diag.log("metric tool=$name ms=${System.currentTimeMillis() - t0} ok=${out.startsWith("OK")}")
         return out
     }
 

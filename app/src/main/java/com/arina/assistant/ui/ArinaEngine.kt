@@ -910,6 +910,7 @@ class ArinaEngine private constructor(private val app: Application) {
                         if (user.isNotBlank()) { messages += ChatMessage(true, user); trackLanguage(user) }
                         if (model.isNotBlank()) { messages += ChatMessage(false, model); caption.value = model }
                         lastTiming.value = Timing.report()
+                        com.arina.assistant.ai.Diag.log("metric turn firstAudioMs=${Timing.since("live first audio")} readyMs=${Timing.since("live ready")}")
                         status.value = if (micOn.value) Status.Listening else Status.Idle
                     }
                 }
@@ -1084,6 +1085,27 @@ class ArinaEngine private constructor(private val app: Application) {
         caption.value = ""
         messages += ChatMessage(true, t); trackLanguage(t)
         status.value = Status.Thinking
+        // Unmistakable one-step commands run on the phone at once; anything doubtful goes to the model as usual.
+        com.arina.assistant.ai.LocalRouter.match(t)?.let { m ->
+            val started = System.currentTimeMillis()
+            Thread {
+                val r = runCatching { m.run(device) }.getOrDefault("ERROR")
+                val ms = System.currentTimeMillis() - started
+                com.arina.assistant.ai.Diag.log("metric local=${m.label} ms=$ms ok=${r.startsWith("OK")}")
+                scope.launch {
+                    if (r.startsWith("OK")) {
+                        val bn = t.any { it in '\u0980'..'\u09FF' }
+                        val reply = if (bn) m.bn else m.en
+                        messages += ChatMessage(false, reply); caption.value = reply; status.value = Status.Idle
+                    } else sendToLive(t)
+                }
+            }.start()
+            return
+        }
+        sendToLive(t)
+    }
+
+    private fun sendToLive(t: String) {
         run { Identity.deviceNow = runCatching { device.nowLine() }.getOrDefault(""); liveSession.start() }
         if (!micOn.value) liveSession.mute()
         liveSession.sendText(t)
