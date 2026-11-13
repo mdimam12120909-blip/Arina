@@ -419,7 +419,17 @@ class GeminiClient(
 
     /** One plain model call without tools or conversation history. [json] asks for a JSON answer. */
     fun generate(system: String, user: String, json: Boolean = false, slow: Boolean = false, role: KeyRole = KeyRole.Talk): String {
-        if (keyFor(role).isBlank()) throw IOException("No Gemini key for ${role.label}. Add one in Settings, Connections.")
+        if (keyFor(role).isBlank()) {
+            ExternalBrain.complete(system, user, json)?.let { return it }
+            throw IOException("No Gemini key for ${role.label}. Add one in Settings, Connections.")
+        }
+        return try { generateGemini(system, user, json, slow, role) } catch (e: IOException) {
+            // Gemini failed (limit, outage): another brain, if the user set a key for one, takes over.
+            ExternalBrain.complete(system, user, json)?.also { Diag.log("brain: fell back after Gemini error: ${e.message?.take(80)}") } ?: throw e
+        }
+    }
+
+    private fun generateGemini(system: String, user: String, json: Boolean, slow: Boolean, role: KeyRole): String {
         val contents = JSONArray().put(
             JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", user)))
         )

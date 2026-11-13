@@ -998,6 +998,14 @@ class ArinaEngine private constructor(private val app: Application) {
         reloadFacts()
     }
 
+    val providerKeys = androidx.compose.runtime.mutableStateMapOf<String, String>().also { m -> Keys.PROVIDERS.forEach { m[it] = Keys.provider(app, it) } }
+    init { com.arina.assistant.ai.ExternalBrain.keyOf = { Keys.provider(app, it) } }
+    fun saveProviderKeys(values: Map<String, String>) {
+        Keys.saveProviders(app, values)
+        values.forEach { (k, v) -> providerKeys[k] = v.trim() }
+        notice.value = "Saved. Other brains are used only when Gemini is missing or fails."
+    }
+
     fun saveKeys(gemini: List<String>) {
         Keys.save(app, gemini)
         geminiKey.value = Keys.gemini(app)

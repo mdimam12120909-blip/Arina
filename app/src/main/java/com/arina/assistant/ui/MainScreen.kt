@@ -117,6 +117,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -1401,6 +1402,17 @@ private fun KeysPage(vm: ArinaEngine) {
             row
         }.toTypedArray())
         PillButton("Save keys") { vm.saveKeys(gemini.toList()) }
+        val other = remember { mutableStateMapOf<String, String>().also { m -> vm.providerKeys.forEach { (k, v) -> m[k] = v } } }
+        SectionTitle("OTHER AI BRAINS (OPTIONAL)")
+        Text("Used only when Gemini has no key or fails, so work never stops. Leave empty if you have none.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 4.dp))
+        val labels = listOf("openai" to "OpenAI (ChatGPT)", "anthropic" to "Anthropic (Claude)", "groq" to "Groq (fast, has a free tier)", "deepseek" to "DeepSeek (cheap)", "cartesia" to "Cartesia (voice, saved for a later update)")
+        Group(*labels.map { (id, name) ->
+            val row: @Composable () -> Unit = {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) { KeyField(name, other[id].orEmpty(), true) { other[id] = it } }
+            }
+            row
+        }.toTypedArray())
+        PillButton("Save other keys") { vm.saveProviderKeys(other.toMap()) }
         vm.notice.value?.let { Text(it, color = Warn, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 4.dp)) }
     }
 }

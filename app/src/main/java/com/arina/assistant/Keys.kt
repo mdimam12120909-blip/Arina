@@ -34,6 +34,15 @@ object Keys {
     /** All non-empty Gemini keys joined by new lines, the form the clients read. */
     fun gemini(c: Context): String = geminiSlots(c).filter { it.isNotBlank() }.joinToString("\n")
 
+    /** Keys for the other AI brains and the Cartesia voice. Only what this account typed; empty means not used. */
+    val PROVIDERS = listOf("openai", "anthropic", "groq", "deepseek", "cartesia")
+    fun provider(c: Context, name: String): String = prefs(c).getString("provider_$name", "")?.trim().orEmpty()
+    fun saveProviders(c: Context, values: Map<String, String>) {
+        val e = prefs(c).edit()
+        PROVIDERS.forEach { e.putString("provider_$it", values[it].orEmpty().trim()) }
+        e.apply()
+    }
+
     fun save(c: Context, gemini: List<String>) {
         val e = prefs(c).edit()
         for (i in 0 until GEMINI_SLOTS) e.putString(slotName(i), gemini.getOrNull(i).orEmpty().trim())
