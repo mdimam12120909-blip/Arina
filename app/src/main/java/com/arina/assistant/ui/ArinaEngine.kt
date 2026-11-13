@@ -694,6 +694,42 @@ class ArinaEngine private constructor(private val app: Application) {
         scope.launch(Dispatchers.IO) { runCatching { cloud.syncUp() }.onFailure { com.arina.assistant.ai.Diag.log("sync up failed: ${it.message?.take(100)}") } }
     }
 
+    // ---- Pro plan -----------------------------------------------------------------------------------
+    val plan = mutableStateOf("free")
+    val planEnds = mutableStateOf("")
+    val payments = mutableStateListOf<Cloud.Payment>()
+    val isPro: Boolean get() = plan.value == "pro"
+
+    fun refreshPlan() {
+        scope.launch {
+            val (p, e) = withContext(Dispatchers.IO) { runCatching { cloud.plan() }.getOrDefault("free" to "") }
+            plan.value = p; planEnds.value = e
+            val list = withContext(Dispatchers.IO) { runCatching { cloud.payments() }.getOrDefault(emptyList()) }
+            payments.clear(); payments.addAll(list)
+        }
+    }
+
+    fun submitPayment(trx: String, sender: String, amount: String) {
+        if (trx.isBlank() || sender.isBlank()) { notice.value = "Write the transaction ID and the number you paid from."; return }
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { cloud.submitPayment(trx, sender, amount) }
+                notice.value = "Sent. You will get Pro as soon as it is checked."
+                refreshPlan()
+            } catch (e: Exception) { notice.value = (e.message ?: "Could not send it.").take(200) }
+        }
+    }
+
+    fun reviewPayment(id: Long, approve: Boolean) {
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { cloud.reviewPayment(id, approve) }
+                notice.value = if (approve) "Approved. Pro is on for 30 days." else "Rejected."
+                refreshPlan()
+            } catch (e: Exception) { notice.value = (e.message ?: "Could not do that.").take(200) }
+        }
+    }
+
     fun signInProblem(message: String) { notice.value = message.take(240) }
 
     fun signOut() {
@@ -710,6 +746,7 @@ class ArinaEngine private constructor(private val app: Application) {
     fun refreshCloud() {
         syncOnboarding()
         syncToCloud()
+        refreshPlan()
         scope.launch(Dispatchers.IO) {
             runCatching { cloud.fetchServedKeys() }.onFailure { com.arina.assistant.ai.Diag.log("keys: ${it.message?.take(80)}") }
             withContext(Dispatchers.Main) {

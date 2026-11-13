@@ -257,6 +257,44 @@ class Cloud(private val ctx: Context) {
         com.arina.assistant.Keys.brains = com.arina.assistant.ai.Gateway.status()
     }
 
+    // ---- Pro plan and payments -------------------------------------------------------------------------
+
+    class Payment(val id: Long, val email: String, val trx: String, val sender: String, val amount: String, val status: String, val created: String)
+
+    /** "free" or "pro". A Pro plan whose end date has passed counts as free. */
+    fun plan(): Pair<String, String> {
+        val t = token() ?: return "free" to ""
+        val (code, text) = raw("GET", "/rest/v1/subscriptions?select=plan,expires_at", null, bearer = t)
+        if (code !in 200..299) return "free" to ""
+        val a = JSONArray(text)
+        if (a.length() == 0) return "free" to ""
+        val o = a.getJSONObject(0)
+        val exp = o.optString("expires_at", "").let { if (it == "null") "" else it }
+        if (o.optString("plan") != "pro") return "free" to ""
+        if (exp.isNotEmpty() && runCatching { java.time.OffsetDateTime.parse(exp).toInstant().isBefore(java.time.Instant.now()) }.getOrDefault(false)) return "free" to exp
+        return "pro" to exp
+    }
+
+    fun submitPayment(trx: String, sender: String, amount: String) {
+        val t = token() ?: throw IOException("Sign in first.")
+        val body = JSONObject().put("method", "bkash").put("trx_id", trx.trim()).put("sender", sender.trim())
+        amount.trim().toDoubleOrNull()?.let { body.put("amount", it) }
+        val (code, text) = raw("POST", "/rest/v1/payments", body.toString(), bearer = t, prefer = "return=minimal")
+        if (code == 409) throw IOException("This transaction ID was already used.")
+        if (code !in 200..299) throw IOException("Could not send it (HTTP $code): ${message(text)}")
+    }
+
+    /** Own payments for a person, every payment for the admin. */
+    fun payments(): List<Payment> {
+        val t = token() ?: return emptyList()
+        val (code, text) = raw("GET", "/rest/v1/payments?select=id,user_id,trx_id,sender,amount,status,created_at&order=id.desc&limit=60", null, bearer = t)
+        if (code !in 200..299) return emptyList()
+        val a = JSONArray(text)
+        return (0 until a.length()).map { i -> a.getJSONObject(i).let { Payment(it.getLong("id"), it.optString("user_id").take(8), it.getString("trx_id"), it.optString("sender"), it.optString("amount").let { v -> if (v == "null") "" else v }, it.getString("status"), it.optString("created_at").take(10)) } }
+    }
+
+    fun reviewPayment(id: Long, approve: Boolean) { adminCall("POST", "/rest/v1/rpc/admin_review_payment", JSONObject().put("pid", id).put("approve", approve).toString()) }
+
     // ---- the account's own data follows it to every phone ----------------------------------------------
 
     private fun fingerprint(s: String) = s.length.toString() + ":" + s.hashCode()

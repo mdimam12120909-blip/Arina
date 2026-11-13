@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Face
@@ -145,7 +146,7 @@ import com.arina.assistant.permissions.PermissionCenter
 
 private enum class Page(val title: String) {
     Home("Home"), Chat("Chat"), Memory("Memory"), Routine("Routine"), Health("Phone health"), Soul("Soul"),
-    Settings("Settings"), Account("Account"), Permissions("Permissions"), Keys("Gemini keys"),
+    Settings("Settings"), Account("Account"), Permissions("Permissions"), Keys("AI keys"), Pro("Entrion Pro"),
     Assistant("Assistant"), Admin("Admin"), Today("Today"), Profile("Edit profile"), Connectors("Connectors"), Jobs("Tasks")
 }
 
@@ -153,7 +154,7 @@ private enum class Page(val title: String) {
 private fun tabIdx(p: Page): Int = when (p) { Page.Memory -> 0; Page.Chat -> 1; Page.Home -> 2; Page.Today -> 3; Page.Routine -> 4; else -> -1 }
 
 /** Pages that open from Settings: they show a back arrow that returns to Settings. */
-private val SETTINGS_SUB = setOf(Page.Account, Page.Permissions, Page.Keys, Page.Assistant, Page.Admin, Page.Connectors, Page.Jobs)
+private val SETTINGS_SUB = setOf(Page.Account, Page.Permissions, Page.Keys, Page.Pro, Page.Assistant, Page.Admin, Page.Connectors, Page.Jobs)
 
 private val Good = Color(0xFF3DDC97)
 private val Warn = Color(0xFFFFB84D)
@@ -245,6 +246,7 @@ fun MainScreen(
                         Page.Account -> AccountPage(vm)
                         Page.Permissions -> PermissionsPage(vm, onPermission, onGrantAll, onAppInfo)
                         Page.Keys -> KeysPage(vm)
+                        Page.Pro -> ProPage(vm)
                         Page.Connectors -> ConnectorsPage(vm)
                         Page.Jobs -> JobsPage(vm)
                         Page.Assistant -> AssistantPage(vm, onPower)
@@ -1053,10 +1055,16 @@ private fun SettingsHome(vm: ArinaEngine, go: (Page) -> Unit) {
             }
             Text("\u203A", color = ArinaColors.Muted, fontSize = 24.sp)
         }
+        SectionTitle("PLAN")
+        Group(
+            { NavRow("Entrion Pro", if (vm.isPro) "You are on Pro" + (if (vm.planEnds.value.isNotBlank()) " until " + vm.planEnds.value.take(10) else "") else "Free plan. See what Pro adds", Icons.Filled.Star, flat = true) { go(Page.Pro) } }
+        )
+        if (vm.isAdmin.value) {
+            Group({ NavRow("AI keys", "Admin: keys for everyone, kept on the server", Icons.Outlined.GraphicEq, flat = true) { go(Page.Keys) } })
+        }
         SectionTitle("ASSISTANT")
         Group(
             { NavRow("Assistant", "Companion, skills and speed report", Icons.Filled.Build, flat = true) { go(Page.Assistant) } },
-            { NavRow("Gemini keys", "Your five keys, one for each job", Icons.Outlined.GraphicEq, flat = true) { go(Page.Keys) } },
             { NavRow("Connectors", "Apps, services and websites Entrion can use", Icons.Filled.Link, flat = true) { go(Page.Connectors) } },
             { NavRow("Tasks", "Big jobs Entrion did: steps, results, run again", Icons.Filled.Build, flat = true) { go(Page.Jobs) } }
         )
@@ -1091,7 +1099,7 @@ private fun AdminPage(vm: ArinaEngine) {
     var section by rememberSaveable { mutableStateOf("Agent") }
     PageColumn {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Agent", "Facts", "Users", "Updates", "Secrets", "Log").forEach { name ->
+            listOf("Agent", "Facts", "Users", "Payments", "Updates", "Secrets", "Log").forEach { name ->
                 val on = section == name
                 Text(
                     name,
@@ -1108,6 +1116,7 @@ private fun AdminPage(vm: ArinaEngine) {
             "Agent" -> AdminAgent(vm)
             "Facts" -> AdminFacts(vm)
             "Users" -> AdminUsers(vm)
+            "Payments" -> AdminPayments(vm)
             "Updates" -> AdminUpdates(vm)
             "Log" -> AdminLog(vm)
             else -> AdminSecrets(vm)
@@ -1156,6 +1165,76 @@ private fun AdminFacts(vm: ArinaEngine) {
             Spacer(Modifier.width(10.dp))
             Text("Delete", color = Warn, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { vm.deleteGlobalFact(f.id) }.padding(6.dp))
         }
+    }
+}
+
+@Composable
+private fun AdminPayments(vm: ArinaEngine) {
+    var number by remember { mutableStateOf(vm.adminValue("bkash_number").removeSurrounding("\"")) }
+    var price by remember { mutableStateOf(vm.adminValue("pro_price").removeSurrounding("\"")) }
+    LaunchedEffect(Unit) { vm.refreshPlan() }
+    Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Where people pay", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        GlassField(number, { number = it }, "", label = "bKash number (Send Money)")
+        GlassField(price, { price = it }, "", label = "Pro price for 30 days (taka)")
+        PillButton("Save") { vm.adminSave("bkash_number", number.trim()); vm.adminSave("pro_price", price.trim()) }
+    }
+    SectionTitle("PAYMENTS")
+    if (vm.payments.isEmpty()) Text("No payments yet.", color = ArinaColors.Muted, fontSize = 13.sp)
+    vm.payments.forEach { p ->
+        Column(Modifier.fillMaxWidth().glass().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text("TrxID ${p.trx}" + (if (p.amount.isNotBlank()) "  |  ${p.amount} tk" else ""), color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Text("From ${p.sender}  |  ${p.created}  |  ${p.status.uppercase()}", color = if (p.status == "pending") Warn else ArinaColors.Muted, fontSize = 12.sp)
+            if (p.status == "pending") {
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text("Approve", color = Good, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { vm.reviewPayment(p.id, true) }.padding(vertical = 4.dp))
+                    Text("Reject", color = Warn, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { vm.reviewPayment(p.id, false) }.padding(vertical = 4.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProPage(vm: ArinaEngine) {
+    var trx by remember { mutableStateOf("") }
+    var sender by remember { mutableStateOf("") }
+    var amount by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) { vm.refreshPlan() }
+    val number = vm.adminValue("bkash_number").removeSurrounding("\"")
+    val price = vm.adminValue("pro_price").removeSurrounding("\"")
+    PageColumn {
+        Column(Modifier.fillMaxWidth().glass().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(if (vm.isPro) "You are on Pro" else "Free plan", color = if (vm.isPro) Good else ArinaColors.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+            Text(if (vm.isPro) (if (vm.planEnds.value.isBlank()) "No end date." else "Active until ${vm.planEnds.value.take(10)}.") else "Pro unlocks more of Entrion.", color = ArinaColors.Muted, fontSize = 13.sp)
+        }
+        SectionTitle("WHAT PRO GIVES")
+        Group(
+            { Text("A library of 10+ voices to choose from, and your own custom voice", color = ArinaColors.Text, fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.padding(16.dp)) },
+            { Text("Image creation and bigger diagrams", color = ArinaColors.Text, fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.padding(16.dp)) },
+            { Text("Higher daily limits and the strongest AI models", color = ArinaColors.Text, fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.padding(16.dp)) }
+        )
+        if (!vm.isPro) {
+            SectionTitle("GET PRO")
+            Column(Modifier.fillMaxWidth().glass().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (number.isBlank()) {
+                    Text("Payment is not open yet. Please check back soon.", color = ArinaColors.Muted, fontSize = 13.sp)
+                } else {
+                    Text((if (price.isNotBlank()) "$price taka for 30 days.\n" else "") + "1. Open bKash and choose Send Money.\n2. Send to $number.\n3. Write the transaction ID (TrxID) and your bKash number below.\n4. We check it and turn Pro on, usually within a day.", color = ArinaColors.Text, fontSize = 13.sp, lineHeight = 19.sp)
+                    GlassField(trx, { trx = it }, "", label = "Transaction ID (TrxID)")
+                    GlassField(sender, { sender = it }, "", label = "Your bKash number")
+                    GlassField(amount, { amount = it }, "", label = "Amount sent (taka)")
+                    PillButton("Send for checking") { vm.submitPayment(trx, sender, amount); trx = "" }
+                }
+            }
+        }
+        if (vm.payments.isNotEmpty()) {
+            SectionTitle("YOUR PAYMENTS")
+            vm.payments.forEach { p ->
+                Text("TrxID ${p.trx}  |  ${p.created}  |  ${p.status.uppercase()}", color = if (p.status == "pending") Warn else ArinaColors.Muted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 4.dp))
+            }
+        }
+        vm.notice.value?.let { Text(it, color = Warn, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 4.dp)) }
     }
 }
 
