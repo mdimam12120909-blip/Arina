@@ -54,6 +54,48 @@ object Local {
         flag.edit().putBoolean("guest_claimed", true).apply()
     }
 
+    /** The sets of personal data that follow the account to other phones. Keys and chats stay on the phone. */
+    val SYNCED = listOf("arina_memory", "arina_skills", "arina_routines", "arina_ui", "arina_tasks")
+
+    /** One preferences file as JSON text, or empty text when it holds nothing. */
+    fun dump(c: Context, name: String): String {
+        val all = prefs(c, name).all
+        if (all.isEmpty()) return ""
+        val o = org.json.JSONObject()
+        for ((k, v) in all.toSortedMap()) {
+            val e = org.json.JSONObject()
+            when (v) {
+                is String -> e.put("t", "s").put("v", v)
+                is Boolean -> e.put("t", "b").put("v", v)
+                is Int -> e.put("t", "i").put("v", v)
+                is Long -> e.put("t", "l").put("v", v)
+                is Float -> e.put("t", "f").put("v", v.toDouble())
+                is Set<*> -> e.put("t", "ss").put("v", org.json.JSONArray(v.filterIsInstance<String>().sorted()))
+                else -> continue
+            }
+            o.put(k, e)
+        }
+        return o.toString()
+    }
+
+    /** Replaces one preferences file with what [json] holds. */
+    fun restore(c: Context, name: String, json: String) {
+        val o = org.json.JSONObject(json)
+        val e = prefs(c, name).edit().clear()
+        for (k in o.keys()) {
+            val x = o.getJSONObject(k)
+            when (x.getString("t")) {
+                "s" -> e.putString(k, x.getString("v"))
+                "b" -> e.putBoolean(k, x.getBoolean("v"))
+                "i" -> e.putInt(k, x.getInt("v"))
+                "l" -> e.putLong(k, x.getLong("v"))
+                "f" -> e.putFloat(k, x.getDouble("v").toFloat())
+                "ss" -> { val a = x.getJSONArray("v"); e.putStringSet(k, (0 until a.length()).map { a.getString(it) }.toSet()) }
+            }
+        }
+        e.apply()
+    }
+
     /** Starts the app fresh, so nothing of the previous account is left in memory. */
     fun restartApp(c: Context) {
         val app = c.applicationContext

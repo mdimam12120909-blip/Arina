@@ -1370,14 +1370,13 @@ private fun ToggleCard(title: String, detail: String, checked: Boolean, onChange
 
 @Composable
 private fun KeysPage(vm: ArinaEngine) {
-    val gemini = remember { mutableStateListOf(*vm.geminiSlots.toTypedArray()) }
-    val jobs = listOf(
-        "Key 1" to "Female voice agent. Also used when another key is empty.",
-        "Key 2" to "Male voice agent.",
-        "Key 3" to "Research.",
-        "Key 4" to "Workflows and skills.",
-        "Key 5" to "Phone agent, camera and background work."
+    val admin = vm.isAdmin.value
+    val names = listOf(
+        "gemini1" to "Gemini key 1 (female voice, and the fallback for empty ones)", "gemini2" to "Gemini key 2 (male voice)", "gemini3" to "Gemini key 3 (research)",
+        "gemini4" to "Gemini key 4 (workflows and skills)", "gemini5" to "Gemini key 5 (phone agent, camera)",
+        "openai" to "OpenAI (ChatGPT)", "anthropic" to "Anthropic (Claude)", "groq" to "Groq (fast, has a free tier)", "deepseek" to "DeepSeek (cheap)", "cartesia" to "Cartesia (voice, for a later update)"
     )
+    val typed = remember { mutableStateMapOf<String, String>() }
     PageColumn {
         SectionTitle("STATUS")
         Group({
@@ -1385,34 +1384,23 @@ private fun KeysPage(vm: ArinaEngine) {
                 Box(Modifier.size(9.dp).clip(CircleShape).background(if (vm.geminiKeySet) Good else Warn))
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("${vm.geminiKeyCount} of 5 keys set", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                    Text("Stored only on this phone, under your account.", color = ArinaColors.Muted, fontSize = 12.sp)
+                    Text(if (vm.geminiKeySet) "Ready" else "Waiting for keys", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text("Entrion provides the AI keys. You never need to enter one.", color = ArinaColors.Muted, fontSize = 12.sp)
                 }
             }
         })
-        SectionTitle("YOUR GEMINI KEYS")
-        Text("Each key has one job so nothing waits for another. An empty key uses Key 1.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 4.dp))
-        Group(*gemini.indices.map { i ->
-            val row: @Composable () -> Unit = {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(jobs.getOrNull(i)?.second.orEmpty(), color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 16.sp)
-                    KeyField(jobs.getOrNull(i)?.first ?: "Key ${i + 1}", gemini[i], true) { gemini[i] = it }
-                }
+        if (admin) {
+            SectionTitle("ADMIN: KEYS FOR EVERYONE")
+            Text("Stored safely in the cloud, never shown again. Leave a field empty to keep the current key. Other brains are used only when Gemini fails.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 4.dp))
+            Group(*names.map { (id, label) ->
+                val row: @Composable () -> Unit = { Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) { KeyField(label, typed[id].orEmpty(), true) { typed[id] = it } } }
+                row
+            }.toTypedArray())
+            PillButton("Save keys") {
+                typed.filterValues { it.isNotBlank() }.forEach { (k, v) -> vm.adminSave(k, v.trim(), true) }
+                typed.clear()
             }
-            row
-        }.toTypedArray())
-        PillButton("Save keys") { vm.saveKeys(gemini.toList()) }
-        val other = remember { mutableStateMapOf<String, String>().also { m -> vm.providerKeys.forEach { (k, v) -> m[k] = v } } }
-        SectionTitle("OTHER AI BRAINS (OPTIONAL)")
-        Text("Used only when Gemini has no key or fails, so work never stops. Leave empty if you have none.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 4.dp))
-        val labels = listOf("openai" to "OpenAI (ChatGPT)", "anthropic" to "Anthropic (Claude)", "groq" to "Groq (fast, has a free tier)", "deepseek" to "DeepSeek (cheap)", "cartesia" to "Cartesia (voice, saved for a later update)")
-        Group(*labels.map { (id, name) ->
-            val row: @Composable () -> Unit = {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) { KeyField(name, other[id].orEmpty(), true) { other[id] = it } }
-            }
-            row
-        }.toTypedArray())
-        PillButton("Save other keys") { vm.saveProviderKeys(other.toMap()) }
+        }
         vm.notice.value?.let { Text(it, color = Warn, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 4.dp)) }
     }
 }

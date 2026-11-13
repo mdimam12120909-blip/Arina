@@ -194,6 +194,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onStop() {
         super.onStop()
+        engine.syncToCloud()
         engine.adminUnlocked.value = false   // the console locks itself whenever the app leaves the screen
     }
 

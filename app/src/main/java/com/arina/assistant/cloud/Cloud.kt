@@ -252,6 +252,66 @@ class Cloud(private val ctx: Context) {
         return (0 until a.length()).map { a.getJSONObject(it).let { o -> AuditRow(o.optString("at").take(16).replace('T', ' '), o.optString("actor"), o.optString("action"), o.optString("detail")) } }
     }
 
+    /** Asks Entrion's server for the AI keys. The server checks the account (and bans) first. */
+    fun fetchServedKeys() {
+        val t = token() ?: return
+        val req = Request.Builder().url(Defaults.SUPABASE_URL + "/functions/v1/get-keys").header("apikey", Defaults.SUPABASE_KEY)
+            .header("Authorization", "Bearer $t").post("{}".toRequestBody(JSON)).build()
+        http.newCall(req).execute().use { r ->
+            val text = r.body?.string().orEmpty()
+            if (!r.isSuccessful) throw IOException("keys HTTP ${r.code}")
+            val o = JSONObject(text)
+            val m = HashMap<String, String>()
+            for (k in o.keys()) m[k] = o.optString(k)
+            com.arina.assistant.Keys.served = m
+        }
+    }
+
+    // ---- the account's own data follows it to every phone ----------------------------------------------
+
+    private fun fingerprint(s: String) = s.length.toString() + ":" + s.hashCode()
+    private val syncPrefs get() = ctx.getSharedPreferences("cloud_sync_" + uid.filter { it.isLetterOrDigit() }, Context.MODE_PRIVATE)
+
+    /**
+     * Run once right after sign-in, before the screen is rebuilt. If this account already has data in the cloud and
+     * this phone has never synced it, the cloud copy wins: that is the person's real data, and what the phone holds
+     * is only a fresh start. Returns how many sets were restored.
+     */
+    fun syncDown(): Int {
+        val t = token() ?: return 0
+        val (code, text) = raw("GET", "/rest/v1/user_data?select=name,data", null, bearer = t)
+        if (code !in 200..299) throw IOException("Could not load your data (HTTP $code): ${message(text)}")
+        val rows = JSONArray(text)
+        var n = 0
+        for (i in 0 until rows.length()) {
+            val r = rows.getJSONObject(i)
+            val name = r.getString("name"); val data = r.getString("data")
+            if (name !in com.arina.assistant.cloud.Local.SYNCED || data.isBlank()) continue
+            val lastPushed = syncPrefs.getString(name, null)
+            val local = com.arina.assistant.cloud.Local.dump(ctx, name)
+            val remoteFp = fingerprint(data)
+            val localUnchanged = lastPushed != null && fingerprint(local) == lastPushed
+            if (lastPushed == null || (localUnchanged && remoteFp != lastPushed)) {
+                runCatching { com.arina.assistant.cloud.Local.restore(ctx, name, data); syncPrefs.edit().putString(name, remoteFp).apply(); n++ }
+            }
+        }
+        return n
+    }
+
+    /** Uploads whatever changed on this phone since the last upload. */
+    fun syncUp() {
+        val t = token() ?: return
+        for (name in com.arina.assistant.cloud.Local.SYNCED) {
+            val data = com.arina.assistant.cloud.Local.dump(ctx, name)
+            if (data.isBlank() || data.length > 400_000) continue
+            val fp = fingerprint(data)
+            if (syncPrefs.getString(name, null) == fp) continue
+            val row = JSONObject().put("name", name).put("data", data).put("updated_at", java.time.Instant.now().toString())
+            val (code, _) = raw("POST", "/rest/v1/user_data?on_conflict=user_id,name", row.toString(), bearer = t, prefer = "resolution=merge-duplicates,return=minimal")
+            if (code in 200..299) syncPrefs.edit().putString(name, fp).apply()
+        }
+    }
+
     // ---- plumbing ----------------------------------------------------------------------------
 
     private fun raw(method: String, path: String, body: String?, bearer: String?, prefer: String? = null): Pair<Int, String> {

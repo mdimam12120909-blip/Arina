@@ -27,8 +27,13 @@ object Keys {
     private fun slotName(i: Int) = if (i == 0) "gemini" else "gemini${i + 1}"
 
     /** The five Gemini key slots, in order; empty strings for unused slots. Slot 1 can come from the build. */
-    fun geminiSlots(c: Context): List<String> = List(GEMINI_SLOTS) { i ->
-        prefs(c).getString(slotName(i), "")?.trim().orEmpty()   // only what this account typed; no key is shared between accounts
+    /** Keys that Entrion hands out after sign-in. Held in memory only, never written to the phone. */
+    @Volatile var served: Map<String, String> = emptyMap()
+
+    fun geminiSlots(c: Context): List<String> {
+        val fromCloud = List(GEMINI_SLOTS) { i -> served["gemini${i + 1}"].orEmpty().trim() }
+        if (fromCloud.any { it.isNotBlank() }) return fromCloud
+        return List(GEMINI_SLOTS) { i -> prefs(c).getString(slotName(i), "")?.trim().orEmpty() }   // older typed keys still work
     }
 
     /** All non-empty Gemini keys joined by new lines, the form the clients read. */
@@ -36,7 +41,7 @@ object Keys {
 
     /** Keys for the other AI brains and the Cartesia voice. Only what this account typed; empty means not used. */
     val PROVIDERS = listOf("openai", "anthropic", "groq", "deepseek", "cartesia")
-    fun provider(c: Context, name: String): String = prefs(c).getString("provider_$name", "")?.trim().orEmpty()
+    fun provider(c: Context, name: String): String = served[name]?.trim().takeUnless { it.isNullOrEmpty() } ?: prefs(c).getString("provider_$name", "")?.trim().orEmpty()
     fun saveProviders(c: Context, values: Map<String, String>) {
         val e = prefs(c).edit()
         PROVIDERS.forEach { e.putString("provider_$it", values[it].orEmpty().trim()) }

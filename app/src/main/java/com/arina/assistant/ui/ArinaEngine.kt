@@ -665,7 +665,11 @@ class ArinaEngine private constructor(private val app: Application) {
         signInBusy.value = true
         scope.launch {
             try {
-                withContext(Dispatchers.IO) { cloud.signInWithGoogle(idToken) }
+                withContext(Dispatchers.IO) {
+                    cloud.signInWithGoogle(idToken)
+                    // The same account on a new phone gets its own memory and settings back before the screen is built.
+                    runCatching { cloud.syncDown() }.onFailure { com.arina.assistant.ai.Diag.log("sync down failed: ${it.message?.take(100)}") }
+                }
                 // Each account's personal data lives apart from every other account's. Nothing is ever moved between them.
                 switchAccount()
             } catch (e: Exception) {
@@ -683,9 +687,18 @@ class ArinaEngine private constructor(private val app: Application) {
     var onAccountSwitched: (() -> Unit)? = null
     private fun switchAccount() { onAccountSwitched?.invoke() }
 
+    /** Saves this phone's changes to the account's cloud copy. Quiet and safe to call often. */
+    fun syncToCloud() {
+        if (!cloud.signedIn) return
+        scope.launch(Dispatchers.IO) { runCatching { cloud.syncUp() }.onFailure { com.arina.assistant.ai.Diag.log("sync up failed: ${it.message?.take(100)}") } }
+    }
+
     fun signInProblem(message: String) { notice.value = message.take(240) }
 
     fun signOut() {
+        // Save this account's latest data to the cloud first, so it is there for the next phone.
+        Thread { runCatching { cloud.syncUp() } }.apply { start(); join(4000) }
+        Keys.served = emptyMap()
         cloud.signOut()
         Identity.userName = ""; Identity.mainLanguage = ""
         // Back to the signed-out (guest) data, which holds nothing of any account.
@@ -695,6 +708,15 @@ class ArinaEngine private constructor(private val app: Application) {
     /** Downloads the admin's settings and checks whether this account is the admin. Quietly does nothing offline. */
     fun refreshCloud() {
         syncOnboarding()
+        syncToCloud()
+        scope.launch(Dispatchers.IO) {
+            runCatching { cloud.fetchServedKeys() }.onFailure { com.arina.assistant.ai.Diag.log("keys: ${it.message?.take(80)}") }
+            withContext(Dispatchers.Main) {
+                geminiKey.value = Keys.gemini(app)
+                geminiSlots.clear(); geminiSlots.addAll(Keys.geminiSlots(app))
+                gemini.reset()
+            }
+        }
         scope.launch {
             val admin = withContext(Dispatchers.IO) {
                 runCatching { cloud.fetchConfig() }
