@@ -143,8 +143,8 @@ class GeminiLive(
                 )
             )
         val vad = JSONObject()
-            .put("startOfSpeechSensitivity", "START_SENSITIVITY_LOW")
-            .put("prefixPaddingMs", 100)
+            .put("startOfSpeechSensitivity", "START_SENSITIVITY_HIGH")   // LOW missed quiet or short speech
+            .put("prefixPaddingMs", 250)
             .put("silenceDurationMs", SILENCE_MS)
         val setup = JSONObject()
             .put("model", "models/$MODEL")
@@ -310,8 +310,10 @@ class GeminiLive(
             runCatching { if (AcousticEchoCanceler.isAvailable()) AcousticEchoCanceler.create(rec.audioSessionId)?.enabled = true }
             runCatching { if (NoiseSuppressor.isAvailable()) NoiseSuppressor.create(rec.audioSessionId)?.enabled = true }
             val buf = ShortArray(chunk)
+            var sent = 0; var silentBlocks = 0; var emptyReads = 0; var peak = -100f; var lastLog = System.currentTimeMillis()
             try {
                 rec.startRecording()
+                Diag.log("mic: recording started (state ${rec.recordingState}, source ${rec.audioSource})")
                 while (generation == mine) {
                     var got = 0
                     while (got < chunk && generation == mine) {
@@ -319,11 +321,19 @@ class GeminiLive(
                         if (n <= 0) break
                         got += n
                     }
-                    if (got <= 0) continue
+                    if (got <= 0) {
+                        if (++emptyReads > 150) { cb.onError("The microphone stopped giving sound. Another app may be using it."); break }
+                        Thread.sleep(20); continue
+                    }
+                    emptyReads = 0
                     var sum = 0.0
                     for (i in 0 until got) sum += buf[i].toDouble() * buf[i]
                     val db = (20 * log10(sqrt(sum / got) / 32768.0 + 1e-9)).toFloat()
                     cb.onLevel(((db + 60f) / 40f).coerceIn(0f, 1f))
+                    if (db > peak - 100f && db > peak) peak = db
+                    if (db < -70f) silentBlocks++
+                    val nowMs = System.currentTimeMillis()
+                    if (nowMs - lastLog > 8000) { Diag.log("mic: sent=$sent chunks, silent=$silentBlocks, peak=${"%.0f".format(peak)} dB, muted=$micMuted, ready=$ready"); sent = 0; silentBlocks = 0; peak = -100f; lastLog = nowMs }
                     if (micMuted) continue
                     val bytes = ByteArray(got * 2)
                     for (i in 0 until got) { bytes[i * 2] = (buf[i].toInt() and 0xff).toByte(); bytes[i * 2 + 1] = (buf[i].toInt() shr 8).toByte() }
@@ -334,7 +344,7 @@ class GeminiLive(
                                 .put("mimeType", "audio/pcm;rate=16000")
                         )
                     )
-                    socket?.send(msg.toString())
+                    if (socket?.send(msg.toString()) == true) sent++
                 }
             } catch (e: Exception) {
                 if (generation == mine) cb.onError("Microphone problem: ${e.message}")
