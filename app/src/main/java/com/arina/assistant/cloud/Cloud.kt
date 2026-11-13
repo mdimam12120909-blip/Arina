@@ -252,19 +252,9 @@ class Cloud(private val ctx: Context) {
         return (0 until a.length()).map { a.getJSONObject(it).let { o -> AuditRow(o.optString("at").take(16).replace('T', ' '), o.optString("actor"), o.optString("action"), o.optString("detail")) } }
     }
 
-    /** Asks Entrion's server for the AI keys. The server checks the account (and bans) first. */
+    /** Asks Entrion's server which other AI brains it can use. Names only; no key ever reaches the phone. */
     fun fetchServedKeys() {
-        val t = token() ?: return
-        val req = Request.Builder().url(Defaults.SUPABASE_URL + "/functions/v1/get-keys").header("apikey", Defaults.SUPABASE_KEY)
-            .header("Authorization", "Bearer $t").post("{}".toRequestBody(JSON)).build()
-        http.newCall(req).execute().use { r ->
-            val text = r.body?.string().orEmpty()
-            if (!r.isSuccessful) throw IOException("keys HTTP ${r.code}")
-            val o = JSONObject(text)
-            val m = HashMap<String, String>()
-            for (k in o.keys()) m[k] = o.optString(k)
-            com.arina.assistant.Keys.served = m
-        }
+        com.arina.assistant.Keys.brains = com.arina.assistant.ai.Gateway.status()
     }
 
     // ---- the account's own data follows it to every phone ----------------------------------------------

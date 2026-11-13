@@ -28,14 +28,15 @@ class ImageGen(private val ctx: Context, private val key: () -> String) {
         val ref = if (changeLast) last?.takeIf { it.exists() } else null
         val parts = JSONArray().put(JSONObject().put("text", prompt))
         ref?.let { parts.put(JSONObject().put("inlineData", JSONObject().put("mimeType", "image/png").put("data", Base64.encodeToString(it.readBytes(), Base64.NO_WRAP)))) }
-        val body = JSONObject()
+        val bodyJson = JSONObject()
             .put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", parts)))
             .put("generationConfig", JSONObject().put("responseModalities", JSONArray().put("IMAGE").put("TEXT")))
-            .toString().toRequestBody("application/json".toMediaType())
+            .toString()
+        val body = bodyJson.toRequestBody("application/json".toMediaType())
         var err = "no image model answered"
         for (m in MODELS) {
             try {
-                val req = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent").header("x-goog-api-key", k).post(body).build()
+                val req = if (Gateway.isProxy(k)) Gateway.gen(k, m, false, org.json.JSONObject(bodyJson)) else Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent").header("x-goog-api-key", k).post(body).build()
                 http.newCall(req).execute().use { r ->
                     val txt = r.body?.string().orEmpty()
                     if (!r.isSuccessful) { err = "$m: HTTP ${r.code} ${runCatching { JSONObject(txt).getJSONObject("error").optString("message") }.getOrDefault("").take(120)}"; Diag.log("image: $err"); return@use }

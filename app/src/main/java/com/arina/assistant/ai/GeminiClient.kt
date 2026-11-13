@@ -226,7 +226,7 @@ class GeminiClient(
             .put("generationConfig", generation)
         if (withTools) body.put("tools", JSONArray().put(JSONObject().put("functionDeclarations", tools.declarations())))
 
-        val request = Request.Builder()
+        val request = if (Gateway.isProxy(key)) Gateway.gen(key, model, o.stream, body) else Request.Builder()
             .url("https://generativelanguage.googleapis.com/v1beta/models/$model:" + if (o.stream) "streamGenerateContent?alt=sse" else "generateContent")
             .header("x-goog-api-key", key)
             .post(body.toString().toRequestBody("application/json".toMediaType()))

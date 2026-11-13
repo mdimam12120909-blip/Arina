@@ -158,6 +158,7 @@ class ArinaEngine private constructor(private val app: Application) {
     }
 
     // Keys (editable in the Setup tab)
+    init { Keys.authToken = { cloud.accessToken() } }
     val geminiKey: MutableState<String> = mutableStateOf(Keys.gemini(app))
     val geminiSlots = mutableStateListOf<String>().also { it.addAll(Keys.geminiSlots(app)) }
     val geminiKeySet: Boolean get() = geminiKey.value.isNotBlank()
@@ -698,7 +699,7 @@ class ArinaEngine private constructor(private val app: Application) {
     fun signOut() {
         // Save this account's latest data to the cloud first, so it is there for the next phone.
         Thread { runCatching { cloud.syncUp() } }.apply { start(); join(4000) }
-        Keys.served = emptyMap()
+        Keys.brains = emptySet()
         cloud.signOut()
         Identity.userName = ""; Identity.mainLanguage = ""
         // Back to the signed-out (guest) data, which holds nothing of any account.

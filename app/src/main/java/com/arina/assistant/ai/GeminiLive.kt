@@ -76,7 +76,9 @@ class GeminiLive(
     @Volatile private var track: AudioTrack? = null
     @Volatile private var framesWritten = 0L
 
-    val active: Boolean get() = socket != null
+    @Volatile private var connecting = false
+    @Volatile private var pendingToken: String? = null
+    val active: Boolean get() = socket != null || connecting
 
     // Keeps a long conversation alive: Google can hand back a resume token, so a dropped connection continues with its memory.
     @Volatile private var resumeHandle: String? = null
@@ -87,7 +89,7 @@ class GeminiLive(
     @Synchronized
     fun start() {
         micMuted = false
-        if (socket != null) return
+        if (socket != null || connecting) return
         val k = key().trim()
         if (k.isEmpty()) {
             cb.onError("Gemini API key is missing. Paste it in Settings and tap Save.")
@@ -98,6 +100,24 @@ class GeminiLive(
         usedHandleNotReady = resumeHandle != null
         Timing.mark("live socket opening")
         connectStartedAt = System.currentTimeMillis()
+        if (Gateway.isProxy(k)) {
+            // The real key stays on Entrion's server; a one-use token opens this session.
+            connecting = true
+            Thread {
+                val tok = try { Gateway.liveToken(k) } catch (e: Exception) {
+                    synchronized(this) { connecting = false }
+                    if (generation == mine) cb.onError(e.message ?: "The voice service is not ready.")
+                    return@Thread
+                }
+                synchronized(this) {
+                    connecting = false
+                    if (generation != mine) return@Thread
+                    pendingToken = tok
+                    socket = http.newWebSocket(Request.Builder().url(Gateway.liveUrl(tok, Gateway.useAlphaLive)).build(), Listener(mine))
+                }
+            }.apply { isDaemon = true }.start()
+            return
+        }
         socket = http.newWebSocket(Request.Builder().url("$URL?key=$k").build(), Listener(mine))
     }
 
@@ -171,6 +191,13 @@ class GeminiLive(
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             if (generation != mine) return
+            val tok = pendingToken
+            if (tok != null && !ready && !Gateway.useAlphaLive && (response?.code == 404 || response?.code == 400)) {
+                // The token endpoint may live under the other API version: try that once.
+                Gateway.useAlphaLive = true
+                synchronized(this) { if (generation == mine) socket = http.newWebSocket(Request.Builder().url(Gateway.liveUrl(tok, true)).build(), Listener(mine)) }
+                return
+            }
             end(mine, "Gemini Live failed: ${t.message ?: "no connection"}${response?.let { " (HTTP ${it.code})" }.orEmpty()}")
         }
 

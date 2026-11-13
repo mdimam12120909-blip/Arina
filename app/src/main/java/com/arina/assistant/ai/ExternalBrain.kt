@@ -52,6 +52,7 @@ object ExternalBrain {
         val body = JSONObject().put("model", c.model)
             .put("messages", JSONArray().put(JSONObject().put("role", "system").put("content", system)).put(JSONObject().put("role", "user").put("content", user)))
         if (json) body.put("response_format", JSONObject().put("type", "json_object"))
+        if (key == "proxy") return JSONObject(Gateway.brain(c.name, body)).getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content").trim()
         val req = Request.Builder().url(c.url).header("Authorization", "Bearer $key").post(body.toString().toRequestBody(JSON)).build()
         http.newCall(req).execute().use { r ->
             val t = r.body?.string().orEmpty()
@@ -63,6 +64,7 @@ object ExternalBrain {
     private fun anthropic(key: String, system: String, user: String): String {
         val body = JSONObject().put("model", "claude-haiku-4-5").put("max_tokens", 2000).put("system", system)
             .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", user)))
+        if (key == "proxy") { val a = JSONObject(Gateway.brain("anthropic", body)).getJSONArray("content"); return (0 until a.length()).joinToString("") { a.getJSONObject(it).optString("text") }.trim() }
         val req = Request.Builder().url("https://api.anthropic.com/v1/messages").header("x-api-key", key).header("anthropic-version", "2023-06-01")
             .post(body.toString().toRequestBody(JSON)).build()
         http.newCall(req).execute().use { r ->
