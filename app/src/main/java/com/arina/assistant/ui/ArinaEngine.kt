@@ -1008,7 +1008,7 @@ class ArinaEngine private constructor(private val app: Application) {
         uiPrefs.edit().putString("persona", p.name).apply()
         caption.value = ""
         notice.value = null
-        messages += ChatMessage(false, "${p.displayName} agent here, part of Entrion by Pravat.")
+        messages += ChatMessage(false, "${p.displayName} agent here, part of Entrion.")
         if (micOn.value) restartListening()
     }
 

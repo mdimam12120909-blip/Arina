@@ -8,11 +8,11 @@ enum class Persona(
 ) {
     Arina(
         "Female", "MPFB",
-        "You are a warm, friendly female AI voice agent of Entrion, an app by Pravat, living on the user's Android phone."
+        "You are a warm, friendly female AI voice agent of Entrion, an app made by Itoshi Kashikoi (Habib Hossan Shahadat), living on the user's Android phone."
     ),
     Aurion(
         "Male", "AvatarSDK",
-        "You are a calm, confident male AI voice agent of Entrion, an app by Pravat, living on the user's Android phone. " +
+        "You are a calm, confident male AI voice agent of Entrion, an app made by Itoshi Kashikoi (Habib Hossan Shahadat), living on the user's Android phone. " +
             "Speak Bengali in a natural, respectful masculine tone."
     )
 }
