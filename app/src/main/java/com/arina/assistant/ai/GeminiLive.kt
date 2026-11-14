@@ -86,6 +86,7 @@ class GeminiLive(
 
     // ---- Cartesia mode: sentences are fetched one by one while earlier ones are already playing ----
     @Volatile private var ttsCfg: TtsCfg? = null
+    @Volatile private var cartesiaBroken = false   // the text-mode session failed to open: use the Gemini voice for now
     private val sentences = LinkedBlockingQueue<Pair<Int, String>>()
     private val ttsPending = java.util.concurrent.atomic.AtomicInteger(0)
     @Volatile private var ttsGen = 0
@@ -148,7 +149,7 @@ class GeminiLive(
             return
         }
         val mine = ++generation
-        ttsCfg = tts()
+        ttsCfg = if (cartesiaBroken) null else tts()
         ready = false
         usedHandleNotReady = resumeHandle != null
         Timing.mark("live socket opening")
@@ -182,6 +183,7 @@ class GeminiLive(
     /** Ends the conversation completely. */
     @Synchronized
     fun stop() {
+        cartesiaBroken = false
         resumeHandle = null
         generation++
         ready = false
@@ -263,6 +265,7 @@ class GeminiLive(
     private fun end(mine: Int, message: String) {
         synchronized(this) {
             if (generation != mine) return
+            if (!ready && ttsCfg != null) { cartesiaBroken = true; Diag.log("voice: Cartesia mode could not open (${message.take(140)}); falling back to the Gemini voice") }
             if (usedHandleNotReady) { resumeHandle = null; usedHandleNotReady = false }   // a stale token must not trap the next try
             generation++
             ready = false
