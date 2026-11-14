@@ -1171,7 +1171,7 @@ private fun AdminAgent(vm: ArinaEngine) {
 private fun AdminVoices(vm: ArinaEngine) {
     // The library is one published setting: a JSON list of {name, id, gender, desc}. The chosen voice per agent is cartesia_voice_female / _male.
     fun load(): List<org.json.JSONObject> = runCatching {
-        val a = org.json.JSONArray(vm.adminValue("voice_library", "[]").removeSurrounding("\"").replace("\\\"", "\""))
+        val a = org.json.JSONArray(vm.adminValue("voice_library", "[]"))
         (0 until a.length()).map { a.getJSONObject(it) }
     }.getOrDefault(emptyList())
     var voices by remember { mutableStateOf(load()) }
