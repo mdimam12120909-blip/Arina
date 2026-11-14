@@ -47,14 +47,14 @@ fun HealthCheckCard(vm: ArinaEngine) {
     var ran by remember { androidx.compose.runtime.mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Check everything", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-        Text("Tests the keys, internet, permissions and connections, and tells you what to fix.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
+        Text("Tests the AI service, internet, permissions and connections, and tells you what to fix.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
         PillButton(if (ran) "Check again" else "Run check") {
             scope.launch {
                 val list = withContext(Dispatchers.IO) {
                     val out = ArrayList<Check>()
                     val online = runCatching { vm.deviceNow() }.getOrDefault("").let { !it.contains("offline") }
                     out += Check(online, "Internet", if (online) "Connected." else "No internet. Entrion needs it to think and talk.")
-                    out += Check(vm.geminiKeyCount > 0, "AI keys", if (vm.geminiKeyCount > 0) "${vm.geminiKeyCount} of 5 keys set." else "No key set. Add one in Settings, Keys.")
+                    out += Check(vm.geminiKeyCount > 0, "AI service", if (vm.geminiKeyCount > 0) "Ready." else "Not ready. Sign in and try again.")
                     val acc = ArinaAccessibilityService.instance != null
                     val accOn = PermissionCenter.accessibilityEnabled(ctx)
                     out += Check(acc, "Device control", when { acc -> "Working."; accOn -> "Switched on but not running. Turn Entrion's Accessibility off and on once."; else -> "Off. Turn it on in Settings, Accessibility, Entrion." })

@@ -82,7 +82,7 @@ private fun Modifier.obGlass(shape: androidx.compose.ui.graphics.Shape = Rounded
 private val FOUND = listOf("A friend told me" to Icons.Outlined.Group, "YouTube or social media" to Icons.Outlined.PlayArrow, "Search" to Icons.Outlined.Search, "Something else" to Icons.Outlined.AutoAwesome)
 private val USES = listOf("Calls & messages", "Reminders", "Research", "Studying", "Translate", "Control my phone", "Just talk", "Memory", "Daily planning", "Writing")
 private val PERS_ICONS = listOf(Icons.Outlined.EmojiEmotions, Icons.Outlined.Work, Icons.Outlined.Celebration, Icons.Outlined.Spa)
-private const val STEPS = 8
+private const val STEPS = 7
 
 /** Shown once, right after a new account signs in: a calm run of questions that sets Entrion up the way the person wants. */
 @Composable
@@ -95,14 +95,12 @@ fun OnboardingScreen(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onAssist
     var call by rememberSaveable { mutableStateOf(vm.callName.value) }
     var about by rememberSaveable { mutableStateOf("") }
     var pers by rememberSaveable { mutableIntStateOf(0) }
-    val keys = remember { mutableStateListOf(*vm.geminiSlots.toTypedArray()) }
     var back by remember { mutableStateOf(false) }
 
     fun finish() {
         if (first.isNotBlank() || call.isNotBlank()) vm.saveProfile(first.trim(), last.trim(), call.trim(), pers, vm.avatarTone.intValue)
         else vm.saveProfile(vm.firstName.value, vm.lastName.value, vm.callName.value, pers, vm.avatarTone.intValue)
         if (about.isNotBlank()) vm.saveProfile(about.trim())
-        if (keys.any { it.isNotBlank() }) vm.saveKeys(keys.toList())
         vm.uiPrefs.edit().putBoolean("onboarded", true).putInt("ob_found", found).putString("ob_uses", uses).putBoolean("ob_synced", false).apply()
         vm.syncOnboarding()
         onDone()
@@ -115,8 +113,7 @@ fun OnboardingScreen(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onAssist
         1 -> uses.isNotBlank()
         2 -> first.isNotBlank()
         3 -> about.isNotBlank()
-        6 -> keys.any { it.isNotBlank() }
-        7 -> isAssistant || PermissionCenter.runtime.firstOrNull { it.id == "mic" }?.let { vm.perms[it.id] == true } == true
+        6 -> isAssistant || PermissionCenter.runtime.firstOrNull { it.id == "mic" }?.let { vm.perms[it.id] == true } == true
         else -> true
     }
     fun next() { back = false; if (step >= STEPS - 1) finish() else step++ }
@@ -194,14 +191,8 @@ fun OnboardingScreen(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onAssist
                                 Title(6, "How should it talk to you?", "Choose a personality. You can change it any time.")
                                 ArinaEngine.PERSONALITIES.take(4).forEachIndexed { i, (name, _) -> Option(PERS_ICONS[i], name, pers == i) { pers = i } }
                             }
-                            6 -> {
-                                Title(7, "Add your Gemini keys", "Five keys, one for each job. Free keys from Google AI Studio work. Stored only on this phone, under your account.")
-                                val jobs = listOf("Key 1 · female agent", "Key 2 · male agent", "Key 3 · research", "Key 4 · workflows and skills", "Key 5 · phone agent and camera")
-                                Fields { keys.forEachIndexed { i, v -> GlassField(v, { keys[i] = it }, "Paste key", label = jobs.getOrElse(i) { "Key ${i + 1}" }, secret = true) } }
-                                Text("An empty key uses key 1.", color = ArinaColors.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp, start = 6.dp))
-                            }
                             else -> {
-                                Title(8, "Let Entrion help on your phone", "Allow only what you want. Each one can be changed later in Permissions.")
+                                Title(7, "Let Entrion help on your phone", "Allow only what you want. Each one can be changed later in Permissions.")
                                 val items = listOf(
                                     Triple(Icons.Outlined.Mic, "Microphone", PermissionCenter.runtime.firstOrNull { it.id == "mic" }),
                                     Triple(Icons.Outlined.Accessibility, "Phone control", PermissionCenter.special.firstOrNull { it.id == "accessibility" })
@@ -219,7 +210,7 @@ fun OnboardingScreen(vm: ArinaEngine, onPermission: (PermItem) -> Unit, onAssist
             Row(Modifier.fillMaxWidth().padding(bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (step > 0) Text("‹ Back", color = ArinaColors.Muted, fontSize = 14.sp, modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { prev() }.padding(horizontal = 6.dp, vertical = 10.dp))
                 Spacer(Modifier.weight(1f))
-                if (step in listOf(3, 6, 7)) Text("Skip", color = ArinaColors.Muted, fontSize = 14.sp, modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { next() }.padding(horizontal = 6.dp, vertical = 10.dp))
+                if (step in listOf(3, 6)) Text("Skip", color = ArinaColors.Muted, fontSize = 14.sp, modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { next() }.padding(horizontal = 6.dp, vertical = 10.dp))
             }
             Box(
                 Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(28.dp))
