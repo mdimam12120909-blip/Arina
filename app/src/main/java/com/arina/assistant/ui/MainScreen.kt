@@ -1090,7 +1090,7 @@ private fun AdminPage(vm: ArinaEngine) {
     var section by rememberSaveable { mutableStateOf("Agent") }
     PageColumn {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Agent", "Facts", "Users", "Keys", "Updates", "Secrets", "Log").forEach { name ->
+            listOf("Agent", "Voices", "Facts", "Users", "Keys", "Updates", "Secrets", "Log").forEach { name ->
                 val on = section == name
                 Text(
                     name,
@@ -1105,6 +1105,7 @@ private fun AdminPage(vm: ArinaEngine) {
         }
         when (section) {
             "Agent" -> AdminAgent(vm)
+            "Voices" -> AdminVoices(vm)
             "Facts" -> AdminFacts(vm)
             "Users" -> AdminUsers(vm)
             "Keys" -> AdminKeys(vm)
@@ -1164,6 +1165,63 @@ private fun AdminAgent(vm: ArinaEngine) {
             cInit = listOf(engine, cFemale, cMale, cModel, tModel)
         }
     }
+}
+
+@Composable
+private fun AdminVoices(vm: ArinaEngine) {
+    // The library is one published setting: a JSON list of {name, id, gender, desc}. The chosen voice per agent is cartesia_voice_female / _male.
+    fun load(): List<org.json.JSONObject> = runCatching {
+        val a = org.json.JSONArray(vm.adminValue("voice_library", "[]").removeSurrounding("\"").replace("\\\"", "\""))
+        (0 until a.length()).map { a.getJSONObject(it) }
+    }.getOrDefault(emptyList())
+    var voices by remember { mutableStateOf(load()) }
+    var activeF by remember { mutableStateOf(vm.adminValue("cartesia_voice_female")) }
+    var activeM by remember { mutableStateOf(vm.adminValue("cartesia_voice_male")) }
+    var adding by remember { mutableStateOf<String?>(null) }
+    var nName by remember { mutableStateOf("") }
+    var nId by remember { mutableStateOf("") }
+    var nDesc by remember { mutableStateOf("") }
+    fun save(list: List<org.json.JSONObject>) { voices = list; vm.adminSave("voice_library", org.json.JSONArray(list).toString()) }
+
+    Text("Voices come from Cartesia (paste its voice id). The one marked In use speaks for that agent. The description tells the agent who it is, so its words match its voice.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 4.dp))
+    listOf("female" to "Female voices", "male" to "Male voices").forEach { (g, title) ->
+        Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(title, color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            val mine = voices.filter { it.optString("gender") == g }
+            if (mine.isEmpty()) Text("None yet.", color = ArinaColors.Muted, fontSize = 12.sp)
+            mine.forEach { v ->
+                val id = v.optString("id")
+                val inUse = id == (if (g == "female") activeF else activeM)
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(ArinaColors.Glow.copy(alpha = if (inUse) 0.22f else 0.08f)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(v.optString("name") + if (inUse) "  (in use)" else "", color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    if (v.optString("desc").isNotBlank()) Text(v.optString("desc"), color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
+                    Text(id, color = ArinaColors.Muted, fontSize = 11.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (!inUse) Text("Use this", color = ArinaColors.Background, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.clip(RoundedCornerShape(50)).background(ArinaColors.Glow).clickable {
+                                if (g == "female") { activeF = id; vm.adminSave("cartesia_voice_female", id) } else { activeM = id; vm.adminSave("cartesia_voice_male", id) }
+                                vm.adminSave("cartesia_voice_desc_$g", v.optString("desc"))
+                            }.padding(horizontal = 14.dp, vertical = 6.dp))
+                        Text("Remove", color = ArinaColors.Text, fontSize = 12.sp,
+                            modifier = Modifier.clip(RoundedCornerShape(50)).background(ArinaColors.Glow.copy(alpha = 0.12f)).clickable { save(voices.filter { it.optString("id") != id || it.optString("gender") != g }) }.padding(horizontal = 14.dp, vertical = 6.dp))
+                    }
+                }
+            }
+            if (adding == g) {
+                KeyField("Name (for you)", nName, false) { nName = it }
+                KeyField("Cartesia voice id", nId, false) { nId = it }
+                LongField("Who is this voice? (age, mood, how it talks)", nDesc) { nDesc = it }
+                PillButton("Save voice") {
+                    val id = nId.trim()
+                    if (id.length >= 8 && nName.isNotBlank()) {
+                        save(voices.filter { it.optString("id") != id } + org.json.JSONObject().put("name", nName.trim()).put("id", id).put("gender", g).put("desc", nDesc.trim()))
+                        nName = ""; nId = ""; nDesc = ""; adding = null
+                    }
+                }
+            } else PillButton("Add new") { adding = g }
+        }
+    }
+    vm.notice.value?.let { Text(it, color = Warn, fontSize = 12.sp, lineHeight = 17.sp) }
 }
 
 @Composable

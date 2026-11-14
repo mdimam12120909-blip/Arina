@@ -671,9 +671,11 @@ class ArinaEngine private constructor(private val app: Application) {
         val facts = Cloud.cfg(app, "global_facts", "").trim()
         val extra = (if (style.isNotEmpty()) "\nHOW TO SPEAK (set by Entrion): $style" else "") +
             (if (facts.isNotEmpty()) "\nFACTS YOU KNOW (set by Entrion; treat as true):\n$facts" else "")
+        val vdesc = Cloud.cfg(app, "cartesia_voice_desc_" + (if (male) "male" else "female"), "").trim()
+        val voiceLine = if (Cloud.cfg(app, "voice_engine", "gemini") == "cartesia" && vdesc.isNotEmpty()) "\nYOUR VOICE AND CHARACTER (your words must fit it): $vdesc" else ""
         val pers = Identity.personality
         val persLine = if (pers.isNotBlank()) "\nPERSONALITY (chosen by the user): $pers" else ""
-        return base + extra + persLine + if (n.isEmpty()) " You have no personal name; if the user wants, they can give you one." else " The user has named you \"$n\"; that is your name."
+        return base + extra + voiceLine + persLine + if (n.isEmpty()) " You have no personal name; if the user wants, they can give you one." else " The user has named you \"$n\"; that is your name."
     }
 
     /** Called with Google's ID token after the account chooser. */
