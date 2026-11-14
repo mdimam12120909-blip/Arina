@@ -1071,7 +1071,7 @@ private fun SettingsHome(vm: ArinaEngine, go: (Page) -> Unit) {
                 }
             }
         )
-        if (vm.isAdmin.value) {
+        if (vm.isAdmin.value && com.arina.assistant.BuildConfig.ADMIN_APP) {
             SectionTitle("ADMIN")
             Group({ NavRow("Admin", "Settings published to every user", Icons.Filled.Info, flat = true) { go(Page.Admin) } })
         }
@@ -1881,5 +1881,15 @@ private fun ResearchPanel(vm: ArinaEngine) {
                 }
             }
         }
+    }
+}
+
+/** The admin app signed in with an account that is not an admin. */
+@Composable
+fun NotAdminScreen(vm: ArinaEngine) {
+    Column(Modifier.fillMaxSize().background(ArinaColors.Background).statusBarsPadding().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("This app is for Entrion admins only.", color = ArinaColors.Text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        Text("Sign in with an admin account, or use the regular Entrion app.", color = ArinaColors.Muted, fontSize = 13.sp, modifier = Modifier.padding(vertical = 12.dp))
+        PillButton("Sign out") { vm.signOut() }
     }
 }

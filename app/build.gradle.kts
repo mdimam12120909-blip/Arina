@@ -40,6 +40,21 @@ android {
         }
     }
 
+    // Two apps from one code base: "user" is Entrion for everyone; "admin" is the console only, installed next to it.
+    flavorDimensions += "edition"
+    productFlavors {
+        create("user") {
+            dimension = "edition"
+            buildConfigField("boolean", "ADMIN_APP", "false")
+        }
+        create("admin") {
+            dimension = "edition"
+            applicationIdSuffix = ".admin"
+            versionNameSuffix = "-admin"
+            buildConfigField("boolean", "ADMIN_APP", "true")
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false

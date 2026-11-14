@@ -126,7 +126,7 @@ private fun AssistPopup(onOpenApp: () -> Unit, onClose: () -> Unit) {
     var text by remember { mutableStateOf("") }
     var drag by remember { mutableFloatStateOf(0f) }
     val hasMic = ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-    val ready = engine.signedIn.value && !engine.isAdmin.value
+    val ready = engine.signedIn.value && !com.arina.assistant.BuildConfig.ADMIN_APP
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         // like other assistants: start listening at once when allowed, otherwise the person can type or open the app

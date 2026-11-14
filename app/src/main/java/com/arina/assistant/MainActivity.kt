@@ -112,19 +112,22 @@ class MainActivity : FragmentActivity() {
                     SignInScreen(engine)
                     return@ArinaTheme
                 }
+                if (BuildConfig.ADMIN_APP) {
+                    // The admin app is the console and nothing else: no assistant, no microphone, no orb.
+                    androidx.compose.runtime.LaunchedEffect(Unit) { OverlayService.stop(this@MainActivity) }
+                    if (!engine.signedIn.value) { SignInScreen(engine); return@ArinaTheme }
+                    if (!engine.isAdmin.value) {
+                        com.arina.assistant.ui.NotAdminScreen(engine)
+                    } else if (!engine.adminUnlocked.value) com.arina.assistant.ui.AdminGate(engine) { unlockAdmin() }
+                    else com.arina.assistant.ui.AdminConsole(engine) { engine.adminUnlocked.value = false }
+                    return@ArinaTheme
+                }
                 // First time on a new account: a short run of questions that sets Entrion up.
                 var onboarded by androidx.compose.runtime.saveable.rememberSaveable {
-                    androidx.compose.runtime.mutableStateOf(engine.isAdmin.value || engine.uiPrefs.getBoolean("onboarded", false) || engine.geminiKeySet)
+                    androidx.compose.runtime.mutableStateOf(engine.uiPrefs.getBoolean("onboarded", false) || engine.geminiKeySet)
                 }
                 if (engine.signedIn.value && !onboarded) {
                     com.arina.assistant.ui.OnboardingScreen(engine, onPermission = ::requestItem, onAssistant = { openSafely(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)) }) { onboarded = true }
-                    return@ArinaTheme
-                }
-                // An admin gets the console only: no assistant, no microphone, no floating orb.
-                if (engine.signedIn.value && engine.isAdmin.value) {
-                    androidx.compose.runtime.LaunchedEffect(Unit) { OverlayService.stop(this@MainActivity) }
-                    if (!engine.adminUnlocked.value) com.arina.assistant.ui.AdminGate(engine) { unlockAdmin() }
-                    else com.arina.assistant.ui.AdminConsole(engine) { engine.adminUnlocked.value = false }
                     return@ArinaTheme
                 }
                 MainScreen(
@@ -161,7 +164,7 @@ class MainActivity : FragmentActivity() {
     private fun handleAssist(i: Intent?) {
         if (i?.getBooleanExtra(EXTRA_FROM_ASSIST, false) != true) return
         i.removeExtra(EXTRA_FROM_ASSIST)
-        if (engine.isAdmin.value || !engine.signedIn.value) return
+        if (BuildConfig.ADMIN_APP || !engine.signedIn.value) return
         if (!hasMic()) { micPermission.launch(Manifest.permission.RECORD_AUDIO); return }
         if (!engine.micOn.value) engine.onMicTap()
     }

@@ -46,7 +46,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk Entrion.apk
-          gh release create "build-${{ github.run_number }}" Entrion.apk \
+          cp app/build/outputs/apk/user/debug/app-user-debug.apk Entrion.apk
+          cp app/build/outputs/apk/admin/debug/app-admin-debug.apk Entrion-Admin.apk
+          gh release create "build-${{ github.run_number }}" Entrion.apk Entrion-Admin.apk \
             --title "Entrion build ${{ github.run_number }}" \
-            --notes "Download Entrion.apk on your Android phone and install it."
+            --notes "Entrion.apk is the app for everyone. Entrion-Admin.apk is the admin console (installs next to it)."
