@@ -10,7 +10,7 @@ object NameMatch {
         'ক' to 'k', 'খ' to 'k', 'গ' to 'g', 'ঘ' to 'g', 'ঙ' to 'n', 'চ' to 'c', 'ছ' to 'c', 'জ' to 'j', 'ঝ' to 'j', 'ঞ' to 'n',
         'ট' to 't', 'ঠ' to 't', 'ড' to 'd', 'ঢ' to 'd', 'ণ' to 'n', 'ত' to 't', 'থ' to 't', 'দ' to 'd', 'ধ' to 'd', 'ন' to 'n',
         'প' to 'p', 'ফ' to 'p', 'ব' to 'b', 'ভ' to 'b', 'ম' to 'm', 'য' to 'j', 'র' to 'r', 'ল' to 'l', 'শ' to 's', 'ষ' to 's',
-        'স' to 's', 'হ' to 'h', 'ড়' to 'r', 'ঢ়' to 'r', 'ৎ' to 't', 'ং' to 'n'
+        'স' to 's', 'হ' to 'h', 'ৎ' to 't', 'ং' to 'n'
     )
     private val hi = mapOf(
         'क' to 'k', 'ख' to 'k', 'ग' to 'g', 'घ' to 'g', 'च' to 'c', 'छ' to 'c', 'ज' to 'j', 'झ' to 'j', 'ट' to 't', 'ठ' to 't',
