@@ -150,6 +150,7 @@ class GeminiLive(
         }
         val mine = ++generation
         ttsCfg = if (cartesiaBroken) null else tts()
+        Diag.log("voice: ${ttsCfg?.let { "Cartesia, voice ${it.voice.take(8)}, model ${it.model}, text model ${it.textModel}" } ?: "Gemini"}")
         ready = false
         startMic(mine)   // listens from the first moment; what is said while the session opens is kept and sent once it is ready
         usedHandleNotReady = resumeHandle != null

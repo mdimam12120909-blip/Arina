@@ -1258,6 +1258,11 @@ private fun AdminVoices(vm: ArinaEngine, own: Boolean = false) {
                                 if (g == "female") { activeF = id; put("cartesia_voice_female", id) } else { activeM = id; put("cartesia_voice_male", id) }
                                 put("cartesia_voice_desc_$g", v.optString("desc"))
                             }.padding(horizontal = 14.dp, vertical = 6.dp))
+                        Text("Listen", color = ArinaColors.Text, fontSize = 12.sp,
+                            modifier = Modifier.clip(RoundedCornerShape(50)).background(ArinaColors.Glow.copy(alpha = 0.12f)).clickable {
+                                vm.notice.value = "Loading the sample..."
+                                com.arina.assistant.ai.VoiceSample.play(id, get("cartesia_model"), true) { r -> vm.notice.value = if (r.isEmpty()) "Playing. This is the voice with id ${id.take(8)}." else "Could not play: $r" }
+                            }.padding(horizontal = 14.dp, vertical = 6.dp))
                         Text("Remove", color = ArinaColors.Text, fontSize = 12.sp,
                             modifier = Modifier.clip(RoundedCornerShape(50)).background(ArinaColors.Glow.copy(alpha = 0.12f)).clickable { save(voices.filter { it.optString("id") != id || it.optString("gender") != g }) }.padding(horizontal = 14.dp, vertical = 6.dp))
                     }
