@@ -1380,28 +1380,7 @@ private fun AdminKeys(vm: ArinaEngine) {
     val typed = remember { mutableStateMapOf<String, String>() }
     Text("Stored on the server, never shown again. Leave a field empty to keep the current key.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 4.dp))
     Group(*names.map { (id, label) ->
-        val row: @Composable () -> Unit = { Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) { KeyField(label, typed[id].orEmpty(), true) { typed[id] = it } } }
-        row
-    }.toTypedArray())
-    PillButton("Save keys") {
-        typed.filterValues { it.isNotBlank() }.forEach { (k, v) -> vm.adminSave(k, v.trim(), true) }
-        typed.clear()
-    }
-}
-
-@Composable () -> Unit = { Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) { KeyField(label, typed[id].orEmpty(), true) { typed[id] = it } } }
-                row
-            }.toTypedArray())
-            PillButton("Save keys") {
-                typed.filterValues { it.isNotBlank() }.forEach { (k, v) -> vm.adminSave(k, v.trim(), true) }
-                typed.clear()
-            }
-        }
-        vm.notice.value?.let { Text(it, color = Warn, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 4.dp)) }
-    }
-}
-
-@Composable
+        val row: @Composable
 private fun AssistantPage(vm: ArinaEngine, onPower: () -> Unit) {
     val actx = androidx.compose.ui.platform.LocalContext.current
     PageColumn {
