@@ -237,6 +237,10 @@ class GeminiLive(
 
     private inner class Listener(val mine: Int) : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
+            Thread {
+                try { Thread.sleep(12000) } catch (e: InterruptedException) { return@Thread }
+                if (generation == mine && !ready) { runCatching { webSocket.cancel() }; end(mine, "Gemini Live closed: the voice session did not start in time") }
+            }.apply { isDaemon = true }.start()
             Timing.mark("live socket open")
             webSocket.send(setupMessage())
         }

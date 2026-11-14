@@ -1009,7 +1009,7 @@ class ArinaEngine private constructor(private val app: Application) {
                 else {
                     val v = Cloud.cfg(app, if (persona.value == Persona.Aurion) "cartesia_voice_male" else "cartesia_voice_female", "")
                     if (v.isBlank()) null
-                    else GeminiLive.TtsCfg(v, Cloud.cfg(app, "cartesia_model", "sonic-3"), Cloud.cfg(app, "live_text_model", "gemini-live-2.5-flash"))
+                    else GeminiLive.TtsCfg(v, Cloud.cfg(app, "cartesia_model", "sonic-3").trim().let { if (Regex("^[a-z0-9.\\-]{3,40}$").matches(it)) it else "sonic-3" }, Cloud.cfg(app, "live_text_model", "gemini-live-2.5-flash").trim().let { if (Regex("^(models/)?gemini[a-z0-9.\\-]*$").matches(it)) it.removePrefix("models/") else "gemini-live-2.5-flash" })
                 }
             }
         )
