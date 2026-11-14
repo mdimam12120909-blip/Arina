@@ -19,6 +19,7 @@ object Gateway {
     const val PREFIX = "proxy:"
     private val JSON = "application/json".toMediaType()
     private val http = OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
+    val client: OkHttpClient get() = http
     @Volatile var useAlphaLive = false
 
     fun isProxy(key: String) = key.startsWith(PREFIX)
@@ -46,6 +47,10 @@ object Gateway {
 
     fun liveUrl(token: String, alpha: Boolean): String =
         "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.${if (alpha) "v1alpha" else "v1beta"}.GenerativeService.BidiGenerateContentConstrained?access_token=$token"
+
+    /** One sentence of speech from the voice service, as a raw 24 kHz 16-bit mono stream. */
+    fun tts(text: String, voice: String, model: String, lang: String): Request =
+        call(JSONObject().put("action", "tts").put("text", text).put("voice", voice).put("model", model).put("lang", lang))
 
     /** Another brain (openai, groq, deepseek, anthropic) through the server. Returns the raw answer body. */
     fun brain(provider: String, body: JSONObject): String {

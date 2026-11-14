@@ -987,6 +987,15 @@ class ArinaEngine private constructor(private val app: Application) {
                         fail(message); turnOff()
                     }
                 }
+            },
+            {
+                // Admin chose the second voice: Cartesia. It needs its own voice id for the chosen agent.
+                if (Cloud.cfg(app, "voice_engine", "gemini") != "cartesia") null
+                else {
+                    val v = Cloud.cfg(app, if (persona.value == Persona.Aurion) "cartesia_voice_male" else "cartesia_voice_female", "")
+                    if (v.isBlank()) null
+                    else GeminiLive.TtsCfg(v, Cloud.cfg(app, "cartesia_model", "sonic-3"), Cloud.cfg(app, "live_text_model", "gemini-live-2.5-flash"))
+                }
             }
         )
     }

@@ -38,8 +38,12 @@ class GeminiLive(
     private val system: () -> String,
     private val tools: ToolRunner,
     private val voiceName: () -> String,
-    private val cb: Callbacks
+    private val cb: Callbacks,
+    private val tts: () -> TtsCfg? = { null }
 ) {
+    /** Cartesia mode: the model answers in text (still hearing, thinking and using tools live) and each sentence is spoken by the voice service. */
+    data class TtsCfg(val voice: String, val model: String, val textModel: String)
+
     interface Callbacks {
         fun onLevel(level: Float)
         fun onUserSpeaking()
@@ -80,6 +84,54 @@ class GeminiLive(
     @Volatile private var pendingToken: String? = null
     val active: Boolean get() = socket != null || connecting
 
+    // ---- Cartesia mode: sentences are fetched one by one while earlier ones are already playing ----
+    @Volatile private var ttsCfg: TtsCfg? = null
+    private val sentences = LinkedBlockingQueue<Pair<Int, String>>()
+    private val ttsPending = java.util.concurrent.atomic.AtomicInteger(0)
+    @Volatile private var ttsGen = 0
+    private var chunker = SmartChunker()
+    private val ttsWorker = Thread {
+        while (true) {
+            val (g, text) = try { sentences.take() } catch (e: InterruptedException) { return@Thread }
+            try { if (g == ttsGen) speakOne(g, text) } catch (e: Exception) { Diag.log("voice: sentence failed: ${e.message?.take(120)}") }
+            finally { ttsPending.updateAndGet { maxOf(0, it - 1) }; afterSpeech() }
+        }
+    }.apply { isDaemon = true; start() }
+
+    private fun speakOne(g: Int, text: String) {
+        val c = ttsCfg ?: return
+        val lang = if (text.any { it in '\u0980'..'\u09FF' }) "bn" else "en"
+        val t0 = System.currentTimeMillis()
+        Gateway.client.newCall(Gateway.tts(text, c.voice, c.model, lang)).execute().use { r ->
+            if (!r.isSuccessful) { Diag.log("voice: HTTP ${r.code} ${r.body?.string().orEmpty().take(120)}"); return }
+            val ins = r.body?.byteStream() ?: return
+            val buf = ByteArray(4800); var carry = -1; var first = true
+            while (g == ttsGen) {
+                val n = ins.read(buf); if (n <= 0) break
+                if (first) { first = false; Diag.log("metric voice sentenceFirstByteMs=${System.currentTimeMillis() - t0}") }
+                var chunk = if (carry >= 0) byteArrayOf(carry.toByte()) + buf.copyOf(n) else buf.copyOf(n)
+                carry = -1
+                if (chunk.size % 2 == 1) { carry = chunk[chunk.size - 1].toInt() and 0xff; chunk = chunk.copyOf(chunk.size - 1) }
+                if (chunk.isNotEmpty()) audioIn(chunk)
+            }
+        }
+    }
+
+    private fun audioIn(pcm: ByteArray) {
+        spokenSince = System.currentTimeMillis()
+        if (!modelAudioThisTurn) { modelAudioThisTurn = true; Timing.mark("live first audio"); cb.onModelSpeaking() }
+        playChunk(pcm)
+    }
+
+    private fun speak(parts: List<String>) {
+        for (p in parts) { ttsPending.incrementAndGet(); sentences.put(ttsGen to p) }
+    }
+
+    /** All queued sentences are done: if the model has also finished and nothing ever played, close the turn. */
+    private fun afterSpeech() {
+        if (ttsPending.get() == 0 && turnDonePending && !modelAudioThisTurn) finishTurn()
+    }
+
     // Keeps a long conversation alive: Google can hand back a resume token, so a dropped connection continues with its memory.
     @Volatile private var resumeHandle: String? = null
     @Volatile private var usedHandleNotReady = false
@@ -96,6 +148,7 @@ class GeminiLive(
             return
         }
         val mine = ++generation
+        ttsCfg = tts()
         ready = false
         usedHandleNotReady = resumeHandle != null
         Timing.mark("live socket opening")
@@ -155,28 +208,28 @@ class GeminiLive(
     }
 
     private fun setupMessage(): String {
-        val gen = JSONObject()
-            .put("responseModalities", JSONArray().put("AUDIO"))
-            .put(
-                "speechConfig", JSONObject().put(
-                    "voiceConfig", JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", voiceName()))
-                )
+        val cart = ttsCfg
+        val gen = JSONObject().put("responseModalities", JSONArray().put(if (cart != null) "TEXT" else "AUDIO"))
+        if (cart == null) gen.put(
+            "speechConfig", JSONObject().put(
+                "voiceConfig", JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", voiceName()))
             )
+        )
         val vad = JSONObject()
             .put("startOfSpeechSensitivity", "START_SENSITIVITY_HIGH")   // LOW missed quiet or short speech
             .put("prefixPaddingMs", 250)
             .put("silenceDurationMs", SILENCE_MS)
         val setup = JSONObject()
-            .put("model", "models/$MODEL")
+            .put("model", "models/${cart?.textModel ?: MODEL}")
             .put("generationConfig", gen)
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system()))))
             .put("tools", JSONArray().put(JSONObject().put("functionDeclarations", tools.declarations())))
             .put("realtimeInputConfig", JSONObject().put("automaticActivityDetection", vad))
             .put("inputAudioTranscription", JSONObject())
-            .put("outputAudioTranscription", JSONObject())
             // Without compression an audio session is cut after about 15 minutes.
             .put("contextWindowCompression", JSONObject().put("slidingWindow", JSONObject()))
             .put("sessionResumption", JSONObject().apply { resumeHandle?.let { put("handle", it) } })
+        if (cart == null) setup.put("outputAudioTranscription", JSONObject())
         return JSONObject().put("setup", setup).toString()
     }
 
@@ -245,7 +298,12 @@ class GeminiLive(
         sc.optJSONObject("outputTranscription")?.optString("text")?.takeIf { it.isNotEmpty() }?.let { modelText.append(it) }
 
         val parts = sc.optJSONObject("modelTurn")?.optJSONArray("parts")
-        if (parts != null) for (i in 0 until parts.length()) {
+        if (parts != null && ttsCfg != null) for (i in 0 until parts.length()) {
+            val pt = parts.getJSONObject(i)
+            val txt = pt.optString("text")
+            if (txt.isNotEmpty() && !pt.optBoolean("thought")) { modelText.append(txt); speak(chunker.feed(txt)) }
+        }
+        else if (parts != null) for (i in 0 until parts.length()) {
             val data = parts.getJSONObject(i).optJSONObject("inlineData")?.optString("data").orEmpty()
             if (data.isEmpty()) continue
             spokenSince = System.currentTimeMillis()
@@ -261,7 +319,8 @@ class GeminiLive(
             finishTurn()
         } else if (sc.optBoolean("turnComplete")) {
             turnDonePending = true
-            if (!modelAudioThisTurn) finishTurn()   // nothing was said (a silent tool turn): nothing to wait for
+            if (ttsCfg != null) speak(chunker.flush())
+            if (!modelAudioThisTurn && ttsPending.get() == 0) finishTurn()   // nothing was said (a silent tool turn): nothing to wait for
         }
     }
 
@@ -391,7 +450,7 @@ class GeminiLive(
                 val t = track ?: newTrack().also { track = it; it.play() }
                 t.write(pcm, 0, pcm.size)
                 framesWritten += pcm.size / 2
-            } else if (turnDonePending && modelAudioThisTurn) {
+            } else if (turnDonePending && modelAudioThisTurn && ttsPending.get() == 0) {
                 val t = track
                 val deadline = System.nanoTime() + 3_000_000_000L
                 while (t != null && t.playbackHeadPosition < framesWritten && out.isEmpty() && System.nanoTime() < deadline) Thread.sleep(20)
@@ -405,6 +464,7 @@ class GeminiLive(
     }
 
     private fun clearPlayback() {
+        ttsGen++; sentences.clear(); ttsPending.set(0); chunker = SmartChunker()
         out.clear()
         runCatching { track?.pause(); track?.flush(); track?.play() }
         framesWritten = 0

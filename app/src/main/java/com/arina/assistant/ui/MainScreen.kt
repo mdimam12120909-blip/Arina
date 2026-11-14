@@ -1123,11 +1123,32 @@ private fun AdminAgent(vm: ArinaEngine) {
     var instrFemale by remember { mutableStateOf(vm.adminValue("instructions_female")) }
     var instrMale by remember { mutableStateOf(vm.adminValue("instructions_male")) }
     var style by remember { mutableStateOf(vm.adminValue("speaking_style").removeSurrounding("\"")) }
+    var engine by remember { mutableStateOf(vm.adminValue("voice_engine").ifBlank { "gemini" }.removeSurrounding("\"")) }
+    var cFemale by remember { mutableStateOf(vm.adminValue("cartesia_voice_female")) }
+    var cMale by remember { mutableStateOf(vm.adminValue("cartesia_voice_male")) }
+    var cModel by remember { mutableStateOf(vm.adminValue("cartesia_model")) }
+    var tModel by remember { mutableStateOf(vm.adminValue("live_text_model")) }
     var initial by remember { mutableStateOf(listOf(liveFemale, liveMale, instrFemale, instrMale, style)) }
+    var cInit by remember { mutableStateOf(listOf(engine, cFemale, cMale, cModel, tModel)) }
     Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Published to every user of Entrion. It applies the next time someone starts talking.", color = ArinaColors.Muted, fontSize = 12.sp)
-        KeyField("Female voice name", liveFemale, false) { liveFemale = it }
-        KeyField("Male voice name", liveMale, false) { liveMale = it }
+        Text("Voice for everyone", color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("gemini" to "Gemini voice", "cartesia" to "Cartesia voice").forEach { (id, label) ->
+                val on = engine == id
+                Text(label, color = if (on) ArinaColors.Background else ArinaColors.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clip(RoundedCornerShape(50)).background(if (on) ArinaColors.Glow else ArinaColors.Glow.copy(alpha = 0.12f)).clickable { engine = id }.padding(horizontal = 16.dp, vertical = 8.dp))
+            }
+        }
+        if (engine == "cartesia") {
+            Text("Cartesia speaks each sentence as it is written. Needs the Cartesia key (Keys tab) and a voice id for each agent; without one, that agent falls back to the Gemini voice.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
+            KeyField("Cartesia voice id, female agent", cFemale, false) { cFemale = it }
+            KeyField("Cartesia voice id, male agent", cMale, false) { cMale = it }
+            KeyField("Cartesia model (empty = sonic-3)", cModel, false) { cModel = it }
+            KeyField("Text model for Cartesia mode (empty = gemini-live-2.5-flash)", tModel, false) { tModel = it }
+        }
+        KeyField("Gemini female voice name", liveFemale, false) { liveFemale = it }
+        KeyField("Gemini male voice name", liveMale, false) { liveMale = it }
         LongField("Female agent: character and instructions", instrFemale) { instrFemale = it }
         LongField("Male agent: character and instructions", instrMale) { instrMale = it }
         LongField("How to speak (tone, length, manners, languages), for both agents", style) { style = it }
@@ -1138,6 +1159,9 @@ private fun AdminAgent(vm: ArinaEngine) {
             put("instructions_female", instrFemale, initial[2]); put("instructions_male", instrMale, initial[3])
             put("speaking_style", style, initial[4])
             initial = listOf(liveFemale, liveMale, instrFemale, instrMale, style)
+            put("voice_engine", engine, cInit[0]); put("cartesia_voice_female", cFemale, cInit[1]); put("cartesia_voice_male", cMale, cInit[2])
+            put("cartesia_model", cModel, cInit[3]); put("live_text_model", tModel, cInit[4])
+            cInit = listOf(engine, cFemale, cMale, cModel, tModel)
         }
     }
 }
