@@ -671,11 +671,13 @@ class ArinaEngine private constructor(private val app: Application) {
         val facts = Cloud.cfg(app, "global_facts", "").trim()
         val extra = (if (style.isNotEmpty()) "\nHOW TO SPEAK (set by Entrion): $style" else "") +
             (if (facts.isNotEmpty()) "\nFACTS YOU KNOW (set by Entrion; treat as true):\n$facts" else "")
+        val lessons = Cloud.cfg(app, "lessons", "").trim()
+        val lessonLine = if (lessons.isNotEmpty()) "\nLESSONS FROM YOUR CREATOR (always follow them; they come right after safety):\n$lessons" else ""
         val vdesc = Cloud.cfg(app, "cartesia_voice_desc_" + (if (male) "male" else "female"), "").trim()
         val voiceLine = if (Cloud.cfg(app, "voice_engine", "gemini") == "cartesia" && vdesc.isNotEmpty()) "\nYOUR VOICE AND CHARACTER (your words must fit it): $vdesc" else ""
         val pers = Identity.personality
         val persLine = if (pers.isNotBlank()) "\nPERSONALITY (chosen by the user): $pers" else ""
-        return base + extra + voiceLine + persLine + if (n.isEmpty()) " You have no personal name; if the user wants, they can give you one." else " The user has named you \"$n\"; that is your name."
+        return base + extra + lessonLine + voiceLine + persLine + if (n.isEmpty()) " You have no personal name; if the user wants, they can give you one." else " The user has named you \"$n\"; that is your name."
     }
 
     /** Called with Google's ID token after the account chooser. */
@@ -785,6 +787,30 @@ class ArinaEngine private constructor(private val app: Application) {
             uiPrefs.edit().putBoolean("admin_hint", admin).apply()
             checkUpdate()
             gemini.reset()
+        }
+    }
+
+    // ---- Admin: talk to Entrion as a user would, and teach it -----------------------------------------
+    val trainMsgs = mutableStateListOf<Pair<Boolean, String>>()
+    val trainBusy = mutableStateOf(false)
+
+    fun trainAsk(text: String) {
+        val t = text.trim()
+        if (t.isEmpty() || trainBusy.value) return
+        trainMsgs += true to t
+        trainBusy.value = true
+        val history = trainMsgs.takeLast(12).joinToString("\n") { (me, m) -> (if (me) "USER: " else "YOU: ") + m }
+        scope.launch {
+            val reply = withContext(Dispatchers.IO) {
+                runCatching {
+                    gemini.generate(
+                        gemini.liveSystemPrompt() + "\nThis is a private practice chat with your creator. Answer exactly as you would answer a real user, spoken style, no tools.",
+                        "Conversation so far:\n$history\nWrite only your next reply as YOU."
+                    )
+                }.getOrElse { "(could not answer: ${it.message?.take(120)})" }
+            }
+            trainMsgs += false to reply.trim().removePrefix("YOU:").trim()
+            trainBusy.value = false
         }
     }
 

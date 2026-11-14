@@ -1090,7 +1090,7 @@ private fun AdminPage(vm: ArinaEngine) {
     var section by rememberSaveable { mutableStateOf("Agent") }
     PageColumn {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Agent", "Voices", "Facts", "Users", "Keys", "Updates", "Secrets", "Log").forEach { name ->
+            listOf("Agent", "Train", "Voices", "Facts", "Users", "Keys", "Updates", "Secrets", "Log").forEach { name ->
                 val on = section == name
                 Text(
                     name,
@@ -1105,6 +1105,7 @@ private fun AdminPage(vm: ArinaEngine) {
         }
         when (section) {
             "Agent" -> AdminAgent(vm)
+            "Train" -> AdminTrain(vm)
             "Voices" -> AdminVoices(vm)
             "Facts" -> AdminFacts(vm)
             "Users" -> AdminUsers(vm)
@@ -1165,6 +1166,54 @@ private fun AdminAgent(vm: ArinaEngine) {
             cInit = listOf(engine, cFemale, cMale, cModel, tModel)
         }
     }
+}
+
+@Composable
+private fun AdminTrain(vm: ArinaEngine) {
+    var input by remember { mutableStateOf("") }
+    var fixing by remember { mutableStateOf<Int?>(null) }
+    var fix by remember { mutableStateOf("") }
+    var rule by remember { mutableStateOf("") }
+    var lessons by remember { mutableStateOf(vm.adminValue("lessons").lines().filter { it.isNotBlank() }) }
+    fun saveLessons(l: List<String>) { lessons = l; vm.adminSave("lessons", l.joinToString("\n")) }
+    Text("Talk to Entrion as a user would (type, or use your keyboard's voice typing). When a reply is wrong, tap Correct and say what it should have done. The lesson is added for every user.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 4.dp))
+    Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        vm.trainMsgs.forEachIndexed { i, (me, text) ->
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(if (me) "You" else "Entrion", color = if (me) ArinaColors.Muted else ArinaColors.Pink, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Text(text, color = ArinaColors.Text, fontSize = 14.sp, lineHeight = 20.sp)
+                if (!me) {
+                    if (fixing == i) {
+                        LongField("What should it have said or done?", fix) { fix = it }
+                        PillButton("Save lesson") {
+                            val said = vm.trainMsgs.getOrNull(i - 1)?.second.orEmpty().take(120)
+                            if (fix.isNotBlank()) saveLessons(lessons + "- When the user says something like \"$said\": do NOT answer like \"${text.take(100)}\". ${fix.trim()}")
+                            fix = ""; fixing = null
+                        }
+                    } else Text("Correct it", color = ArinaColors.Glow, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { fixing = i }.padding(vertical = 4.dp))
+                }
+            }
+        }
+        if (vm.trainBusy.value) Text("...", color = ArinaColors.Muted)
+        KeyField("Say something to Entrion", input, false) { input = it }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PillButton("Send") { vm.trainAsk(input); input = "" }
+            PillButton("Clear chat") { vm.trainMsgs.clear() }
+        }
+    }
+    Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Lessons Entrion follows for everyone", color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        LongField("Teach a rule directly", rule) { rule = it }
+        PillButton("Add lesson") { if (rule.isNotBlank()) { saveLessons(lessons + "- " + rule.trim().replace("\n", " ")); rule = "" } }
+        if (lessons.isEmpty()) Text("None yet.", color = ArinaColors.Muted, fontSize = 12.sp)
+        lessons.forEachIndexed { i, l ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(l.removePrefix("- "), color = ArinaColors.Text, fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.weight(1f))
+                Text("Delete", color = ArinaColors.Muted, fontSize = 12.sp, modifier = Modifier.clickable { saveLessons(lessons.filterIndexed { j, _ -> j != i }) }.padding(8.dp))
+            }
+        }
+    }
+    vm.notice.value?.let { Text(it, color = Warn, fontSize = 12.sp, lineHeight = 17.sp) }
 }
 
 @Composable
