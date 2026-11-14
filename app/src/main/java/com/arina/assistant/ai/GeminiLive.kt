@@ -151,6 +151,7 @@ class GeminiLive(
         val mine = ++generation
         ttsCfg = if (cartesiaBroken) null else tts()
         ready = false
+        startMic(mine)   // listens from the first moment; what is said while the session opens is kept and sent once it is ready
         usedHandleNotReady = resumeHandle != null
         Timing.mark("live socket opening")
         connectStartedAt = System.currentTimeMillis()
@@ -292,7 +293,6 @@ class GeminiLive(
             Timing.mark("live ready")
             Timing.liveReadyMs = System.currentTimeMillis() - connectStartedAt
             while (true) { val t = waiting.poll() ?: break; socket?.send(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) }
-            startMic(mine)
             return
         }
         msg.optJSONObject("toolCall")?.let { runTools(it.optJSONArray("functionCalls") ?: JSONArray()) }
@@ -403,6 +403,7 @@ class GeminiLive(
             runCatching { if (AcousticEchoCanceler.isAvailable()) AcousticEchoCanceler.create(rec.audioSessionId)?.enabled = true }
             runCatching { if (NoiseSuppressor.isAvailable()) NoiseSuppressor.create(rec.audioSessionId)?.enabled = true }
             val buf = ShortArray(chunk)
+            val pre = java.util.ArrayDeque<String>()
             var sent = 0; var silentBlocks = 0; var emptyReads = 0; var peak = -100f; var lastLog = System.currentTimeMillis()
             try {
                 rec.startRecording()
@@ -436,8 +437,10 @@ class GeminiLive(
                                 .put("data", Base64.encodeToString(bytes, Base64.NO_WRAP))
                                 .put("mimeType", "audio/pcm;rate=16000")
                         )
-                    )
-                    if (socket?.send(msg.toString()) == true) sent++
+                    ).toString()
+                    if (!ready) { pre.addLast(msg); while (pre.size > 200) pre.removeFirst(); continue }
+                    while (pre.isNotEmpty()) socket?.send(pre.removeFirst())
+                    if (socket?.send(msg) == true) sent++
                 }
             } catch (e: Exception) {
                 if (generation == mine) cb.onError("Microphone problem: ${e.message}")

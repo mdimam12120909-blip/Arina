@@ -823,15 +823,21 @@ class ArinaEngine private constructor(private val app: Application) {
     }
 
     /** Admin only. Saves one published setting; the database refuses anyone else. */
+    private val adminSaveLock = kotlinx.coroutines.sync.Mutex()
+
     fun adminSave(key: String, value: String, secret: Boolean = false) {
         scope.launch {
             try {
+                // One save at a time and in order, so two quick saves can never overwrite each other with an older copy.
+                adminSaveLock.lock()
                 withContext(Dispatchers.IO) { if (secret) cloud.saveSecret(key, value) else cloud.saveConfig(key, value) }
                 if (!secret) withContext(Dispatchers.IO) { runCatching { cloud.fetchConfig() } }
                 gemini.reset()
                 notice.value = "Saved."
             } catch (e: Exception) {
                 notice.value = (e.message ?: "Could not save.").take(240)
+            } finally {
+                if (adminSaveLock.isLocked) adminSaveLock.unlock()
             }
         }
     }
