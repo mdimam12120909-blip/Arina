@@ -46,7 +46,7 @@ fun startGoogleSignIn(activity: Activity, vm: ArinaEngine, scope: CoroutineScope
             val token = GoogleSignIn.idToken(activity) ?: return@launch
             vm.signInWithGoogle(token)
         } catch (e: Exception) {
-            vm.signInProblem(e.message ?: "Sign-in failed.")
+            vm.signInProblem((e.message ?: "Sign-in failed.") + if (com.arina.assistant.BuildConfig.ADMIN_APP) " (Admin app: Google sign-in must be enabled for package ${activity.packageName}.)" else "")
         }
     }
 }

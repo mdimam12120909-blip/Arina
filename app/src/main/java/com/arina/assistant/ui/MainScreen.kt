@@ -147,14 +147,14 @@ import com.arina.assistant.permissions.PermissionCenter
 private enum class Page(val title: String) {
     Home("Home"), Chat("Chat"), Memory("Memory"), Routine("Routine"), Health("Phone health"), Soul("Soul"),
     Settings("Settings"), Account("Account"), Permissions("Permissions"), 
-    Assistant("Assistant"), Admin("Admin"), Today("Today"), Profile("Edit profile"), Connectors("Connectors"), Jobs("Tasks")
+    Assistant("Assistant"), Admin("Admin"), Creator("My voices"), Today("Today"), Profile("Edit profile"), Connectors("Connectors"), Jobs("Tasks")
 }
 
 /** The five bottom tabs, left to right. */
 private fun tabIdx(p: Page): Int = when (p) { Page.Memory -> 0; Page.Chat -> 1; Page.Home -> 2; Page.Today -> 3; Page.Routine -> 4; else -> -1 }
 
 /** Pages that open from Settings: they show a back arrow that returns to Settings. */
-private val SETTINGS_SUB = setOf(Page.Account, Page.Permissions, Page.Assistant, Page.Admin, Page.Connectors, Page.Jobs)
+private val SETTINGS_SUB = setOf(Page.Account, Page.Permissions, Page.Assistant, Page.Admin, Page.Creator, Page.Connectors, Page.Jobs)
 
 private val Good = Color(0xFF3DDC97)
 private val Warn = Color(0xFFFFB84D)
@@ -249,6 +249,7 @@ fun MainScreen(
                         Page.Jobs -> JobsPage(vm)
                         Page.Assistant -> AssistantPage(vm, onPower)
                         Page.Admin -> AdminPage(vm)
+                        Page.Creator -> PageColumn { AdminVoices(vm, own = true) }
                     }
                 }
             }
@@ -1071,6 +1072,10 @@ private fun SettingsHome(vm: ArinaEngine, go: (Page) -> Unit) {
                 }
             }
         )
+        if (vm.isCreator) {
+            SectionTitle("CREATOR")
+            Group({ NavRow("My voices", "Add Cartesia voices for yourself", Icons.Filled.Info, flat = true) { go(Page.Creator) } })
+        }
         if (vm.isAdmin.value && com.arina.assistant.BuildConfig.ADMIN_APP) {
             SectionTitle("ADMIN")
             Group({ NavRow("Admin", "Settings published to every user", Icons.Filled.Info, flat = true) { go(Page.Admin) } })
@@ -1217,20 +1222,22 @@ private fun AdminTrain(vm: ArinaEngine) {
 }
 
 @Composable
-private fun AdminVoices(vm: ArinaEngine) {
+private fun AdminVoices(vm: ArinaEngine, own: Boolean = false) {
+    fun get(k: String, d: String = ""): String = if (own) vm.creatorPrefs.getString(k, null) ?: d else vm.adminValue(k, d)
+    fun put(k: String, v: String) { if (own) vm.creatorPrefs.edit().putString(k, v).apply() else vm.adminSave(k, v) }
     // The library is one published setting: a JSON list of {name, id, gender, desc}. The chosen voice per agent is cartesia_voice_female / _male.
     fun load(): List<org.json.JSONObject> = runCatching {
-        val a = org.json.JSONArray(vm.adminValue("voice_library", "[]"))
+        val a = org.json.JSONArray(get("voice_library", "[]"))
         (0 until a.length()).map { a.getJSONObject(it) }
     }.getOrDefault(emptyList())
     var voices by remember { mutableStateOf(load()) }
-    var activeF by remember { mutableStateOf(vm.adminValue("cartesia_voice_female")) }
-    var activeM by remember { mutableStateOf(vm.adminValue("cartesia_voice_male")) }
+    var activeF by remember { mutableStateOf(get("cartesia_voice_female")) }
+    var activeM by remember { mutableStateOf(get("cartesia_voice_male")) }
     var adding by remember { mutableStateOf<String?>(null) }
     var nName by remember { mutableStateOf("") }
     var nId by remember { mutableStateOf("") }
     var nDesc by remember { mutableStateOf("") }
-    fun save(list: List<org.json.JSONObject>) { voices = list; vm.adminSave("voice_library", org.json.JSONArray(list).toString()) }
+    fun save(list: List<org.json.JSONObject>) { voices = list; put("voice_library", org.json.JSONArray(list).toString()) }
 
     Text("Voices come from Cartesia (paste its voice id). The one marked In use speaks for that agent. The description tells the agent who it is, so its words match its voice.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 4.dp))
     listOf("female" to "Female voices", "male" to "Male voices").forEach { (g, title) ->
@@ -1248,8 +1255,8 @@ private fun AdminVoices(vm: ArinaEngine) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (!inUse) Text("Use this", color = ArinaColors.Background, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.clip(RoundedCornerShape(50)).background(ArinaColors.Glow).clickable {
-                                if (g == "female") { activeF = id; vm.adminSave("cartesia_voice_female", id) } else { activeM = id; vm.adminSave("cartesia_voice_male", id) }
-                                vm.adminSave("cartesia_voice_desc_$g", v.optString("desc"))
+                                if (g == "female") { activeF = id; put("cartesia_voice_female", id) } else { activeM = id; put("cartesia_voice_male", id) }
+                                put("cartesia_voice_desc_$g", v.optString("desc"))
                             }.padding(horizontal = 14.dp, vertical = 6.dp))
                         Text("Remove", color = ArinaColors.Text, fontSize = 12.sp,
                             modifier = Modifier.clip(RoundedCornerShape(50)).background(ArinaColors.Glow.copy(alpha = 0.12f)).clickable { save(voices.filter { it.optString("id") != id || it.optString("gender") != g }) }.padding(horizontal = 14.dp, vertical = 6.dp))

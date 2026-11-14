@@ -673,8 +673,8 @@ class ArinaEngine private constructor(private val app: Application) {
             (if (facts.isNotEmpty()) "\nFACTS YOU KNOW (set by Entrion; treat as true):\n$facts" else "")
         val lessons = Cloud.cfg(app, "lessons", "").trim()
         val lessonLine = if (lessons.isNotEmpty()) "\nLESSONS FROM YOUR CREATOR (always follow them; they come right after safety):\n$lessons" else ""
-        val vdesc = Cloud.cfg(app, "cartesia_voice_desc_" + (if (male) "male" else "female"), "").trim()
-        val voiceLine = if (Cloud.cfg(app, "voice_engine", "gemini") == "cartesia" && vdesc.isNotEmpty()) "\nYOUR VOICE AND CHARACTER (your words must fit it): $vdesc" else ""
+        val vdesc = voiceCfg("cartesia_voice_desc_" + (if (male) "male" else "female"), "").trim()
+        val voiceLine = if ((isCreator || Cloud.cfg(app, "voice_engine", "gemini") == "cartesia") && vdesc.isNotEmpty()) "\nYOUR VOICE AND CHARACTER (your words must fit it): $vdesc" else ""
         val pers = Identity.personality
         val persLine = if (pers.isNotBlank()) "\nPERSONALITY (chosen by the user): $pers" else ""
         return base + extra + lessonLine + voiceLine + persLine + if (n.isEmpty()) " You have no personal name; if the user wants, they can give you one." else " The user has named you \"$n\"; that is your name."
@@ -791,6 +791,14 @@ class ArinaEngine private constructor(private val app: Application) {
     }
 
     // ---- Admin: talk to Entrion as a user would, and teach it -----------------------------------------
+    /** Itoshi Kashikoi's own account: the regular app plus a few extras (its own voices). */
+    val isCreator: Boolean get() = accountEmail.value.trim().equals("fcb12120909@gmail.com", ignoreCase = true)
+    val creatorPrefs get() = app.getSharedPreferences("creator_voices", Context.MODE_PRIVATE)
+
+    /** A voice setting: the creator's own choice on this phone wins for the creator account; otherwise what the admin published. */
+    private fun voiceCfg(key: String, fallback: String = ""): String =
+        (if (isCreator) creatorPrefs.getString(key, null)?.takeIf { it.isNotBlank() } else null) ?: Cloud.cfg(app, key, fallback)
+
     val trainMsgs = mutableStateListOf<Pair<Boolean, String>>()
     val trainBusy = mutableStateOf(false)
 
@@ -1033,9 +1041,10 @@ class ArinaEngine private constructor(private val app: Application) {
             },
             {
                 // Admin chose the second voice: Cartesia. It needs its own voice id for the chosen agent.
-                if (Cloud.cfg(app, "voice_engine", "gemini") != "cartesia") null
+                val own = isCreator && creatorPrefs.getString(if (persona.value == Persona.Aurion) "cartesia_voice_male" else "cartesia_voice_female", "").orEmpty().isNotBlank()
+                if (!own && Cloud.cfg(app, "voice_engine", "gemini") != "cartesia") null
                 else {
-                    val v = Cloud.cfg(app, if (persona.value == Persona.Aurion) "cartesia_voice_male" else "cartesia_voice_female", "")
+                    val v = voiceCfg(if (persona.value == Persona.Aurion) "cartesia_voice_male" else "cartesia_voice_female", "")
                     if (v.isBlank()) null
                     else GeminiLive.TtsCfg(v, Cloud.cfg(app, "cartesia_model", "sonic-3").trim().let { if (Regex("^[a-z0-9.\\-]{3,40}$").matches(it)) it else "sonic-3" }, Cloud.cfg(app, "live_text_model", "gemini-live-2.5-flash").trim().let { if (Regex("^(models/)?gemini[a-z0-9.\\-]*$").matches(it)) it.removePrefix("models/") else "gemini-live-2.5-flash" })
                 }
