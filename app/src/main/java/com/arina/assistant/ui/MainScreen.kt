@@ -1098,7 +1098,7 @@ private fun AccountPage(vm: ArinaEngine) {
 private fun AdminPage(vm: ArinaEngine) {
     var section by rememberSaveable { mutableStateOf("Agent") }
     PageColumn {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("Agent", "Facts", "Users", "Payments", "Updates", "Secrets", "Log").forEach { name ->
                 val on = section == name
                 Text(
@@ -1132,6 +1132,7 @@ private fun AdminAgent(vm: ArinaEngine) {
     var instrFemale by remember { mutableStateOf(vm.adminValue("instructions_female")) }
     var instrMale by remember { mutableStateOf(vm.adminValue("instructions_male")) }
     var style by remember { mutableStateOf(vm.adminValue("speaking_style").removeSurrounding("\"")) }
+    var initial by remember { mutableStateOf(listOf(liveFemale, liveMale, instrFemale, instrMale, style)) }
     Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Published to every user of Entrion. It applies the next time someone starts talking.", color = ArinaColors.Muted, fontSize = 12.sp)
         KeyField("Female voice name", liveFemale, false) { liveFemale = it }
@@ -1140,11 +1141,12 @@ private fun AdminAgent(vm: ArinaEngine) {
         LongField("Male agent: character and instructions", instrMale) { instrMale = it }
         LongField("How to speak (tone, length, manners, languages), for both agents", style) { style = it }
         PillButton("Publish") {
-            vm.adminSave("live_voice_female", liveFemale.trim())
-            vm.adminSave("live_voice_male", liveMale.trim())
-            vm.adminSave("instructions_female", instrFemale.trim())
-            vm.adminSave("instructions_male", instrMale.trim())
-            vm.adminSave("speaking_style", style.trim())
+            // Only what you changed is published, so a field that had not loaded yet can never wipe a saved value.
+            fun put(key: String, now: String, was: String) { if (now.trim() != was.trim()) vm.adminSave(key, now.trim()) }
+            put("live_voice_female", liveFemale, initial[0]); put("live_voice_male", liveMale, initial[1])
+            put("instructions_female", instrFemale, initial[2]); put("instructions_male", instrMale, initial[3])
+            put("speaking_style", style, initial[4])
+            initial = listOf(liveFemale, liveMale, instrFemale, instrMale, style)
         }
     }
 }
@@ -1177,7 +1179,7 @@ private fun AdminPayments(vm: ArinaEngine) {
         Text("Where people pay", color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
         GlassField(number, { number = it }, "", label = "bKash number (Send Money)")
         GlassField(price, { price = it }, "", label = "Pro price for 30 days (taka)")
-        PillButton("Save") { vm.adminSave("bkash_number", number.trim()); vm.adminSave("pro_price", price.trim()) }
+        PillButton("Save") { if (number.isNotBlank()) vm.adminSave("bkash_number", number.trim()); if (price.isNotBlank()) vm.adminSave("pro_price", price.trim()) }
     }
     SectionTitle("PAYMENTS")
     if (vm.payments.isEmpty()) Text("No payments yet.", color = ArinaColors.Muted, fontSize = 13.sp)
