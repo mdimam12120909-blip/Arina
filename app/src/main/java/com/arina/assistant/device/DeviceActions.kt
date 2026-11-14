@@ -87,7 +87,7 @@ class DeviceActions(private val ctx: Context) {
                 if (n.equals(name.trim(), ignoreCase = true)) return num
                 if (first == null) first = num
             }
-            return first
+            return first ?: findContacts(name).firstOrNull()?.second
         }
     }
 
@@ -104,6 +104,19 @@ class DeviceActions(private val ctx: Context) {
                 val n = it.getString(0) ?: continue
                 val num = it.getString(1) ?: continue
                 out.putIfAbsent(num.filter { c -> c.isDigit() }, n to num)
+            }
+        }
+        if (out.isEmpty()) {
+            // The saved name may be spelled in another script ("Mohammad Ali" saved, "মোহাম্মদ আলী" spoken): match by sound.
+            ctx.contentResolver.query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER), null, null, null
+            )?.use {
+                while (it.moveToNext()) {
+                    val n = it.getString(0) ?: continue
+                    val num = it.getString(1) ?: continue
+                    if (NameMatch.matches(name, n)) out.putIfAbsent(num.filter { c -> c.isDigit() }, n to num)
+                }
             }
         }
         return out.values.toList()

@@ -159,6 +159,21 @@ class ArinaEngine private constructor(private val app: Application) {
 
     // Keys (editable in the Setup tab)
     init { Keys.authToken = { cloud.accessToken() } }
+
+    private var lastMsgNote = 0L
+    /** A chat message arrived while Entrion is listening: it tells him who wrote and what, in its own words. */
+    init {
+        com.arina.assistant.device.ArinaNotificationListener.onMessage = { appName, from, text ->
+            scope.launch {
+                val now = System.currentTimeMillis()
+                val calm = status.value == Status.Idle || status.value == Status.Listening
+                if (micOn.value && liveSession.active && calm && now - lastMsgNote > 4000) {
+                    lastMsgNote = now
+                    liveSession.sendText("(system note) A new $appName message just arrived. From: $from. Text: \"$text\". Tell him now, naturally and briefly in the language he speaks, who wrote to him and what it says (like a friend leaning over: \"$from just wrote to you, he says ...\"). Do not read out app names or technical words. Then ask in a few words whether he wants to reply, and wait for his answer; send nothing yourself.")
+                }
+            }
+        }
+    }
     val geminiKey: MutableState<String> = mutableStateOf(Keys.gemini(app))
     val geminiSlots = mutableStateListOf<String>().also { it.addAll(Keys.geminiSlots(app)) }
     val geminiKeySet: Boolean get() = geminiKey.value.isNotBlank()
