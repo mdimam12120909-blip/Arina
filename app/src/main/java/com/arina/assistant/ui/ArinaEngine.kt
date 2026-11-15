@@ -1160,8 +1160,8 @@ class ArinaEngine private constructor(private val app: Application) {
     val micMuteOn = mutableStateOf(false)
     fun toggleMicMute() {
         micMuteOn.value = !micMuteOn.value
-        liveSession.userMuted = micMuteOn.value
-        if (micMuteOn.value) level.floatValue = 0f
+        liveSession.setUserMute(micMuteOn.value)
+        if (micMuteOn.value) { level.floatValue = 0f; caption.value = "Mic is muted. Nothing you say is heard." } else caption.value = ""
     }
 
     fun onMicTap() {

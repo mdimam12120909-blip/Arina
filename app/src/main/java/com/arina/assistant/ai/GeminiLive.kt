@@ -184,6 +184,12 @@ class GeminiLive(
         micMuted = true
     }
 
+    /** The mute button: stop sending, tell the server the audio has ended so it answers or lets go right now. */
+    fun setUserMute(on: Boolean) {
+        userMuted = on
+        if (on) runCatching { socket?.send(JSONObject().put("realtimeInput", JSONObject().put("audioStreamEnd", true)).toString()) }
+    }
+
     /** Ends the conversation completely. */
     @Synchronized
     fun stop() {
@@ -408,7 +414,7 @@ class GeminiLive(
             runCatching { if (NoiseSuppressor.isAvailable()) NoiseSuppressor.create(rec.audioSessionId)?.enabled = true }
             val buf = ShortArray(chunk)
             val pre = java.util.ArrayDeque<String>()
-            var floor = 500.0; var hang = 0; var prevChunk: String? = null
+            var floor = 150.0; var hang = 0; var prevChunk: String? = null
             var sent = 0; var silentBlocks = 0; var emptyReads = 0; var peak = -100f; var lastLog = System.currentTimeMillis()
             try {
                 rec.startRecording()
@@ -428,17 +434,18 @@ class GeminiLive(
                     var sum = 0.0
                     for (i in 0 until got) sum += buf[i].toDouble() * buf[i]
                     val db = (20 * log10(sqrt(sum / got) / 32768.0 + 1e-9)).toFloat()
-                    cb.onLevel(((db + 60f) / 40f).coerceIn(0f, 1f))
+                    if (!userMuted) cb.onLevel(((db + 60f) / 40f).coerceIn(0f, 1f))
                     if (db > peak - 100f && db > peak) peak = db
                     if (db < -70f) silentBlocks++
                     val nowMs = System.currentTimeMillis()
                     if (nowMs - lastLog > 8000) { Diag.log("mic: sent=$sent chunks, silent=$silentBlocks, peak=${"%.0f".format(peak)} dB, muted=$micMuted, ready=$ready"); sent = 0; silentBlocks = 0; peak = -100f; lastLog = nowMs }
-                    if (micMuted || userMuted) { hang = 0; continue }
+                    if (micMuted || userMuted) { hang = 0; if (userMuted) cb.onLevel(0f); continue }
                     // Noise gate: the room's background level is tracked, and only sound clearly above it is sent as speech.
                     // Everything else goes out as digital silence, so the server can tell for certain when you stop talking.
                     val rms = sqrt(sum / got)
-                    floor = if (rms < floor) rms else minOf(floor * 1.004 + 0.5, rms)
-                    val isOpen = rms > maxOf(floor * 2.8, 260.0)
+                    // The background level is learned only while nobody is talking, and slowly, so quiet syllables inside a sentence never count as "background".
+                    if (hang <= 0) floor = floor * 0.94 + rms * 0.06
+                    val isOpen = rms > maxOf(floor * 2.5, 220.0)
                     val wasClosed = hang <= 0
                     hang = if (isOpen) 14 else hang - 1   // keeps the gate open ~0.5 s after the last speech so word endings are not cut
                     val bytes = ByteArray(got * 2)
