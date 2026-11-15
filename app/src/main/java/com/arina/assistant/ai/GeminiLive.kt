@@ -58,7 +58,7 @@ class GeminiLive(
         const val URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
         const val IN_RATE = 16000
         const val OUT_RATE = 24000
-        const val SILENCE_MS = 600          // documented range 500-800 ms
+        const val SILENCE_MS = 500          // documented range 500-800 ms; shorter ends the turn sooner
     }
 
     private val http = OkHttpClient.Builder()
@@ -71,6 +71,8 @@ class GeminiLive(
     @Volatile private var socket: WebSocket? = null
     @Volatile private var ready = false
     @Volatile private var micMuted = false
+    /** Set by the person with the mute button: nothing is sent while it is on, and starting a conversation does not clear it. */
+    @Volatile var userMuted = false
     @Volatile private var generation = 0
     private val userText = StringBuilder()
     private val modelText = StringBuilder()
@@ -221,6 +223,7 @@ class GeminiLive(
         )
         val vad = JSONObject()
             .put("startOfSpeechSensitivity", "START_SENSITIVITY_HIGH")   // LOW missed quiet or short speech
+            .put("endOfSpeechSensitivity", "END_SENSITIVITY_HIGH")       // decide sooner that the person has finished
             .put("prefixPaddingMs", 250)
             .put("silenceDurationMs", SILENCE_MS)
         val setup = JSONObject()
@@ -405,6 +408,7 @@ class GeminiLive(
             runCatching { if (NoiseSuppressor.isAvailable()) NoiseSuppressor.create(rec.audioSessionId)?.enabled = true }
             val buf = ShortArray(chunk)
             val pre = java.util.ArrayDeque<String>()
+            var floor = 500.0; var hang = 0; var prevChunk: String? = null
             var sent = 0; var silentBlocks = 0; var emptyReads = 0; var peak = -100f; var lastLog = System.currentTimeMillis()
             try {
                 rec.startRecording()
@@ -429,9 +433,20 @@ class GeminiLive(
                     if (db < -70f) silentBlocks++
                     val nowMs = System.currentTimeMillis()
                     if (nowMs - lastLog > 8000) { Diag.log("mic: sent=$sent chunks, silent=$silentBlocks, peak=${"%.0f".format(peak)} dB, muted=$micMuted, ready=$ready"); sent = 0; silentBlocks = 0; peak = -100f; lastLog = nowMs }
-                    if (micMuted) continue
+                    if (micMuted || userMuted) { hang = 0; continue }
+                    // Noise gate: the room's background level is tracked, and only sound clearly above it is sent as speech.
+                    // Everything else goes out as digital silence, so the server can tell for certain when you stop talking.
+                    val rms = sqrt(sum / got)
+                    floor = if (rms < floor) rms else minOf(floor * 1.004 + 0.5, rms)
+                    val isOpen = rms > maxOf(floor * 2.8, 260.0)
+                    val wasClosed = hang <= 0
+                    hang = if (isOpen) 14 else hang - 1   // keeps the gate open ~0.5 s after the last speech so word endings are not cut
                     val bytes = ByteArray(got * 2)
-                    for (i in 0 until got) { bytes[i * 2] = (buf[i].toInt() and 0xff).toByte(); bytes[i * 2 + 1] = (buf[i].toInt() shr 8).toByte() }
+                    if (hang > 0) for (i in 0 until got) { bytes[i * 2] = (buf[i].toInt() and 0xff).toByte(); bytes[i * 2 + 1] = (buf[i].toInt() shr 8).toByte() }
+                    if (isOpen && wasClosed) prevChunk?.let { pc -> if (ready) socket?.send(pc) else pre.addLast(pc) }   // the chunk just before speech began
+                    val raw = ByteArray(got * 2)
+                    for (i in 0 until got) { raw[i * 2] = (buf[i].toInt() and 0xff).toByte(); raw[i * 2 + 1] = (buf[i].toInt() shr 8).toByte() }
+                    prevChunk = JSONObject().put("realtimeInput", JSONObject().put("audio", JSONObject().put("data", Base64.encodeToString(raw, Base64.NO_WRAP)).put("mimeType", "audio/pcm;rate=16000"))).toString()
                     val msg = JSONObject().put(
                         "realtimeInput", JSONObject().put(
                             "audio", JSONObject()

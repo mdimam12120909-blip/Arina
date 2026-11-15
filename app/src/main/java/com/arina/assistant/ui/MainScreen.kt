@@ -360,6 +360,13 @@ private fun HomePanel(vm: ArinaEngine, onMicClick: () -> Unit, onPermission: (Pe
         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
             OrbView(persona = persona, mood = mood, level = vm.level.floatValue, modifier = Modifier.size(orbSize))
         }
+        if (vm.micOn.value) {
+            Box(Modifier.fillMaxWidth().padding(bottom = 10.dp), contentAlignment = Alignment.Center) {
+                val m = vm.micMuteOn.value
+                Text(if (m) "Mic is muted. Tap to unmute" else "Mute mic", color = if (m) ArinaColors.Background else ArinaColors.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clip(RoundedCornerShape(50)).background(if (m) Warn else ArinaColors.Glow.copy(alpha = 0.14f)).clickable { vm.toggleMicMute() }.padding(horizontal = 18.dp, vertical = 9.dp))
+            }
+        }
         Column(Modifier.fillMaxWidth().animateContentSize(spring(dampingRatio = 0.9f, stiffness = 300f)), horizontalAlignment = Alignment.CenterHorizontally) {
 val titleKey = if (vm.micOn.value && say.isNotBlank()) 0 else if (busy) 1 else 2
             AnimatedContent(targetState = titleKey, transitionSpec = { (fadeIn(tween(260, delayMillis = 60)) + slideInVertically(tween(300)) { it / 6 }) togetherWith fadeOut(tween(120)) }, label = "title") { k ->
@@ -1324,7 +1331,7 @@ private fun AdminUsers(vm: ArinaEngine) {
             if (u.pro) Text("PRO", color = Good, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             if (!me) {
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text(if (u.pro) "Remove Pro" else "Make Pro", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { vm.setPro(u, !u.pro) }.padding(vertical = 4.dp))
+                    Text(if (u.pro) "Remove gift" else "Gift Pro", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { vm.setPro(u, !u.pro) }.padding(vertical = 4.dp))
                     Text(if (u.banned) "Allow again" else "Ban", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { vm.banUser(u.id, !u.banned) }.padding(vertical = 4.dp))
                     if (confirm == u.id) {
                         Text("Tap again to remove for good", color = Warn, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { confirm = ""; vm.removeUser(u.id) }.padding(vertical = 4.dp))

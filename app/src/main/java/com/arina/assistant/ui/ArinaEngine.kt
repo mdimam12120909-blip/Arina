@@ -964,7 +964,7 @@ class ArinaEngine private constructor(private val app: Application) {
         withContext(Dispatchers.IO) { cloud.setPro(u.id, on) }
         val list = withContext(Dispatchers.IO) { cloud.users() }
         adminUsers.clear(); adminUsers.addAll(list)
-        notice.value = (if (on) "Pro given to " else "Pro removed from ") + u.email
+        notice.value = (if (on) "Pro gifted to " else "Pro gift removed from ") + u.email
     }
 
     fun setReleaseActive(r: Cloud.Release, active: Boolean) = adminRun {
@@ -1156,6 +1156,14 @@ class ArinaEngine private constructor(private val app: Application) {
     // ---- Mic switch -------------------------------------------------------------------------
 
     /** Avatar or mic tap: switch the mic on, or switch everything off. */
+    /** The mute button: the conversation stays open, but nothing you say is sent until you turn it off. */
+    val micMuteOn = mutableStateOf(false)
+    fun toggleMicMute() {
+        micMuteOn.value = !micMuteOn.value
+        liveSession.userMuted = micMuteOn.value
+        if (micMuteOn.value) level.floatValue = 0f
+    }
+
     fun onMicTap() {
         if (micOn.value) turnOff() else turnOn()
     }
@@ -1170,6 +1178,7 @@ class ArinaEngine private constructor(private val app: Application) {
 
     fun turnOff() {
         micOn.value = false
+        micMuteOn.value = false; liveSession.userMuted = false
         job?.cancel()
         stopEars()
         liveSession.stop()
