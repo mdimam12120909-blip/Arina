@@ -155,7 +155,8 @@ class Cloud(private val ctx: Context) {
     // ---- admin tools (the database refuses all of these for anyone who is not the admin) ------------
 
     class Fact(val id: Long, val text: String)
-    class User(val id: String, val email: String, val name: String, val created: String, val lastSeen: String, val banned: Boolean)
+    class User(val id: String, val email: String, val name: String, val created: String, val lastSeen: String, val banned: Boolean,
+        val provider: String = "", val messages: Long = 0, val memories: Long = 0, val synced: Long = 0, val agent: String = "", val about: String = "")
 
     private fun adminCall(method: String, path: String, body: String? = null, prefer: String? = null): String {
         val t = token() ?: throw IOException("Sign in first.")
@@ -174,11 +175,13 @@ class Cloud(private val ctx: Context) {
     fun deleteFact(id: Long) { adminCall("DELETE", "/rest/v1/global_facts?id=eq.$id") }
 
     fun users(): List<User> {
-        val a = JSONArray(adminCall("POST", "/rest/v1/rpc/admin_list_users", "{}"))
+        val a = JSONArray(adminCall("POST", "/rest/v1/rpc/admin_list_users2", "{}"))
+        fun stamp(x: String) = x.takeIf { it != "null" && it.length >= 16 }?.let { it.take(10) + " " + it.substring(11, 16) + " UTC" }.orEmpty()
         return (0 until a.length()).map {
             val o = a.getJSONObject(it)
-            User(o.getString("id"), o.optString("email"), o.optString("name"), o.optString("created_at").take(10),
-                o.optString("last_sign_in_at").takeIf { s -> s != "null" }.orEmpty().take(10), o.optBoolean("banned"))
+            User(o.getString("id"), o.optString("email"), o.optString("name"), stamp(o.optString("created_at")),
+                stamp(o.optString("last_sign_in_at")), o.optBoolean("banned"),
+                o.optString("provider"), o.optLong("messages"), o.optLong("memories"), o.optLong("synced"), o.optString("agent"), o.optString("about"))
         }
     }
 

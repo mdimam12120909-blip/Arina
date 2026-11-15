@@ -107,7 +107,7 @@ class MainActivity : FragmentActivity() {
                     IntroScreen { introDone = true }
                     return@ArinaTheme
                 }
-                com.arina.assistant.ui.UpdatePrompt(engine)
+                if (!BuildConfig.ADMIN_APP) com.arina.assistant.ui.UpdatePrompt(engine)   // the admin app is updated by installing Entrion-Admin.apk, not from the published user build
                 if (!engine.signedIn.value && !engine.skippedSignIn.value) {
                     SignInScreen(engine)
                     return@ArinaTheme
@@ -198,7 +198,7 @@ class MainActivity : FragmentActivity() {
     override fun onStop() {
         super.onStop()
         engine.syncToCloud()
-        engine.adminUnlocked.value = false   // the console locks itself whenever the app leaves the screen
+        if (!engine.pickingFile) engine.adminUnlocked.value = false   // the console locks itself whenever the app leaves the screen (except while a file is being chosen)
     }
 
     override fun onNewIntent(intent: Intent) {

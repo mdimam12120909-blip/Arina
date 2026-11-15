@@ -1317,7 +1317,10 @@ private fun AdminUsers(vm: ArinaEngine) {
         Column(Modifier.fillMaxWidth().glass().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(u.name.ifBlank { u.email }, color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
             Text(u.email, color = ArinaColors.Muted, fontSize = 12.sp)
-            Text("Joined ${u.created}" + (if (u.lastSeen.isNotBlank()) "  |  last seen ${u.lastSeen}" else "") + (if (u.banned) "  |  BANNED" else ""), color = if (u.banned) Warn else ArinaColors.Muted, fontSize = 12.sp)
+            Text("Joined ${u.created}" + (if (u.lastSeen.isNotBlank()) "\nLast sign-in ${u.lastSeen}" else "") + (if (u.banned) "\nBANNED" else ""), color = if (u.banned) Warn else ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
+            Text("Signed up with ${u.provider.ifBlank { "unknown" }}  |  ${u.messages} messages  |  ${u.memories} memories  |  ${if (u.synced > 0) "data synced" else "no synced data"}", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
+            if (u.agent.isNotBlank()) Text("Agent name: ${u.agent}", color = ArinaColors.Muted, fontSize = 12.sp)
+            if (u.about.isNotBlank()) Text("About: ${u.about}", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
             if (!me) {
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     Text(if (u.banned) "Allow again" else "Ban", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { vm.banUser(u.id, !u.banned) }.padding(vertical = 4.dp))
@@ -1357,13 +1360,14 @@ private fun AdminUpdates(vm: ArinaEngine) {
     var force by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.loadReleases() }
     val picker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        vm.pickingFile = false
         if (uri != null) vm.pickApk(uri)
     }
     Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Update App", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         Text("Installed here: build ${com.arina.assistant.BuildConfig.VERSION_CODE}. Download Entrion.apk from GitHub in Chrome, then choose it here from your Downloads. Only a genuine, correctly signed Entrion.apk is accepted.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            PillButton("Choose Entrion.apk") { picker.launch(arrayOf("application/vnd.android.package-archive", "application/octet-stream", "*/*")) }
+            PillButton("Choose Entrion.apk") { vm.pickingFile = true; picker.launch(arrayOf("application/vnd.android.package-archive", "application/octet-stream", "*/*")) }
             PillButton("Open GitHub in Chrome") {
                 runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/mdimam12120909-blip/Arina/releases")).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
             }

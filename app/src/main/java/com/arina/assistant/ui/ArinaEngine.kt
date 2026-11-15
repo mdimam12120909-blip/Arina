@@ -606,6 +606,8 @@ class ArinaEngine private constructor(private val app: Application) {
     val isAdmin = mutableStateOf(com.arina.assistant.cloud.Local.prefs(app, "arina_ui").getBoolean("admin_hint", false))
     /** Admin Console stays locked until the face / screen-lock check passes; locks again when the app leaves the screen. */
     val adminUnlocked = mutableStateOf(false)
+    /** True while the system file chooser is open: the console must not relock, or the chosen file would be lost. */
+    @Volatile var pickingFile = false
     val signInBusy = mutableStateOf(false)
     /** The person chose to look around before signing in. */
     val skippedSignIn = mutableStateOf(uiPrefs.getBoolean("skip_signin", false))
@@ -934,7 +936,7 @@ class ArinaEngine private constructor(private val app: Application) {
             val pm = app.packageManager
             val flags = if (android.os.Build.VERSION.SDK_INT >= 28) android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES else 0
             val info = pm.getPackageArchiveInfo(f.absolutePath, flags) ?: throw IllegalStateException("This file is not a valid app.")
-            if (info.packageName != app.packageName) throw IllegalStateException("This is not the Entrion app.")
+            if (info.packageName != app.packageName.removeSuffix(".admin")) throw IllegalStateException("This is not the Entrion app.")
             if (android.os.Build.VERSION.SDK_INT >= 28) {
                 val mine = pm.getPackageInfo(app.packageName, android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES).signingInfo?.apkContentsSigners?.map { it.toCharsString() }?.toSet().orEmpty()
                 val theirs = info.signingInfo?.apkContentsSigners?.map { it.toCharsString() }?.toSet().orEmpty()
