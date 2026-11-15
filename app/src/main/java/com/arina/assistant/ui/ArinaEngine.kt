@@ -676,7 +676,7 @@ class ArinaEngine private constructor(private val app: Application) {
         val lessons = Cloud.cfg(app, "lessons", "").trim()
         val lessonLine = if (lessons.isNotEmpty()) "\nLESSONS FROM YOUR CREATOR (always follow them; they come right after safety):\n$lessons" else ""
         val vdesc = voiceCfg("cartesia_voice_desc_" + (if (male) "male" else "female"), "").trim()
-        val voiceLine = if ((isCreator || Cloud.cfg(app, "voice_engine", "gemini") == "cartesia") && vdesc.isNotEmpty()) "\nYOUR VOICE AND CHARACTER (your words must fit it): $vdesc" else ""
+        val voiceLine = if ((hasExtras || Cloud.cfg(app, "voice_engine", "gemini") == "cartesia") && vdesc.isNotEmpty()) "\nYOUR VOICE AND CHARACTER (your words must fit it): $vdesc" else ""
         val pers = Identity.personality
         val persLine = if (pers.isNotBlank()) "\nPERSONALITY (chosen by the user): $pers" else ""
         return base + extra + lessonLine + voiceLine + persLine + if (n.isEmpty()) " You have no personal name; if the user wants, they can give you one." else " The user has named you \"$n\"; that is your name."
@@ -794,12 +794,14 @@ class ArinaEngine private constructor(private val app: Application) {
 
     // ---- Admin: talk to Entrion as a user would, and teach it -----------------------------------------
     /** Itoshi Kashikoi's own account: the regular app plus a few extras (its own voices). */
+    /** Pro: the extras the creator account has (own voices), given by an admin. The creator account is always Pro. */
+    val hasExtras: Boolean get() = isPro || isCreator
     val isCreator: Boolean get() = accountEmail.value.trim().equals("fcb12120909@gmail.com", ignoreCase = true)
     val creatorPrefs get() = app.getSharedPreferences("creator_voices", Context.MODE_PRIVATE)
 
     /** A voice setting: the creator's own choice on this phone wins for the creator account; otherwise what the admin published. */
     private fun voiceCfg(key: String, fallback: String = ""): String =
-        (if (isCreator) creatorPrefs.getString(key, null)?.takeIf { it.isNotBlank() } else null) ?: Cloud.cfg(app, key, fallback)
+        (if (hasExtras) creatorPrefs.getString(key, null)?.takeIf { it.isNotBlank() } else null) ?: Cloud.cfg(app, key, fallback)
 
     val trainMsgs = mutableStateListOf<Pair<Boolean, String>>()
     val trainBusy = mutableStateOf(false)
@@ -958,6 +960,13 @@ class ArinaEngine private constructor(private val app: Application) {
         adminAudit.clear(); adminAudit.addAll(aud)
     }
 
+    fun setPro(u: Cloud.User, on: Boolean) = adminRun {
+        withContext(Dispatchers.IO) { cloud.setPro(u.id, on) }
+        val list = withContext(Dispatchers.IO) { cloud.users() }
+        adminUsers.clear(); adminUsers.addAll(list)
+        notice.value = (if (on) "Pro given to " else "Pro removed from ") + u.email
+    }
+
     fun setReleaseActive(r: Cloud.Release, active: Boolean) = adminRun {
         withContext(Dispatchers.IO) { cloud.setReleaseActive(r.id, r.build, active) }
         val (rel, aud) = withContext(Dispatchers.IO) { cloud.releases() to cloud.auditLog() }
@@ -1049,7 +1058,7 @@ class ArinaEngine private constructor(private val app: Application) {
             },
             {
                 // Admin chose the second voice: Cartesia. It needs its own voice id for the chosen agent.
-                val own = isCreator && creatorPrefs.getString(if (persona.value == Persona.Aurion) "cartesia_voice_male" else "cartesia_voice_female", "").orEmpty().isNotBlank()
+                val own = hasExtras && creatorPrefs.getString(if (persona.value == Persona.Aurion) "cartesia_voice_male" else "cartesia_voice_female", "").orEmpty().isNotBlank()
                 if (!own && Cloud.cfg(app, "voice_engine", "gemini") != "cartesia") null
                 else {
                     val v = voiceCfg(if (persona.value == Persona.Aurion) "cartesia_voice_male" else "cartesia_voice_female", "")

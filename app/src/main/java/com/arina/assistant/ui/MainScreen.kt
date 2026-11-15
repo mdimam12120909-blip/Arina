@@ -1072,8 +1072,8 @@ private fun SettingsHome(vm: ArinaEngine, go: (Page) -> Unit) {
                 }
             }
         )
-        if (vm.isCreator) {
-            SectionTitle("CREATOR")
+        if (vm.hasExtras) {
+            SectionTitle("PRO")
             Group({ NavRow("My voices", "Add Cartesia voices for yourself", Icons.Filled.Info, flat = true) { go(Page.Creator) } })
         }
         if (vm.isAdmin.value && com.arina.assistant.BuildConfig.ADMIN_APP) {
@@ -1321,8 +1321,10 @@ private fun AdminUsers(vm: ArinaEngine) {
             Text("Signed up with ${u.provider.ifBlank { "unknown" }}  |  ${u.messages} messages  |  ${u.memories} memories  |  ${if (u.synced > 0) "data synced" else "no synced data"}", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
             if (u.agent.isNotBlank()) Text("Agent name: ${u.agent}", color = ArinaColors.Muted, fontSize = 12.sp)
             if (u.about.isNotBlank()) Text("About: ${u.about}", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
+            if (u.pro) Text("PRO", color = Good, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             if (!me) {
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text(if (u.pro) "Remove Pro" else "Make Pro", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { vm.setPro(u, !u.pro) }.padding(vertical = 4.dp))
                     Text(if (u.banned) "Allow again" else "Ban", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { vm.banUser(u.id, !u.banned) }.padding(vertical = 4.dp))
                     if (confirm == u.id) {
                         Text("Tap again to remove for good", color = Warn, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { confirm = ""; vm.removeUser(u.id) }.padding(vertical = 4.dp))

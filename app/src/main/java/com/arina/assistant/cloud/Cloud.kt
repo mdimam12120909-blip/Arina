@@ -156,7 +156,7 @@ class Cloud(private val ctx: Context) {
 
     class Fact(val id: Long, val text: String)
     class User(val id: String, val email: String, val name: String, val created: String, val lastSeen: String, val banned: Boolean,
-        val provider: String = "", val messages: Long = 0, val memories: Long = 0, val synced: Long = 0, val agent: String = "", val about: String = "")
+        val provider: String = "", val messages: Long = 0, val memories: Long = 0, val synced: Long = 0, val agent: String = "", val about: String = "", val pro: Boolean = false)
 
     private fun adminCall(method: String, path: String, body: String? = null, prefer: String? = null): String {
         val t = token() ?: throw IOException("Sign in first.")
@@ -181,9 +181,11 @@ class Cloud(private val ctx: Context) {
             val o = a.getJSONObject(it)
             User(o.getString("id"), o.optString("email"), o.optString("name"), stamp(o.optString("created_at")),
                 stamp(o.optString("last_sign_in_at")), o.optBoolean("banned"),
-                o.optString("provider"), o.optLong("messages"), o.optLong("memories"), o.optLong("synced"), o.optString("agent"), o.optString("about"))
+                o.optString("provider"), o.optLong("messages"), o.optLong("memories"), o.optLong("synced"), o.optString("agent"), o.optString("about"), o.optBoolean("pro"))
         }
     }
+
+    fun setPro(id: String, on: Boolean) { adminCall("POST", "/rest/v1/rpc/admin_set_pro", JSONObject().put("target", id).put("on_", on).toString()) }
 
     fun setBan(id: String, ban: Boolean) { adminCall("POST", "/rest/v1/rpc/admin_set_ban", JSONObject().put("target", id).put("ban", ban).toString()) }
 
