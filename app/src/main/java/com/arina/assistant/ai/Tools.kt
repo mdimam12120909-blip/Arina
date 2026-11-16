@@ -180,9 +180,22 @@ class ToolRunner(
     private val song by lazy { SongPlayer(device.context, device) }
     private val SCREEN_TOOLS = setOf("play_song", "send_message", "tap_text", "press_button", "open_app", "open_url", "app_action", "phone_control", "open_settings")
 
+    /** After opening something, look at the screen once: if a pop-up, banner or chooser is in the way, say so, so the agent can offer to deal with it. */
+    private fun popupNote(result: String): String {
+        if (!result.startsWith("OK")) return ""
+        return try {
+            Thread.sleep(1600)
+            val snap = com.arina.assistant.device.ArinaAccessibilityService.instance?.snapshot(textMax = 60, maxNodes = 80) ?: return ""
+            val t = snap.text
+            val found = listOf("Cancel", "Not now", "No thanks", "Skip", "Close", "Dismiss", "Allow", "Accept", "Agree", "Open in app", "Use the app", "Sign in", "Continue with Google", "Just once", "Always", "Later", "OK")
+                .filter { Regex("(^|[\\s\"'|\\[(])" + Regex.escape(it) + "($|[\\s\"'|\\])!.])", RegexOption.IGNORE_CASE).containsMatchIn(t) }
+            if (found.isEmpty()) "" else " | SCREEN NOTE: in ${snap.app} something may be in the way (buttons seen: ${found.joinToString(", ")}). Tell him in one natural line what you see and ask if he wants you to tap it away; do not tap anything yourself unless he agrees."
+        } catch (e: Exception) { "" }
+    }
+
     private fun runBuiltin(name: String, args: JSONObject): String = try {
         when (name) {
-            "open_app" -> device.openApp(args.optString("app_name"))
+            "open_app" -> device.openApp(args.optString("app_name")).let { it + popupNote(it) }
             "call_contact" -> device.call(args.optString("name_or_number"))
             "send_sms" -> device.sendSms(args.optString("recipient"), args.optString("message"))
             "set_volume" -> device.setVolume(args.optInt("percent", 50))
@@ -235,7 +248,7 @@ class ToolRunner(
                 if (n > 0) "OK: forgot $n item(s)." else "ERROR: nothing matched."
             }
             "web_search" -> device.webSearch(args.optString("query"))
-            "open_url" -> device.openUrl(args.optString("url"))
+            "open_url" -> device.openUrl(args.optString("url")).let { it + popupNote(it) }
             "set_alarm" -> device.setAlarm(args.optInt("hour"), args.optInt("minute"), args.optString("label", "Entrion"))
             "read_notifications" -> ArinaNotificationListener.instance?.summary()
                 ?: "ERROR: Notification access is off. Ask the user to turn it on in the Settings tab."

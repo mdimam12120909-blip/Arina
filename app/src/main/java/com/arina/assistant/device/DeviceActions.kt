@@ -261,8 +261,28 @@ class DeviceActions(private val ctx: Context) {
         }
         val h = java.time.LocalTime.now().hour
         val part = when (h) { in 5..11 -> "morning"; in 12..16 -> "afternoon"; in 17..20 -> "evening"; else -> "night" }
-        return "Battery $pct%${if (charging) " (charging)" else ""}, $net, it is $part (${java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("hh:mm a"))})."
+        return "Battery $pct%${if (charging) " (charging)" else ""}, $net, it is $part (${java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("hh:mm a"))}). ${usageToday()}".trim()
     }
+
+    /** Screen time since midnight and the most used apps, when Usage access is allowed. */
+    fun usageToday(): String = try {
+        val ops = ctx.getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+        val mode = if (android.os.Build.VERSION.SDK_INT >= 29) ops.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), ctx.packageName)
+        else @Suppress("DEPRECATION") ops.checkOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), ctx.packageName)
+        if (mode != android.app.AppOpsManager.MODE_ALLOWED) "" else {
+            val usm = ctx.getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
+            val start = java.time.LocalDate.now().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+            val pm = ctx.packageManager
+            val launcher = pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0).map { it.activityInfo.packageName }.toSet()
+            val per = usm.queryAndAggregateUsageStats(start, System.currentTimeMillis())
+                .filter { (pkg, st) -> st.totalTimeInForeground > 60_000 && pkg != ctx.packageName && pkg !in launcher && !pkg.startsWith("com.android.systemui") && pm.getLaunchIntentForPackage(pkg) != null }
+                .map { (pkg, st) -> (runCatching { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg)) to st.totalTimeInForeground }
+                .sortedByDescending { it.second }
+            val total = per.sumOf { it.second }
+            fun fmt(ms: Long) = (ms / 60000).let { m -> if (m >= 60) "${m / 60}h ${m % 60}m" else "${m}m" }
+            if (per.isEmpty()) "" else "Phone use today so far: ${fmt(total)}; most used: " + per.take(4).joinToString(", ") { "${it.first} ${fmt(it.second)}" } + "."
+        }
+    } catch (e: Exception) { "" }
 
     fun status(): String {
         val bm = ctx.getSystemService(BatteryManager::class.java)
