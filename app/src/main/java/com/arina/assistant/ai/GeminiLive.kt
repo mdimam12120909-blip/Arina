@@ -88,6 +88,9 @@ class GeminiLive(
 
     // ---- Cartesia mode: sentences are fetched one by one while earlier ones are already playing ----
     @Volatile private var ttsCfg: TtsCfg? = null
+    @Volatile private var textTry = 0
+    private val textFallbacks = listOf("gemini-2.0-flash-live-001", "gemini-2.5-flash-live-preview", "gemini-live-2.5-flash-preview")
+    private fun textCandidate(cfg: TtsCfg): String = (listOf(cfg.textModel) + textFallbacks).distinct().let { it[textTry.coerceIn(0, it.size - 1)] }
     @Volatile private var cartesiaBroken = false   // the text-mode session failed to open: use the Gemini voice for now
     private val sentences = LinkedBlockingQueue<Pair<Int, String>>()
     private val ttsPending = java.util.concurrent.atomic.AtomicInteger(0)
@@ -194,6 +197,7 @@ class GeminiLive(
     @Synchronized
     fun stop() {
         cartesiaBroken = false
+        textTry = 0
         resumeHandle = null
         generation++
         ready = false
@@ -233,7 +237,7 @@ class GeminiLive(
             .put("prefixPaddingMs", 250)
             .put("silenceDurationMs", SILENCE_MS)
         val setup = JSONObject()
-            .put("model", "models/${cart?.textModel ?: MODEL}")
+            .put("model", "models/${cart?.let { textCandidate(it) } ?: MODEL}")
             .put("generationConfig", gen)
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system()))))
             .put("tools", JSONArray().put(JSONObject().put("functionDeclarations", tools.declarations())))
@@ -280,7 +284,8 @@ class GeminiLive(
     private fun end(mine: Int, message: String) {
         synchronized(this) {
             if (generation != mine) return
-            if (!ready && ttsCfg != null) { cartesiaBroken = true; Diag.log("voice: Cartesia mode could not open (${message.take(140)}); falling back to the Gemini voice") }
+            if (!ready && ttsCfg != null && textTry < textFallbacks.size) { textTry++; Diag.log("voice: text model did not open; trying the next one (${message.take(80)})") }
+            else if (!ready && ttsCfg != null) { cartesiaBroken = true; Diag.log("voice: Cartesia mode could not open (${message.take(140)}); falling back to the Gemini voice") }
             if (usedHandleNotReady) { resumeHandle = null; usedHandleNotReady = false }   // a stale token must not trap the next try
             generation++
             ready = false
