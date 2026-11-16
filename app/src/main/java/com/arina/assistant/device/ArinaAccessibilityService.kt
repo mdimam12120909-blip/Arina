@@ -54,16 +54,34 @@ class ArinaAccessibilityService : AccessibilityService() {
         return performGlobalAction(action)
     }
 
+    /** Words people say for buttons that apps label differently (three dots are usually "More options", "Menu" or "Options"). */
+    private fun aliases(text: String): List<String> {
+        val t = text.trim().lowercase()
+        val more = listOf("more options", "more", "menu", "options", "overflow", "open menu", "three dots", "3 dots")
+        val cancel = listOf("cancel", "not now", "no thanks", "close", "dismiss", "don't open", "stay", "later")
+        return listOf(text) + when {
+            t in more || "dot" in t || "মেনু" in t || "থ্রি ডট" in t -> more
+            t in cancel || "ক্যান্সেল" in t || "বাতিল" in t -> cancel
+            else -> emptyList()
+        }.filter { !it.equals(text, ignoreCase = true) }
+    }
+
     fun tapText(text: String): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val nodes = root.findAccessibilityNodeInfosByText(text)
-        for (node in nodes) {
-            var current: AccessibilityNodeInfo? = node
-            while (current != null) {
-                if (current.isClickable) {
-                    return current.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        for (word in aliases(text)) {
+            // Every window on screen is searched, not only the one in front, so a dialog or sheet is found too.
+            val roots = (windows?.mapNotNull { it.root } ?: emptyList()) + listOfNotNull(rootInActiveWindow)
+            for (root in roots) {
+                val nodes = root.findAccessibilityNodeInfosByText(word)
+                for (node in nodes) {
+                    var current: AccessibilityNodeInfo? = node
+                    while (current != null) {
+                        if (current.isClickable && current.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true
+                        current = current.parent
+                    }
+                    // Nothing clickable around it: press where it is on the screen.
+                    val r = android.graphics.Rect(); node.getBoundsInScreen(r)
+                    if (node.isVisibleToUser && !r.isEmpty && tapAt(r.exactCenterX(), r.exactCenterY())) return true
                 }
-                current = current.parent
             }
         }
         return false
