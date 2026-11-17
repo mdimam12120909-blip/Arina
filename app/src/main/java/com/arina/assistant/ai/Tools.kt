@@ -133,7 +133,7 @@ class ToolRunner(
         ), required = listOf("title", "time")))
         put(decl("list_routines", "Read the user's routines."))
         put(decl("remove_routine", "Delete a routine.", listOf(Triple("title", "STRING", "Part of the routine's title."))))
-        put(decl("send_message", "Send a WhatsApp message to a person BY NAME or number in one step. It opens the chat, checks it is the right person, types the text, presses Send and checks the message really appeared. Use this instead of operate_phone for any WhatsApp message. The result says CONFIRMED only when proven. Never call it twice for the same message. Write 'text' as the message the user wants sent, in first person and in his language, exactly what he meant, short, with nothing added; if he dictated the words, use them verbatim.", listOf(
+        put(decl("send_message", "Send a WhatsApp message to a person BY NAME or number in one step. It opens the chat, checks it is the right person, types the text, presses Send and checks the message really appeared. Use this instead of operate_phone for any WhatsApp message. The result says CONFIRMED only when proven. Never call it twice for the same message. Write 'text' as the message the user wants sent, in first person and in his language and script, polished the way he would say it on his best day (see WRITING FOR HIM), same meaning, nothing added; use his words verbatim only if he said exactly this.", listOf(
             Triple("to", "STRING", "Contact name as the user said it, or a full phone number."),
             Triple("text", "STRING", "The message to send."),
             Triple("send", "BOOLEAN", "true to send now. false only if he asked just to prepare or draft it.")
