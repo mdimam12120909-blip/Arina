@@ -152,7 +152,12 @@ class PhoneAgent(
             }
             onStep("Step $step: $desc")
             Diag.log("agent step $step: $desc  [thinking ${modelMs} ms, prompt ${prompt.length} chars]")
-            if (desc == last) { if (++repeats >= 3) return Outcome("এই ধাপে আটকে গেছি, থামলাম।", "I got stuck, so I stopped.") } else { repeats = 0; last = desc }
+            val sig = desc + (if (action == "click") " " + (node?.text ?: node?.contentDescription ?: "") else "")
+            if (sig == last) {
+                repeats++
+                if (repeats == 1) history += "WARNING: you just did the same thing again ($desc) and the screen did not move on. Do NOT repeat it a third time: choose a different element, scroll, go back, or search another way."
+                if (repeats >= 3) return Outcome("এই ধাপে আটকে গেছি, কোথায় আটকেছি জানাচ্ছি: $desc।", "I got stuck repeating: $desc. Tell me what you see on the screen or how to continue.")
+            } else { repeats = 0; last = sig }
 
             var ok = true
             var denied = false
