@@ -154,6 +154,10 @@ class ToolRunner(
             Triple("tags", "STRING", "Comma-separated tags."),
             Triple("privacy", "STRING", "public, unlisted or private. Use private unless the user clearly said public.")
         ), required = listOf("video", "title")))
+        put(decl("save_web_images", "Find pictures of something on the web and SAVE them into the phone's gallery (Pictures/Entrion/<topic>), e.g. 'save 5 photos of Cox's Bazar'. Runs in one step; the result says how many were really saved. Use it when he wants photos downloaded or collected, also as the first step of making a video from them.", listOf(
+            Triple("query", "STRING", "What the pictures should show."),
+            Triple("count", "INTEGER", "How many to save, 1 to 8. Default 5.")
+        ), required = listOf("query")))
         put(decl("scan_phone", "Check the installed apps for suspicious ones (heuristic, not an antivirus). Results are listed in Settings, Phone Health."))
         put(decl("termux", "Run one shell command in Termux. The user is asked to allow every command before it runs. Returns the output.", listOf(Triple("command", "STRING", "The bash command line."))))
     }
@@ -222,6 +226,7 @@ class ToolRunner(
             "list_skills" -> hooks.listSkills()
             "show_image" -> hooks.showImage(args.optString("query"))
             "play_song" -> song.play(args.optString("query"))
+            "save_web_images" -> WebImages.save(device.context, args.optString("query"), args.optInt("count", 5))
             "generate_image" -> hooks.generateImage(args.optString("prompt"), args.optBoolean("change_last", false))
             "diagram" -> hooks.diagram(args.optString("title"), args.optString("outline"), args.optString("mode", "new"), args.optString("remove"))
             "show_gallery" -> hooks.showGallery(args.optString("album"), args.optInt("count", 4))
