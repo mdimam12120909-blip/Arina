@@ -158,6 +158,10 @@ class ToolRunner(
             Triple("query", "STRING", "What the pictures should show."),
             Triple("count", "INTEGER", "How many to save, 1 to 8. Default 5.")
         ), required = listOf("query")))
+        put(decl("make_video", "Make a short silent slideshow video (vertical, a few seconds per picture) from pictures already saved by save_web_images or generate_image, and save it in the gallery (Movies/Entrion). Takes a little while. Result says CONFIRMED only when the file is saved. No sound or effects yet; say so if he wants music.", listOf(
+            Triple("topic", "STRING", "Part of the picture folder name (the topic used when saving). Empty = the newest pictures."),
+            Triple("seconds_each", "INTEGER", "Seconds each picture stays, 1 to 8. Default 3.")
+        )))
         put(decl("scan_phone", "Check the installed apps for suspicious ones (heuristic, not an antivirus). Results are listed in Settings, Phone Health."))
         put(decl("termux", "Run one shell command in Termux. The user is asked to allow every command before it runs. Returns the output.", listOf(Triple("command", "STRING", "The bash command line."))))
     }
@@ -227,6 +231,7 @@ class ToolRunner(
             "show_image" -> hooks.showImage(args.optString("query"))
             "play_song" -> song.play(args.optString("query"))
             "save_web_images" -> WebImages.save(device.context, args.optString("query"), args.optInt("count", 5))
+            "make_video" -> VideoMaker.make(device.context, args.optString("topic"), args.optInt("seconds_each", 3))
             "generate_image" -> hooks.generateImage(args.optString("prompt"), args.optBoolean("change_last", false))
             "diagram" -> hooks.diagram(args.optString("title"), args.optString("outline"), args.optString("mode", "new"), args.optString("remove"))
             "show_gallery" -> hooks.showGallery(args.optString("album"), args.optInt("count", 4))
