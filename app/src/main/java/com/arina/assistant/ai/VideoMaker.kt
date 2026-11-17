@@ -69,25 +69,27 @@ object VideoMaker {
                 setInteger(MediaFormat.KEY_FRAME_RATE, FPS)
                 setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
             }
-            codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-            codec.configure(fmt, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-            codec.start()
-            muxer = MediaMuxer(tmp.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            val cd = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+            codec = cd
+            cd.configure(fmt, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            cd.start()
+            val mx = MediaMuxer(tmp.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            muxer = mx
             var track = -1
             var started = false
             val info = MediaCodec.BufferInfo()
 
             fun drain(end: Boolean) {
                 while (true) {
-                    val i = codec.dequeueOutputBuffer(info, if (end) 20_000 else 0)
+                    val i = cd.dequeueOutputBuffer(info, if (end) 20_000 else 0)
                     when {
                         i == MediaCodec.INFO_TRY_AGAIN_LATER -> if (!end) return
-                        i == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> { track = muxer.addTrack(codec.outputFormat); muxer.start(); started = true }
+                        i == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> { track = mx.addTrack(cd.outputFormat); mx.start(); started = true }
                         i >= 0 -> {
-                            val buf = codec.getOutputBuffer(i)
+                            val buf = cd.getOutputBuffer(i)
                             if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) info.size = 0
-                            if (info.size > 0 && started && buf != null) { buf.position(info.offset); buf.limit(info.offset + info.size); muxer.writeSampleData(track, buf, info) }
-                            codec.releaseOutputBuffer(i, false)
+                            if (info.size > 0 && started && buf != null) { buf.position(info.offset); buf.limit(info.offset + info.size); mx.writeSampleData(track, buf, info) }
+                            cd.releaseOutputBuffer(i, false)
                             if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) return
                         }
                     }
@@ -109,9 +111,9 @@ object VideoMaker {
                     }
                 }
                 repeat(hold) {
-                    var idx = codec.dequeueInputBuffer(20_000)
-                    while (idx < 0) { drain(false); idx = codec.dequeueInputBuffer(20_000) }
-                    val img = codec.getInputImage(idx) ?: throw IllegalStateException("encoder gave no input image")
+                    var idx = cd.dequeueInputBuffer(20_000)
+                    while (idx < 0) { drain(false); idx = cd.dequeueInputBuffer(20_000) }
+                    val img = cd.getInputImage(idx) ?: throw IllegalStateException("encoder gave no input image")
                     val planes = img.planes
                     val src = arrayOf(y, u, v)
                     val pw = intArrayOf(W, W / 2, W / 2); val ph = intArrayOf(H, H / 2, H / 2)
@@ -119,16 +121,16 @@ object VideoMaker {
                         val pl = planes[k]; val bb = pl.buffer
                         for (row in 0 until ph[k]) for (col in 0 until pw[k]) bb.put(row * pl.rowStride + col * pl.pixelStride, src[k][row * pw[k] + col])
                     }
-                    codec.queueInputBuffer(idx, 0, W * H * 3 / 2, n * 1_000_000L / FPS, 0)
+                    cd.queueInputBuffer(idx, 0, W * H * 3 / 2, n * 1_000_000L / FPS, 0)
                     n++
                     drain(false)
                 }
             }
-            var idx = codec.dequeueInputBuffer(20_000)
-            while (idx < 0) { drain(false); idx = codec.dequeueInputBuffer(20_000) }
-            codec.queueInputBuffer(idx, 0, 0, n * 1_000_000L / FPS, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+            var idx = cd.dequeueInputBuffer(20_000)
+            while (idx < 0) { drain(false); idx = cd.dequeueInputBuffer(20_000) }
+            cd.queueInputBuffer(idx, 0, 0, n * 1_000_000L / FPS, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
             drain(true)
-            muxer.stop()
+            mx.stop()
         } catch (e: Exception) {
             return "ERROR: could not make the video (${e.message ?: e.javaClass.simpleName})."
         } finally {
