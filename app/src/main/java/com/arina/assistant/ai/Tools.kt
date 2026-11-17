@@ -136,7 +136,8 @@ class ToolRunner(
         put(decl("send_message", "Send a WhatsApp message to a person BY NAME or number in one step. It opens the chat, checks it is the right person, types the text, presses Send and checks the message really appeared. Use this instead of operate_phone for any WhatsApp message. The result says CONFIRMED only when proven. Never call it twice for the same message. Write 'text' as the message the user wants sent, in first person and in his language and script, polished the way he would say it on his best day (see WRITING FOR HIM), same meaning, nothing added; use his words verbatim only if he said exactly this.", listOf(
             Triple("to", "STRING", "Contact name as the user said it, or a full phone number."),
             Triple("text", "STRING", "The message to send."),
-            Triple("send", "BOOLEAN", "true to send now. false only if he asked just to prepare or draft it.")
+            Triple("send", "BOOLEAN", "true to send now. false only if he asked just to prepare or draft it."),
+            Triple("app", "STRING", "Empty or 'whatsapp' = WhatsApp (verified one-step send). 'messenger', 'telegram', 'instagram', 'signal', 'imo' or another chat app = the phone agent opens that app, finds the person, types and sends (slower, checked at the end). For a plain text message use send_sms instead.")
         ), required = listOf("to", "text")))
         put(decl("app_action", "Do something in an app WITHOUT touching the screen, using the app's own shortcut. Faster and more reliable than operate_phone for these. Tell the user honestly what the result says (for email and WhatsApp the draft is ready but they press Send).", listOf(
             Triple("action", "STRING", "email (a=to address, b=subject, c=text) | whatsapp (a=phone number with country code, b=message) | maps (a=place) | youtube_search (a=query) | web_search (a=query) | share (a=text) | timer (a=seconds, b=label) | calendar_event (a=title, b=notes)."),
@@ -209,7 +210,9 @@ class ToolRunner(
             "set_volume" -> device.setVolume(args.optInt("percent", 50))
             "toggle_flashlight" -> device.flashlight(args.optBoolean("on", true))
             "press_button" -> device.pressButton(args.optString("button"))
-            "send_message" -> messenger.send(args.optString("to"), args.optString("text"), args.optBoolean("send", true))
+            "send_message" -> if (args.optString("app").trim().lowercase().let { it.isNotEmpty() && it != "whatsapp" && it != "wa" })
+                hooks.operatePhone("Open the ${args.optString("app").trim()} app. Find the chat with \"${args.optString("to").trim()}\" (use the search box if needed; make sure it is exactly that person). Tap the message box, type exactly this text and nothing else: ${args.optString("text").trim()} . Then tap Send ${if (args.optBoolean("send", true)) "" else "NOT: only leave the text typed in the box and stop "}and finish ONLY when the sent message appears in the conversation; give that message text as your evidence.", false)
+            else messenger.send(args.optString("to"), args.optString("text"), args.optBoolean("send", true))
             "app_action" -> device.appAction(args.optString("action"), args.optString("a"), args.optString("b"), args.optString("c"))
             "look_screen" -> {
                 val svc = com.arina.assistant.device.ArinaAccessibilityService.instance
