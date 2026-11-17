@@ -443,14 +443,15 @@ class GeminiLive(
                     if (db > peak - 100f && db > peak) peak = db
                     if (db < -70f) silentBlocks++
                     val nowMs = System.currentTimeMillis()
-                    if (nowMs - lastLog > 8000) { Diag.log("mic: sent=$sent chunks, silent=$silentBlocks, peak=${"%.0f".format(peak)} dB, muted=$micMuted, ready=$ready"); sent = 0; silentBlocks = 0; peak = -100f; lastLog = nowMs }
+                    if (nowMs - lastLog > 8000) { Diag.log("mic: sent=$sent chunks, silent=$silentBlocks, peak=${"%.0f".format(peak)} dB, muted=$micMuted, ready=$ready, floor=${floor.toInt()}"); sent = 0; silentBlocks = 0; peak = -100f; lastLog = nowMs }
                     if (micMuted || userMuted) { hang = 0; if (userMuted) cb.onLevel(0f); continue }
                     // Noise gate: the room's background level is tracked, and only sound clearly above it is sent as speech.
                     // Everything else goes out as digital silence, so the server can tell for certain when you stop talking.
                     val rms = sqrt(sum / got)
                     // The background level is learned only while nobody is talking, and slowly, so quiet syllables inside a sentence never count as "background".
-                    if (hang <= 0) floor = floor * 0.94 + rms * 0.06
-                    val isOpen = rms > maxOf(floor * 2.5, 220.0)
+                    // Drops fast, rises very slowly and never past a cap: quiet speech must never be learned as "background", or the gate locks itself shut.
+                    if (hang <= 0) floor = if (rms < floor) floor * 0.9 + rms * 0.1 else (floor * 0.995 + minOf(rms, floor * 1.3) * 0.005).coerceAtMost(500.0)
+                    val isOpen = rms > maxOf(floor * 2.2, 200.0)
                     val wasClosed = hang <= 0
                     hang = if (isOpen) 14 else hang - 1   // keeps the gate open ~0.5 s after the last speech so word endings are not cut
                     val bytes = ByteArray(got * 2)
