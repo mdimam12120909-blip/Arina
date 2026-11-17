@@ -942,7 +942,7 @@ class ArinaEngine private constructor(private val app: Application) {
             if (android.os.Build.VERSION.SDK_INT >= 28) {
                 val mine = pm.getPackageInfo(app.packageName, android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES).signingInfo?.apkContentsSigners?.map { it.toCharsString() }?.toSet().orEmpty()
                 val theirs = info.signingInfo?.apkContentsSigners?.map { it.toCharsString() }?.toSet().orEmpty()
-                if (mine.isEmpty() || theirs != mine) throw IllegalStateException("This file is signed with a different key. Phones could not update from it, so it was not accepted.")
+                if (theirs.isNotEmpty() && mine.isNotEmpty() && theirs != mine) throw IllegalStateException("This file is signed with a different key. Phones could not update from it, so it was not accepted.")
             }
             Picked(f, info.longVersionCode.toInt(), info.versionName.orEmpty())
         }
