@@ -88,9 +88,10 @@ class GeminiLive(
 
     // ---- Cartesia mode: sentences are fetched one by one while earlier ones are already playing ----
     @Volatile private var ttsCfg: TtsCfg? = null
-    @Volatile private var textTry = 0
+    // Kept for the whole app process (not per session): which text model is being tried, and whether the very next start should skip Cartesia.
+    private object CartesiaState { @Volatile var textTry = 0; @Volatile var skipNext = false; @Volatile var gaveUp = false }
     private val textFallbacks = listOf("gemini-2.0-flash-live-001", "gemini-2.5-flash-live-preview", "gemini-live-2.5-flash-preview")
-    private fun textCandidate(cfg: TtsCfg): String = (listOf(cfg.textModel) + textFallbacks).distinct().let { it[textTry.coerceIn(0, it.size - 1)] }
+    private fun textCandidate(cfg: TtsCfg): String = (listOf(cfg.textModel) + textFallbacks).distinct().let { it[CartesiaState.textTry.coerceIn(0, it.size - 1)] }
     @Volatile private var cartesiaBroken = false   // the text-mode session failed to open: use the Gemini voice for now
     private val sentences = LinkedBlockingQueue<Pair<Int, String>>()
     private val ttsPending = java.util.concurrent.atomic.AtomicInteger(0)
@@ -154,8 +155,9 @@ class GeminiLive(
             return
         }
         val mine = ++generation
-        ttsCfg = if (cartesiaBroken) null else tts()
-        Diag.log("voice: ${ttsCfg?.let { "Cartesia, voice ${it.voice.take(8)}, model ${it.model}, text model ${it.textModel}" } ?: "Gemini"}")
+        ttsCfg = if (cartesiaBroken || CartesiaState.skipNext || CartesiaState.gaveUp) null else tts()
+        CartesiaState.skipNext = false
+        Diag.log("voice: ${ttsCfg?.let { "Cartesia, voice ${it.voice.take(8)}, model ${it.model}, text model ${textCandidate(it)}" } ?: "Gemini"}")
         ready = false
         startMic(mine)   // listens from the first moment; what is said while the session opens is kept and sent once it is ready
         usedHandleNotReady = resumeHandle != null
@@ -197,7 +199,6 @@ class GeminiLive(
     @Synchronized
     fun stop() {
         cartesiaBroken = false
-        textTry = 0
         resumeHandle = null
         generation++
         ready = false
@@ -284,8 +285,13 @@ class GeminiLive(
     private fun end(mine: Int, message: String) {
         synchronized(this) {
             if (generation != mine) return
-            if (!ready && ttsCfg != null && textTry < textFallbacks.size) { textTry++; Diag.log("voice: text model did not open; trying the next one (${message.take(80)})") }
-            else if (!ready && ttsCfg != null) { cartesiaBroken = true; Diag.log("voice: Cartesia mode could not open (${message.take(140)}); falling back to the Gemini voice") }
+            if (!ready && ttsCfg != null) {
+                // Do not leave him without a voice: this conversation continues with the Gemini voice right away, and the next one tries the next text model.
+                CartesiaState.skipNext = true
+                val tried = ttsCfg?.let { textCandidate(it) }
+                if (CartesiaState.textTry < textFallbacks.size) CartesiaState.textTry++ else CartesiaState.gaveUp = true
+                Diag.log("voice: text model $tried did not open (${message.take(80)}); using the Gemini voice now" + if (CartesiaState.gaveUp) ", Cartesia mode switched off until the app restarts" else ", next time the next text model is tried")
+            }
             if (usedHandleNotReady) { resumeHandle = null; usedHandleNotReady = false }   // a stale token must not trap the next try
             generation++
             ready = false
