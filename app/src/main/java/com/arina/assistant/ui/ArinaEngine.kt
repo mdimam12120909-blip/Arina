@@ -128,7 +128,9 @@ class ArinaEngine private constructor(private val app: Application) {
     val bgStyle = mutableStateOf(com.arina.assistant.cloud.Local.prefs(app, "arina_ui").getString("bg_style", "quiet") ?: "quiet")
     val replyLength = mutableStateOf(com.arina.assistant.cloud.Local.prefs(app, "arina_ui").getString("reply_len", "normal") ?: "normal")
     val replyTone = mutableStateOf(com.arina.assistant.cloud.Local.prefs(app, "arina_ui").getString("reply_tone", "friendly") ?: "friendly")
-    init { Identity.replyLength = replyLength.value; Identity.replyTone = replyTone.value }
+    val language = mutableStateOf(com.arina.assistant.cloud.Local.prefs(app, "arina_ui").getString("reply_language", "auto") ?: "auto")
+    init { Identity.replyLength = replyLength.value; Identity.replyTone = replyTone.value; Identity.replyLanguage = language.value }
+    fun setLanguage(v: String) { language.value = v; Identity.replyLanguage = v; com.arina.assistant.cloud.Local.prefs(app, "arina_ui").edit().putString("reply_language", v).apply() }
     fun setReplyLength(v: String) { replyLength.value = v; Identity.replyLength = v; com.arina.assistant.cloud.Local.prefs(app, "arina_ui").edit().putString("reply_len", v).apply() }
     fun setReplyTone(v: String) { replyTone.value = v; Identity.replyTone = v; com.arina.assistant.cloud.Local.prefs(app, "arina_ui").edit().putString("reply_tone", v).apply() }
     fun setBgStyle(v: String) { bgStyle.value = v; uiPrefs.edit().putString("bg_style", v).apply() }
@@ -965,6 +967,58 @@ class ArinaEngine private constructor(private val app: Application) {
         val list = withContext(Dispatchers.IO) { cloud.users() }
         adminUsers.clear(); adminUsers.addAll(list)
         notice.value = (if (on) "Pro gifted to " else "Pro gift removed from ") + u.email
+    }
+
+    // ---- Inbox: messages from the admin ------------------------------------------------------
+    val inbox = mutableStateListOf<Cloud.InboxMsg>()
+    val inboxUnread = mutableIntStateOf(0)
+    private var inboxLoop = false
+
+    fun refreshInbox() {
+        if (!cloud.signedIn) return
+        scope.launch {
+            try {
+                val list = withContext(Dispatchers.IO) { cloud.inbox() }
+                inbox.clear(); inbox.addAll(list)
+                inboxUnread.intValue = list.count { !it.read }
+                val seen = uiPrefs.getLong("inbox_notified", -1L)
+                val fresh = list.filter { !it.read && it.id > seen }
+                if (seen < 0L) { uiPrefs.edit().putLong("inbox_notified", list.maxOfOrNull { it.id } ?: 0L).apply(); return@launch }   // first run: do not announce the old ones
+                if (fresh.isNotEmpty()) {
+                    uiPrefs.edit().putLong("inbox_notified", fresh.maxOf { it.id }).apply()
+                    val m = fresh.first()
+                    runCatching { com.arina.assistant.routine.RoutineScheduler.notify(app, m.title.ifBlank { "Entrion" }, m.body.take(140), 7500) }
+                    if (liveSession.active && fresh.size > 0) announce(Reply("", "", (if (fresh.size > 1) "${fresh.size} new messages in his Inbox. The latest: " else "A new message in his Inbox: ") + m.title + ". " + m.body.take(200)))
+                }
+            } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+        }
+    }
+
+    /** Polls for new inbox messages every two minutes while the app process is alive. */
+    fun startInboxLoop() {
+        if (inboxLoop) return
+        inboxLoop = true
+        scope.launch { while (true) { refreshInbox(); delay(120_000) } }
+    }
+
+    fun markInboxRead() {
+        val ids = inbox.filter { !it.read }.map { it.id }
+        if (ids.isEmpty()) return
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { cloud.markInboxRead(ids) } }
+            val list = inbox.map { Cloud.InboxMsg(it.id, it.title, it.body, it.gift, it.at, true) }
+            inbox.clear(); inbox.addAll(list); inboxUnread.intValue = 0
+        }
+    }
+
+    fun sendInbox(to: Cloud.User?, title: String, body: String, gift: Boolean) = adminRun {
+        if (title.isBlank() && body.isBlank()) { notice.value = "Write a title or a message first."; return@adminRun }
+        withContext(Dispatchers.IO) {
+            if (gift && to != null) cloud.setPro(to.id, true)
+            cloud.sendInbox(to?.id, title, body, if (gift && to != null) "pro" else "")
+        }
+        if (gift && to != null) { val l = withContext(Dispatchers.IO) { cloud.users() }; adminUsers.clear(); adminUsers.addAll(l) }
+        notice.value = "Sent to " + (to?.email ?: "everyone") + (if (gift && to != null) " with a Pro gift" else "")
     }
 
     fun setReleaseActive(r: Cloud.Release, active: Boolean) = adminRun {

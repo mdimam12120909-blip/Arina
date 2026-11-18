@@ -345,6 +345,45 @@ class Cloud(private val ctx: Context) {
         }
     }
 
+
+    // ---- Inbox -------------------------------------------------------------------------------
+
+    class InboxMsg(val id: Long, val title: String, val body: String, val gift: String, val at: String, val read: Boolean)
+
+    /** The signed-in user's messages (to everyone or to them), newest first, with which ones were already read. */
+    fun inbox(): List<InboxMsg> {
+        val t = token() ?: return emptyList()
+        val (c1, m) = raw("GET", "/rest/v1/inbox?select=id,title,body,gift,created_at&order=id.desc&limit=60", null, bearer = t)
+        if (c1 !in 200..299) throw IOException("Inbox: HTTP $c1")
+        val (c2, r) = raw("GET", "/rest/v1/inbox_read?select=msg_id", null, bearer = t)
+        val read = HashSet<Long>()
+        if (c2 in 200..299) JSONArray(r).let { a -> for (i in 0 until a.length()) read += a.getJSONObject(i).getLong("msg_id") }
+        val a = JSONArray(m)
+        return (0 until a.length()).map {
+            val o = a.getJSONObject(it)
+            val at = o.optString("created_at")
+            InboxMsg(o.getLong("id"), o.optString("title"), o.optString("body"), o.optString("gift").let { g -> if (g == "null") "" else g },
+                if (at.length >= 16) at.take(10) + " " + at.substring(11, 16) else at, o.getLong("id") in read)
+        }
+    }
+
+    fun markInboxRead(ids: List<Long>) {
+        val t = token() ?: return
+        if (ids.isEmpty()) return
+        val a = JSONArray()
+        val me = uid.ifBlank { return }
+        ids.forEach { a.put(JSONObject().put("user_id", me).put("msg_id", it)) }
+        raw("POST", "/rest/v1/inbox_read", a.toString(), bearer = t, prefer = "resolution=ignore-duplicates,return=minimal")
+    }
+
+    /** Admin: write to one user (id) or to everyone (null). */
+    fun sendInbox(userId: String?, title: String, body: String, gift: String = "") {
+        val o = JSONObject().put("title", title.trim()).put("body", body.trim())
+        if (userId != null) o.put("user_id", userId)
+        if (gift.isNotBlank()) o.put("gift", gift)
+        adminCall("POST", "/rest/v1/inbox", o.toString(), "return=minimal")
+    }
+
     // ---- plumbing ----------------------------------------------------------------------------
 
     private fun raw(method: String, path: String, body: String?, bearer: String?, prefer: String? = null): Pair<Int, String> {

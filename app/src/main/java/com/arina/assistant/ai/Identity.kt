@@ -35,6 +35,8 @@ object Identity {
     /** How this person likes answers: "short" / "normal" / "detailed" and "friendly" / "professional" / "playful". Set per account. */
     @Volatile var replyLength = "normal"
     @Volatile var replyTone = "friendly"
+    /** "auto" = the language the person speaks; otherwise the language name chosen in Settings. */
+    @Volatile var replyLanguage = "auto"
 
     private fun styleLine(): String {
         val len = when (replyLength) {
@@ -47,7 +49,8 @@ object Identity {
             "playful" -> " Tone: light, witty and playful, never rude."
             else -> ""
         }
-        return len + tone
+        val lang = if (replyLanguage == "auto" || replyLanguage.isBlank()) "" else " LANGUAGE CHOICE: he chose $replyLanguage in Settings. Always speak and write $replyLanguage, even if he speaks another language to you, unless he asks you to switch or to translate."
+        return len + tone + lang
     }
 
     /** The phone's state at the moment the conversation starts (battery, network, time of day). */

@@ -147,14 +147,15 @@ import com.arina.assistant.permissions.PermissionCenter
 private enum class Page(val title: String) {
     Home("Home"), Chat("Chat"), Memory("Memory"), Routine("Routine"), Health("Phone health"), Soul("Soul"),
     Settings("Settings"), Account("Account"), Permissions("Permissions"), 
-    Assistant("Assistant"), Admin("Admin"), Creator("My voices"), Today("Today"), Profile("Edit profile"), Connectors("Connectors"), Jobs("Tasks")
+    Assistant("Assistant"), Admin("Admin"), Creator("My voices"), Today("Today"), Profile("Edit profile"), Connectors("Connectors"), Jobs("Tasks"),
+    Inbox("Inbox"), About("About"), Language("Language")
 }
 
 /** The five bottom tabs, left to right. */
 private fun tabIdx(p: Page): Int = when (p) { Page.Memory -> 0; Page.Chat -> 1; Page.Home -> 2; Page.Today -> 3; Page.Routine -> 4; else -> -1 }
 
 /** Pages that open from Settings: they show a back arrow that returns to Settings. */
-private val SETTINGS_SUB = setOf(Page.Account, Page.Permissions, Page.Assistant, Page.Admin, Page.Creator, Page.Connectors, Page.Jobs)
+private val SETTINGS_SUB = setOf(Page.Account, Page.Permissions, Page.Assistant, Page.Admin, Page.Creator, Page.Connectors, Page.Jobs, Page.Inbox, Page.About, Page.Language)
 
 private val Good = Color(0xFF3DDC97)
 private val Warn = Color(0xFFFFB84D)
@@ -247,6 +248,9 @@ fun MainScreen(
                         Page.Permissions -> PermissionsPage(vm, onPermission, onGrantAll, onAppInfo)
                         Page.Connectors -> ConnectorsPage(vm)
                         Page.Jobs -> JobsPage(vm)
+                        Page.Inbox -> InboxPage(vm)
+                        Page.About -> AboutPage()
+                        Page.Language -> LanguagePage(vm)
                         Page.Assistant -> AssistantPage(vm, onPower)
                         Page.Admin -> AdminPage(vm)
                         Page.Creator -> PageColumn { AdminVoices(vm, own = true) }
@@ -329,7 +333,7 @@ private fun HomePanel(vm: ArinaEngine, onMicClick: () -> Unit, onPermission: (Pe
     val persona = vm.persona.value
     val problem = vm.notice.value != null
     val mood = moodOf(vm.status.value, vm.researchActive.value, problem)
-    LaunchedEffect(vm.signedIn.value) { vm.refreshHeadlines() }
+    LaunchedEffect(vm.signedIn.value) { vm.refreshHeadlines(); vm.startInboxLoop() }
     val busy = vm.status.value == Status.Speaking || vm.status.value == Status.Thinking || vm.agentActive.value
     val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
     val hello = when { hour < 5 -> "Good night"; hour < 12 -> "Good morning"; hour < 17 -> "Good afternoon"; else -> "Good evening" }
@@ -1068,7 +1072,10 @@ private fun SettingsHome(vm: ArinaEngine, go: (Page) -> Unit) {
             { NavRow("Tasks", "Big jobs Entrion did: steps, results, run again", Icons.Filled.Build, flat = true) { go(Page.Jobs) } }
         )
         SectionTitle("APP")
+        val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
         Group(
+            { NavRow("Inbox", if (vm.inboxUnread.intValue > 0) "${vm.inboxUnread.intValue} new" else "Messages and gifts for you", Icons.Filled.Info, flat = true) { go(Page.Inbox) } },
+            { NavRow("Language", if (vm.language.value == "auto") "Auto: the language you speak" else vm.language.value, Icons.Filled.Info, flat = true) { go(Page.Language) } },
             { NavRow("Account", if (vm.signedIn.value) vm.accountEmail.value else "Sign in to keep your data", Icons.Filled.Person, flat = true) { go(Page.Account) } },
             { NavRow("Permissions", "Choose what the agent may do on this phone", Icons.Filled.Lock, flat = true) { go(Page.Permissions) } },
             { HealthCheckCard(vm) },
@@ -1078,6 +1085,12 @@ private fun SettingsHome(vm: ArinaEngine, go: (Page) -> Unit) {
                     com.arina.assistant.ai.Diag.share(ctx, "build " + runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).longVersionCode }.getOrDefault(0L), vm.messages.map { (if (it.fromUser) "You: " else "Entrion: ") + it.text })
                 }
             }
+        )
+        SectionTitle("HELP AND ABOUT")
+        Group(
+            { NavRow("Help group on WhatsApp", "Ask for help and talk to other users", Icons.Filled.Link, flat = true) { runCatching { uriHandler.openUri(HELP_GROUP) } } },
+            { NavRow("Itoshi Kashikoi channel", "Updates and news", Icons.Filled.Link, flat = true) { runCatching { uriHandler.openUri(HELP_CHANNEL) } } },
+            { NavRow("About Entrion", "What it is, who made it, version", Icons.Filled.Info, flat = true) { go(Page.About) } }
         )
         if (vm.hasExtras) {
             SectionTitle("PRO")
@@ -1102,7 +1115,7 @@ private fun AdminPage(vm: ArinaEngine) {
     var section by rememberSaveable { mutableStateOf("Agent") }
     PageColumn {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Agent", "Train", "Voices", "Facts", "Users", "Keys", "Updates", "Secrets", "Log").forEach { name ->
+            listOf("Agent", "Train", "Voices", "Facts", "Users", "Inbox", "Keys", "Updates", "Secrets", "Log").forEach { name ->
                 val on = section == name
                 Text(
                     name,
@@ -1121,6 +1134,7 @@ private fun AdminPage(vm: ArinaEngine) {
             "Voices" -> AdminVoices(vm)
             "Facts" -> AdminFacts(vm)
             "Users" -> AdminUsers(vm)
+            "Inbox" -> AdminInbox(vm)
             "Keys" -> AdminKeys(vm)
             "Updates" -> AdminUpdates(vm)
             "Log" -> AdminLog(vm)
@@ -1965,5 +1979,96 @@ fun NotAdminScreen(vm: ArinaEngine) {
         Text("This app is for Entrion admins only.", color = ArinaColors.Text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
         Text("Sign in with an admin account, or use the regular Entrion app.", color = ArinaColors.Muted, fontSize = 13.sp, modifier = Modifier.padding(vertical = 12.dp))
         PillButton("Sign out") { vm.signOut() }
+    }
+}
+
+
+private const val HELP_GROUP = "https://chat.whatsapp.com/KFLl1MTeTVZ87sit29AuTX?s=cl&p=a&iam=2"
+private const val HELP_CHANNEL = "https://whatsapp.com/channel/0029VbD7NntJuyA8yz7TwW2C"
+
+private val LANGUAGES = listOf(
+    "Bengali", "English", "Hindi", "Urdu", "Arabic", "Spanish", "French", "German", "Portuguese", "Russian", "Chinese", "Japanese", "Korean",
+    "Turkish", "Indonesian", "Malay", "Thai", "Vietnamese", "Italian", "Dutch", "Polish", "Ukrainian", "Persian", "Tamil", "Telugu", "Marathi",
+    "Gujarati", "Punjabi", "Nepali", "Sinhala", "Swahili", "Greek", "Hebrew", "Swedish", "Norwegian", "Danish", "Finnish", "Czech", "Romanian", "Hungarian"
+)
+
+@Composable
+private fun LanguagePage(vm: ArinaEngine) {
+    var q by remember { mutableStateOf("") }
+    PageColumn {
+        Text("The language Entrion answers in. Auto follows the language you speak. Entrion understands many more languages than this list; just talk to it.", color = ArinaColors.Muted, fontSize = 13.sp, lineHeight = 18.sp)
+        KeyField("Search a language", q, false) { q = it }
+        if (q.isBlank()) ChoiceCard("Auto", "Answer in the language I speak", vm.language.value == "auto", flat = true) { vm.setLanguage("auto") }
+        LANGUAGES.filter { q.isBlank() || it.contains(q.trim(), true) }.forEach { l ->
+            ChoiceCard(l, "Always answer in $l", vm.language.value == l, flat = true) { vm.setLanguage(l) }
+        }
+    }
+}
+
+@Composable
+private fun InboxPage(vm: ArinaEngine) {
+    LaunchedEffect(Unit) { vm.refreshInbox() }
+    LaunchedEffect(vm.inbox.size) { kotlinx.coroutines.delay(1500); vm.markInboxRead() }
+    PageColumn {
+        if (vm.inbox.isEmpty()) Text("No messages yet. Messages and gifts from Entrion appear here.", color = ArinaColors.Muted, fontSize = 14.sp)
+        vm.inbox.forEach { m ->
+            Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (!m.read) { Box(Modifier.size(8.dp).clip(CircleShape).background(ArinaColors.Glow)); Spacer(Modifier.width(8.dp)) }
+                    Text(m.title.ifBlank { "Entrion" }, color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    Text(m.at, color = ArinaColors.Muted, fontSize = 11.sp)
+                }
+                if (m.body.isNotBlank()) Text(m.body, color = ArinaColors.Text, fontSize = 14.sp, lineHeight = 20.sp)
+                if (m.gift.isNotBlank()) Text("A gift for you: " + m.gift.replaceFirstChar { it.uppercase() }, color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AboutPage() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    val ver = runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).let { it.versionName + " (build " + it.longVersionCode + ")" } }.getOrDefault("")
+    PageColumn {
+        Column(Modifier.fillMaxWidth().glass().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Entrion", color = ArinaColors.Text, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+            Text("Entrion is a voice assistant that listens, understands what you mean and gets things done on your phone: calls, messages, search, photos, reminders and more, in your own language.", color = ArinaColors.Text, fontSize = 14.sp, lineHeight = 21.sp)
+            Text("CREATOR", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.4.sp)
+            Text("Itoshi Kashikoi", color = ArinaColors.Text, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            Text("A Pravat product", color = ArinaColors.Muted, fontSize = 13.sp)
+            if (ver.isNotBlank()) { Text("VERSION", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.4.sp); Text(ver, color = ArinaColors.Text, fontSize = 14.sp) }
+        }
+        Group(
+            { NavRow("Help group on WhatsApp", "Ask for help", Icons.Filled.Link, flat = true) { runCatching { uriHandler.openUri(HELP_GROUP) } } },
+            { NavRow("Itoshi Kashikoi channel", "Updates and news", Icons.Filled.Link, flat = true) { runCatching { uriHandler.openUri(HELP_CHANNEL) } } }
+        )
+    }
+}
+
+@Composable
+private fun AdminInbox(vm: ArinaEngine) {
+    var to by remember { mutableStateOf<com.arina.assistant.cloud.Cloud.User?>(null) }
+    var title by remember { mutableStateOf("") }
+    var body by remember { mutableStateOf("") }
+    var gift by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { vm.loadUsers() }
+    Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Write to one user or to everyone. They get a notification, and Entrion says it out loud if it is listening.", color = ArinaColors.Muted, fontSize = 12.sp)
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val sel = to == null
+            Text("Everyone", color = if (sel) ArinaColors.Background else ArinaColors.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clip(RoundedCornerShape(50)).background(if (sel) ArinaColors.Glow else ArinaColors.Glow.copy(alpha = 0.12f)).clickable { to = null; gift = false }.padding(horizontal = 14.dp, vertical = 8.dp))
+            vm.adminUsers.forEach { u ->
+                val on = to?.id == u.id
+                Text(u.name.ifBlank { u.email }, color = if (on) ArinaColors.Background else ArinaColors.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clip(RoundedCornerShape(50)).background(if (on) ArinaColors.Glow else ArinaColors.Glow.copy(alpha = 0.12f)).clickable { to = u }.padding(horizontal = 14.dp, vertical = 8.dp))
+            }
+        }
+        KeyField("Title", title, false) { title = it }
+        LongField("Message", body) { body = it }
+        if (to != null) Text(if (gift) "Gift Pro with this message: ON (tap to turn off)" else "Gift Pro with this message: off (tap to turn on)", color = if (gift) ArinaColors.Glow else ArinaColors.Muted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.clickable { gift = !gift }.padding(vertical = 4.dp))
+        PillButton("Send") { vm.sendInbox(to, title, body, gift); title = ""; body = ""; gift = false }
     }
 }
