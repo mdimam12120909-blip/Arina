@@ -226,8 +226,10 @@ class GeminiLive(
 
     private fun setupMessage(): String {
         val cart = ttsCfg
-        val gen = JSONObject().put("responseModalities", JSONArray().put(if (cart != null) "TEXT" else "AUDIO"))
-        if (cart == null) gen.put(
+        val gen = JSONObject().put("responseModalities", JSONArray().put("AUDIO"))
+        // Cartesia mode uses the SAME live model as the Gemini voice (it is the one that works): Gemini's own audio is thrown away and only its
+        // transcript is read aloud, sentence by sentence, in the Cartesia voice.
+        gen.put(
             "speechConfig", JSONObject().put(
                 "voiceConfig", JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", voiceName()))
             )
@@ -238,7 +240,7 @@ class GeminiLive(
             .put("prefixPaddingMs", 250)
             .put("silenceDurationMs", SILENCE_MS)
         val setup = JSONObject()
-            .put("model", "models/${cart?.let { textCandidate(it) } ?: MODEL}")
+            .put("model", "models/$MODEL")
             .put("generationConfig", gen)
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system()))))
             .put("tools", JSONArray().put(JSONObject().put("functionDeclarations", tools.declarations())))
@@ -247,7 +249,7 @@ class GeminiLive(
             // Without compression an audio session is cut after about 15 minutes.
             .put("contextWindowCompression", JSONObject().put("slidingWindow", JSONObject()))
             .put("sessionResumption", JSONObject().apply { resumeHandle?.let { put("handle", it) } })
-        if (cart == null) setup.put("outputAudioTranscription", JSONObject())
+        setup.put("outputAudioTranscription", JSONObject())
         return JSONObject().put("setup", setup).toString()
     }
 
@@ -323,13 +325,13 @@ class GeminiLive(
             if (userText.isEmpty()) { Timing.start(); cb.onUserSpeaking() }
             userText.append(it)
         }
-        sc.optJSONObject("outputTranscription")?.optString("text")?.takeIf { it.isNotEmpty() }?.let { modelText.append(it) }
+        sc.optJSONObject("outputTranscription")?.optString("text")?.takeIf { it.isNotEmpty() }?.let { modelText.append(it); if (ttsCfg != null) speak(chunker.feed(it)) }
 
         val parts = sc.optJSONObject("modelTurn")?.optJSONArray("parts")
         if (parts != null && ttsCfg != null) for (i in 0 until parts.length()) {
             val pt = parts.getJSONObject(i)
             val txt = pt.optString("text")
-            if (txt.isNotEmpty() && !pt.optBoolean("thought")) { modelText.append(txt); speak(chunker.feed(txt)) }
+            if (txt.isNotEmpty() && !pt.optBoolean("thought") && sc.optJSONObject("outputTranscription") == null) { modelText.append(txt); speak(chunker.feed(txt)) }
         }
         else if (parts != null) for (i in 0 until parts.length()) {
             val data = parts.getJSONObject(i).optJSONObject("inlineData")?.optString("data").orEmpty()
