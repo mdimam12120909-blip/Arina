@@ -1073,6 +1073,7 @@ private fun SettingsHome(vm: ArinaEngine, go: (Page) -> Unit) {
         )
         SectionTitle("APP")
         val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+        val ctxC = androidx.compose.ui.platform.LocalContext.current
         Group(
             { NavRow("Inbox", if (vm.inboxUnread.intValue > 0) "${vm.inboxUnread.intValue} new" else "Messages and gifts for you", Icons.Filled.Info, flat = true) { go(Page.Inbox) } },
             { NavRow("Language", if (vm.language.value == "auto") "Auto: the language you speak" else vm.language.value, Icons.Filled.Info, flat = true) { go(Page.Language) } },
@@ -1088,8 +1089,8 @@ private fun SettingsHome(vm: ArinaEngine, go: (Page) -> Unit) {
         )
         SectionTitle("HELP AND ABOUT")
         Group(
-            { NavRow("Help group on WhatsApp", "Ask for help and talk to other users", Icons.Filled.Link, flat = true) { runCatching { uriHandler.openUri(HELP_GROUP) } } },
-            { NavRow("Itoshi Kashikoi channel", "Updates and news", Icons.Filled.Link, flat = true) { runCatching { uriHandler.openUri(HELP_CHANNEL) } } },
+            { NavRow("Help group on WhatsApp", "Ask for help and talk to other users", Icons.Filled.Link, flat = true) { runCatching { uriHandler.openUri(cfgText(ctxC, "help_group_url", HELP_GROUP_DEFAULT)) } } },
+            { NavRow("Itoshi Kashikoi channel", "Updates and news", Icons.Filled.Link, flat = true) { runCatching { uriHandler.openUri(cfgText(ctxC, "help_channel_url", HELP_CHANNEL_DEFAULT)) } } },
             { NavRow("About Entrion", "What it is, who made it, version", Icons.Filled.Info, flat = true) { go(Page.About) } }
         )
         if (vm.hasExtras) {
@@ -1115,7 +1116,7 @@ private fun AdminPage(vm: ArinaEngine) {
     var section by rememberSaveable { mutableStateOf("Agent") }
     PageColumn {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Agent", "Train", "Voices", "Facts", "Users", "Inbox", "Keys", "Updates", "Secrets", "Log").forEach { name ->
+            listOf("Agent", "Train", "Voices", "Facts", "Users", "Inbox", "Content", "Keys", "Updates", "Secrets", "Log").forEach { name ->
                 val on = section == name
                 Text(
                     name,
@@ -1128,6 +1129,7 @@ private fun AdminPage(vm: ArinaEngine) {
                 )
             }
         }
+        if (section == "Agent" || section == "Voices") VoiceSwitch(vm)
         when (section) {
             "Agent" -> AdminAgent(vm)
             "Train" -> AdminTrain(vm)
@@ -1135,6 +1137,7 @@ private fun AdminPage(vm: ArinaEngine) {
             "Facts" -> AdminFacts(vm)
             "Users" -> AdminUsers(vm)
             "Inbox" -> AdminInbox(vm)
+            "Content" -> AdminContent(vm)
             "Keys" -> AdminKeys(vm)
             "Updates" -> AdminUpdates(vm)
             "Log" -> AdminLog(vm)
@@ -1160,15 +1163,9 @@ private fun AdminAgent(vm: ArinaEngine) {
     var cInit by remember { mutableStateOf(listOf(engine, cFemale, cMale, cModel, tModel)) }
     Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Published to every user of Entrion. It applies the next time someone starts talking.", color = ArinaColors.Muted, fontSize = 12.sp)
-        Text("Voice for everyone", color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("gemini" to "Gemini voice", "cartesia" to "Cartesia voice").forEach { (id, label) ->
-                val on = engine == id
-                Text(label, color = if (on) ArinaColors.Background else ArinaColors.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.clip(RoundedCornerShape(50)).background(if (on) ArinaColors.Glow else ArinaColors.Glow.copy(alpha = 0.12f)).clickable { engine = id }.padding(horizontal = 16.dp, vertical = 8.dp))
-            }
-        }
-        if (engine == "cartesia") {
+        Text("Which voice is used is switched in the card at the top of this page. These are the details for each voice.", color = ArinaColors.Muted, fontSize = 12.sp)
+        Text("Cartesia voice", color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        run {
             Text("Cartesia speaks each sentence as it is written. Needs the Cartesia key (Keys tab) and a voice id for each agent; without one, that agent falls back to the Gemini voice.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
             KeyField("Cartesia voice id, female agent", cFemale, false) { cFemale = it }
             KeyField("Cartesia voice id, male agent", cMale, false) { cMale = it }
@@ -1388,6 +1385,17 @@ private fun AdminUpdates(vm: ArinaEngine) {
     }
     Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Update App", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        Text("Easiest way: build first, then tap the button below. It takes the newest build from GitHub and publishes it to every user. No file to choose.", color = ArinaColors.Text, fontSize = 13.sp, lineHeight = 18.sp)
+        LongField("What is new (shown to users)", notes) { notes = it }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Must update", color = ArinaColors.Text, fontSize = 14.sp)
+                Text("Users cannot skip it. Use only for urgent fixes.", color = ArinaColors.Muted, fontSize = 12.sp)
+            }
+            Switch(checked = force, onCheckedChange = { force = it }, colors = SwitchDefaults.colors())
+        }
+        PillButton(if (vm.adminBusy.value) "Publishing…" else "Publish latest build from GitHub") { if (!vm.adminBusy.value) { vm.publishLatestFromGithub(notes, force); notes = ""; force = false } }
+        Text("Or, the old way with a file:", color = ArinaColors.Muted, fontSize = 12.sp)
         Text("Installed here: build ${com.arina.assistant.BuildConfig.VERSION_CODE}. Download Entrion.apk from GitHub in Chrome, then choose it here from your Downloads. Only a genuine, correctly signed Entrion.apk is accepted.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             PillButton("Choose Entrion.apk") { vm.pickingFile = true; picker.launch(arrayOf("application/vnd.android.package-archive", "application/octet-stream", "*/*")) }
@@ -1983,8 +1991,8 @@ fun NotAdminScreen(vm: ArinaEngine) {
 }
 
 
-private const val HELP_GROUP = "https://chat.whatsapp.com/KFLl1MTeTVZ87sit29AuTX?s=cl&p=a&iam=2"
-private const val HELP_CHANNEL = "https://whatsapp.com/channel/0029VbD7NntJuyA8yz7TwW2C"
+private const val HELP_GROUP_DEFAULT = "https://chat.whatsapp.com/KFLl1MTeTVZ87sit29AuTX?s=cl&p=a&iam=2"
+private const val HELP_CHANNEL_DEFAULT = "https://whatsapp.com/channel/0029VbD7NntJuyA8yz7TwW2C"
 
 private val LANGUAGES = listOf(
     "Bengali", "English", "Hindi", "Urdu", "Arabic", "Spanish", "French", "German", "Portuguese", "Russian", "Chinese", "Japanese", "Korean",
@@ -2029,19 +2037,20 @@ private fun InboxPage(vm: ArinaEngine) {
 private fun AboutPage() {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    val ctxC = ctx
     val ver = runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).let { it.versionName + " (build " + it.longVersionCode + ")" } }.getOrDefault("")
     PageColumn {
         Column(Modifier.fillMaxWidth().glass().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Entrion", color = ArinaColors.Text, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
-            Text("Entrion is a voice assistant that listens, understands what you mean and gets things done on your phone: calls, messages, search, photos, reminders and more, in your own language.", color = ArinaColors.Text, fontSize = 14.sp, lineHeight = 21.sp)
+            Text(cfgText(ctx, "about_text", "Entrion is a voice assistant that listens, understands what you mean and gets things done on your phone: calls, messages, search, photos, reminders and more, in your own language."), color = ArinaColors.Text, fontSize = 14.sp, lineHeight = 21.sp)
             Text("CREATOR", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.4.sp)
-            Text("Itoshi Kashikoi", color = ArinaColors.Text, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            Text(cfgText(ctx, "about_creator", "Itoshi Kashikoi"), color = ArinaColors.Text, fontSize = 16.sp, fontWeight = FontWeight.Medium)
             Text("A Pravat product", color = ArinaColors.Muted, fontSize = 13.sp)
             if (ver.isNotBlank()) { Text("VERSION", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.4.sp); Text(ver, color = ArinaColors.Text, fontSize = 14.sp) }
         }
         Group(
-            { NavRow("Help group on WhatsApp", "Ask for help", Icons.Filled.Link, flat = true) { runCatching { uriHandler.openUri(HELP_GROUP) } } },
-            { NavRow("Itoshi Kashikoi channel", "Updates and news", Icons.Filled.Link, flat = true) { runCatching { uriHandler.openUri(HELP_CHANNEL) } } }
+            { NavRow("Help group on WhatsApp", "Ask for help", Icons.Filled.Link, flat = true) { runCatching { uriHandler.openUri(cfgText(ctxC, "help_group_url", HELP_GROUP_DEFAULT)) } } },
+            { NavRow("Itoshi Kashikoi channel", "Updates and news", Icons.Filled.Link, flat = true) { runCatching { uriHandler.openUri(cfgText(ctxC, "help_channel_url", HELP_CHANNEL_DEFAULT)) } } }
         )
     }
 }
@@ -2070,5 +2079,52 @@ private fun AdminInbox(vm: ArinaEngine) {
         if (to != null) Text(if (gift) "Gift Pro with this message: ON (tap to turn off)" else "Gift Pro with this message: off (tap to turn on)", color = if (gift) ArinaColors.Glow else ArinaColors.Muted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
             modifier = Modifier.clickable { gift = !gift }.padding(vertical = 4.dp))
         PillButton("Send") { vm.sendInbox(to, title, body, gift); title = ""; body = ""; gift = false }
+    }
+}
+
+
+private fun cfgText(ctx: android.content.Context, key: String, fallback: String): String =
+    com.arina.assistant.cloud.Cloud.cfg(ctx, key, fallback).removeSurrounding("\"").ifBlank { fallback }
+
+@Composable
+private fun VoiceSwitch(vm: ArinaEngine) {
+    var engine by remember { mutableStateOf(vm.adminValue("voice_engine").removeSurrounding("\"").ifBlank { "gemini" }) }
+    val cartesia = engine == "cartesia"
+    Column(Modifier.fillMaxWidth().glass(strong = true).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("VOICE IN USE RIGHT NOW", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.4.sp)
+        Text(if (cartesia) "Cartesia voice" else "Gemini voice", color = ArinaColors.Text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+        Text(if (cartesia) "Entrion speaks with your Cartesia voice. If it cannot start, Entrion switches to the Gemini voice by itself, so it never goes silent."
+            else "Entrion speaks with Gemini's own voice.", color = ArinaColors.Muted, fontSize = 13.sp, lineHeight = 18.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            listOf("gemini" to "Use Gemini", "cartesia" to "Use Cartesia").forEach { (id, label) ->
+                val on = engine == id
+                Text(label, color = if (on) ArinaColors.Background else ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(50)).background(if (on) ArinaColors.Glow else ArinaColors.Glow.copy(alpha = 0.14f))
+                        .clickable { if (!on) { engine = id; vm.adminSave("voice_engine", id) } }.padding(vertical = 12.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
+        }
+        Text("One tap switches it for every user. It applies the next time someone starts talking.", color = ArinaColors.Muted, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun AdminContent(vm: ArinaEngine) {
+    var about by remember { mutableStateOf(vm.adminValue("about_text").removeSurrounding("\"")) }
+    var creator by remember { mutableStateOf(vm.adminValue("about_creator").removeSurrounding("\"")) }
+    var group by remember { mutableStateOf(vm.adminValue("help_group_url").removeSurrounding("\"")) }
+    var channel by remember { mutableStateOf(vm.adminValue("help_channel_url").removeSurrounding("\"")) }
+    Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("What users see in About and Help. Leave a field empty to keep the built-in text or link. Applies for everyone.", color = ArinaColors.Muted, fontSize = 12.sp)
+        LongField("About text", about) { about = it }
+        KeyField("Creator name", creator, false) { creator = it }
+        KeyField("Help group link", group, false) { group = it }
+        KeyField("Channel link", channel, false) { channel = it }
+        PillButton("Publish") {
+            if (about.isNotBlank()) vm.adminSave("about_text", about.trim())
+            if (creator.isNotBlank()) vm.adminSave("about_creator", creator.trim())
+            if (group.isNotBlank()) vm.adminSave("help_group_url", group.trim())
+            if (channel.isNotBlank()) vm.adminSave("help_channel_url", channel.trim())
+        }
     }
 }

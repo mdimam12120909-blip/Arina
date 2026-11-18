@@ -224,6 +224,23 @@ class Cloud(private val ctx: Context) {
         audit("publish_update", "build $build" + if (force) " (forced)" else "")
     }
 
+    /** The newest "build-N" release on GitHub that carries Entrion.apk: its build number and download link. */
+    fun githubLatest(): Pair<Int, String> {
+        val req = Request.Builder().url("https://api.github.com/repos/mdimam12120909-blip/Arina/releases?per_page=8").header("Accept", "application/vnd.github+json").build()
+        val text = try { http.newCall(req).execute().use { if (!it.isSuccessful) throw IOException("GitHub answered HTTP ${it.code}"); it.body?.string().orEmpty() } }
+            catch (e: IOException) { throw IOException("Could not reach GitHub: ${e.message}") }
+        val a = JSONArray(text)
+        var best: Pair<Int, String>? = null
+        for (i in 0 until a.length()) {
+            val r = a.getJSONObject(i)
+            val n = r.optString("tag_name").removePrefix("build-").toIntOrNull() ?: continue
+            val assets = r.optJSONArray("assets") ?: continue
+            val has = (0 until assets.length()).any { assets.getJSONObject(it).optString("name") == "Entrion.apk" }
+            if (has && (best == null || n > best.first)) best = n to (com.arina.assistant.update.Updater.GITHUB_PREFIX + n + "/Entrion.apk")
+        }
+        return best ?: throw IOException("No build with Entrion.apk found on GitHub.")
+    }
+
     fun setReleaseActive(id: Long, build: Int, active: Boolean) {
         adminCall("PATCH", "/rest/v1/app_releases?id=eq.$id", JSONObject().put("active", active).toString(), "return=minimal")
         audit(if (active) "restore_update" else "withdraw_update", "build $build")

@@ -16,7 +16,8 @@ object Updater {
     private const val PREFIX = "https://xzwlhegzneeujlpbjjba.supabase.co/storage/v1/object/public/updates/"
     private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).followRedirects(true).build()
 
-    fun allowed(url: String) = url.startsWith(PREFIX) && url.endsWith("/Entrion.apk")
+    const val GITHUB_PREFIX = "https://github.com/mdimam12120909-blip/Arina/releases/download/build-"
+    fun allowed(url: String) = (url.startsWith(PREFIX) || url.startsWith(GITHUB_PREFIX)) && url.endsWith("/Entrion.apk")
 
     fun canInstall(c: Context) = c.packageManager.canRequestPackageInstalls()
 

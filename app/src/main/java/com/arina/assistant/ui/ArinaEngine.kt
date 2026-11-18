@@ -951,6 +951,16 @@ class ArinaEngine private constructor(private val app: Application) {
         adminPicked.value = p
     }
 
+    /** Publishes the newest GitHub build as the update for every user; no file to pick, nothing to compare. */
+    fun publishLatestFromGithub(notes: String, force: Boolean) = adminRun {
+        val (build, url) = withContext(Dispatchers.IO) { cloud.githubLatest() }
+        withContext(Dispatchers.IO) { cloud.publishRelease(build, "build $build", url, notes, force) }
+        notice.value = "Published build $build from GitHub. Users will see the update next time they open the app."
+        val (rel, aud) = withContext(Dispatchers.IO) { cloud.releases() to cloud.auditLog() }
+        adminReleases.clear(); adminReleases.addAll(rel)
+        adminAudit.clear(); adminAudit.addAll(aud)
+    }
+
     fun publishPicked(notes: String, force: Boolean) = adminRun {
         val p = adminPicked.value ?: return@adminRun
         val url = withContext(Dispatchers.IO) { cloud.uploadApk(p.file, p.build) }
