@@ -419,7 +419,7 @@ class GeminiLive(
             runCatching { if (NoiseSuppressor.isAvailable()) NoiseSuppressor.create(rec.audioSessionId)?.enabled = true }
             val buf = ShortArray(chunk)
             val pre = java.util.ArrayDeque<String>()
-            var floor = 150.0; var hang = 0; var prevChunk: String? = null
+            var floor = 150.0; var hang = 0; var openRun = 0; var prevChunk: String? = null
             var sent = 0; var silentBlocks = 0; var emptyReads = 0; var peak = -100f; var lastLog = System.currentTimeMillis()
             try {
                 rec.startRecording()
@@ -450,8 +450,12 @@ class GeminiLive(
                     val rms = sqrt(sum / got)
                     // The background level is learned only while nobody is talking, and slowly, so quiet syllables inside a sentence never count as "background".
                     // Drops fast, rises very slowly and never past a cap: quiet speech must never be learned as "background", or the gate locks itself shut.
-                    if (hang <= 0) floor = if (rms < floor) floor * 0.9 + rms * 0.1 else (floor * 0.995 + minOf(rms, floor * 1.3) * 0.005).coerceAtMost(500.0)
                     val isOpen = rms > maxOf(floor * 2.2, 200.0)
+                    openRun = if (isOpen) openRun + 1 else 0
+                    // Quiet speech is never learned as background (rises slowly, only while the gate is closed). But sound that stays "open" for
+                    // more than ~3.5 s is steady noise, not a sentence: it is learned, so the gate closes and the server can hear that you stopped.
+                    if (openRun > 88) floor = (floor * 0.98 + rms * 0.02).coerceAtMost(1500.0)
+                    else if (hang <= 0 && !isOpen) floor = if (rms < floor) floor * 0.9 + rms * 0.1 else (floor * 0.99 + minOf(rms, floor * 1.5) * 0.01).coerceAtMost(1200.0)
                     val wasClosed = hang <= 0
                     hang = if (isOpen) 14 else hang - 1   // keeps the gate open ~0.5 s after the last speech so word endings are not cut
                     val bytes = ByteArray(got * 2)

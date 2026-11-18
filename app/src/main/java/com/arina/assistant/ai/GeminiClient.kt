@@ -57,6 +57,7 @@ class GeminiClient(
     companion object {
         // Tried in this order until one works for the user's key. Google retires models often.
         private val MODELS = listOf(
+            "gemini-4-hydrogen", // newest: if the key does not know it yet, the next one in the list is used automatically
             "gemini-3.5-flash-lite", // documented as thinking "minimal" by default: the fastest
             "gemini-3.6-flash",
             "gemini-3.8-flash",
@@ -269,7 +270,7 @@ class GeminiClient(
         var last: IOException? = null
         val deadline = System.currentTimeMillis() + if (o.slow) 170_000L else TOTAL_MILLIS
         // Operating the phone needs careful reading, not raw speed: start from the stronger models for that job.
-        val base = if (o.role == KeyRole.Agent) listOf("gemini-3.8-flash", "gemini-3.6-flash", "gemini-flash-latest", "gemini-2.5-flash", "gemini-3.5-flash-lite") else MODELS
+        val base = if (o.role == KeyRole.Agent) listOf("gemini-4-hydrogen", "gemini-3.8-flash", "gemini-3.6-flash", "gemini-flash-latest", "gemini-2.5-flash", "gemini-3.5-flash-lite") else MODELS
         // The phone agent calls this on every step. A model that was too slow or refused is put at the back for
         // 10 minutes, and the one that worked last goes first: otherwise every step waits out the slow model again.
         val now = System.currentTimeMillis()
