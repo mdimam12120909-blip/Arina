@@ -1282,7 +1282,15 @@ private fun AdminVoices(vm: ArinaEngine, own: Boolean = false) {
                                 com.arina.assistant.ai.VoiceSample.play(id, get("cartesia_model"), true) { r -> vm.notice.value = if (r.isEmpty()) "Playing. This is the voice with id ${id.take(8)}." else "Could not play: $r" }
                             }.padding(horizontal = 14.dp, vertical = 6.dp))
                         Text("Remove", color = ArinaColors.Text, fontSize = 12.sp,
-                            modifier = Modifier.clip(RoundedCornerShape(50)).background(ArinaColors.Glow.copy(alpha = 0.12f)).clickable { save(voices.filter { it.optString("id") != id || it.optString("gender") != g }) }.padding(horizontal = 14.dp, vertical = 6.dp))
+                            modifier = Modifier.clip(RoundedCornerShape(50)).background(ArinaColors.Glow.copy(alpha = 0.12f)).clickable {
+                                save(voices.filter { it.optString("id") != id || it.optString("gender") != g })
+                                // Removing the voice that is in use must also stop using it, otherwise its id keeps speaking.
+                                if (inUse) {
+                                    if (g == "female") activeF = "" else activeM = ""
+                                    put("cartesia_voice_$g", ""); put("cartesia_voice_desc_$g", "")
+                                    vm.notice.value = if (own) "Removed. Entrion is back on the voice set for everyone." else "Removed. Set another voice for this agent, or it will speak with the Gemini voice."
+                                }
+                            }.padding(horizontal = 14.dp, vertical = 6.dp))
                     }
                 }
             }
