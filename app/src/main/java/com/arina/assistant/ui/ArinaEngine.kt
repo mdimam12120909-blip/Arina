@@ -679,9 +679,12 @@ class ArinaEngine private constructor(private val app: Application) {
         val lessonLine = if (lessons.isNotEmpty()) "\nLESSONS FROM YOUR CREATOR (always follow them; they come right after safety):\n$lessons" else ""
         val vdesc = voiceCfg("cartesia_voice_desc_" + (if (male) "male" else "female"), "").trim()
         val voiceLine = if ((hasExtras || Cloud.cfg(app, "voice_engine", "gemini") == "cartesia") && vdesc.isNotEmpty()) "\nYOUR VOICE AND CHARACTER (your words must fit it): $vdesc" else ""
+        val storyOn = hasExtras && vdesc.isNotEmpty() && creatorPrefs.getString(if (male) "cartesia_voice_male" else "cartesia_voice_female", "").orEmpty().isNotBlank()
+        Identity.storyMode = storyOn
+        val storyLine = if (storyOn) "\nSTORY MODE (his own voice character): you are now playing the character described in YOUR VOICE AND CHARACTER above. Be that character: use their name, their way of speaking, their favourite words and their view of the world, in first person, the whole time. If the description does not say enough about the character, use what you know about them or use the research tool to learn more, then stay in character. This mode is only for chatting, stories and fun. You cannot do phone tasks, calls, messages or help work here: if he asks for one, say so in character, in one short line, and tell him he can switch back to Entrion by removing or stopping My voice. Never say you are an AI model unless he sincerely asks, and keep it kind and safe." else ""
         val pers = Identity.personality
         val persLine = if (pers.isNotBlank()) "\nPERSONALITY (chosen by the user): $pers" else ""
-        return base + extra + lessonLine + voiceLine + persLine + if (n.isEmpty()) " You have no personal name; if the user wants, they can give you one." else " The user has named you \"$n\"; that is your name."
+        return base + extra + lessonLine + voiceLine + storyLine + persLine + if (n.isEmpty()) " You have no personal name; if the user wants, they can give you one." else " The user has named you \"$n\"; that is your name."
     }
 
     /** Called with Google's ID token after the account chooser. */

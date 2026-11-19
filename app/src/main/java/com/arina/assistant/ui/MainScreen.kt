@@ -253,7 +253,7 @@ fun MainScreen(
                         Page.Language -> LanguagePage(vm)
                         Page.Assistant -> AssistantPage(vm, onPower)
                         Page.Admin -> AdminPage(vm)
-                        Page.Creator -> PageColumn { AdminVoices(vm, own = true) }
+                        Page.Creator -> MyVoicePage(vm)
                     }
                 }
             }
@@ -2133,6 +2133,118 @@ private fun AdminContent(vm: ArinaEngine) {
             if (creator.isNotBlank()) vm.adminSave("about_creator", creator.trim())
             if (group.isNotBlank()) vm.adminSave("help_group_url", group.trim())
             if (channel.isNotBlank()) vm.adminSave("help_channel_url", channel.trim())
+        }
+    }
+}
+
+
+@Composable
+private fun MyVoicePage(vm: ArinaEngine) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val prefs = vm.creatorPrefs
+    fun load(): List<org.json.JSONObject> = runCatching {
+        val a = org.json.JSONArray(prefs.getString("voice_library", "[]"))
+        (0 until a.length()).map { a.getJSONObject(it) }
+    }.getOrDefault(emptyList())
+    var voices by remember { mutableStateOf(load()) }
+    var activeF by remember { mutableStateOf(prefs.getString("cartesia_voice_female", "").orEmpty()) }
+    var activeM by remember { mutableStateOf(prefs.getString("cartesia_voice_male", "").orEmpty()) }
+    var selF by remember { mutableStateOf(activeF) }
+    var selM by remember { mutableStateOf(activeM) }
+    var adding by remember { mutableStateOf<String?>(null) }
+    var nName by remember { mutableStateOf("") }
+    var nId by remember { mutableStateOf("") }
+    var nDesc by remember { mutableStateOf("") }
+    var err by remember { mutableStateOf("") }
+    var pickUse by remember { mutableStateOf(false) }
+    var msg by remember { mutableStateOf("") }
+    fun save(list: List<org.json.JSONObject>) { voices = list; prefs.edit().putString("voice_library", org.json.JSONArray(list).toString()).apply() }
+    fun clearActive(g: String) {
+        prefs.edit().putString("cartesia_voice_$g", "").putString("cartesia_voice_desc_$g", "").apply()
+        if (g == "female") activeF = "" else activeM = ""
+    }
+    fun use(g: String) {
+        val sel = if (g == "male") selM else selF
+        val v = voices.firstOrNull { it.optString("id") == sel && it.optString("gender") == g }
+        if (v == null) { msg = "Tap a ${g} voice in the list first, then press Use voice."; return }
+        clearActive(if (g == "male") "female" else "male")
+        prefs.edit().putString("cartesia_voice_$g", sel).putString("cartesia_voice_desc_$g", v.optString("desc")).apply()
+        if (g == "male") activeM = sel else activeF = sel
+        vm.switchPersona(if (g == "male") Persona.Aurion else Persona.Arina)
+        msg = "Entrion now speaks as " + v.optString("name") + ". Just start talking. This is for chatting and stories only."
+        pickUse = false
+    }
+
+    PageColumn {
+        Text("Your own voices, only for chatting and stories. Add a Cartesia voice with its name and a description of who it is (a character such as Naruto works well). Tap a voice to select it, then press Use voice at the bottom.", color = ArinaColors.Muted, fontSize = 13.sp, lineHeight = 18.sp)
+        listOf("male" to "Male voices", "female" to "Female voices").forEach { (g, title) ->
+            Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                val mine = voices.filter { it.optString("gender") == g }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(title, color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    Text("${mine.size} / 20", color = ArinaColors.Muted, fontSize = 12.sp)
+                }
+                if (mine.isEmpty()) Text("None yet.", color = ArinaColors.Muted, fontSize = 12.sp)
+                mine.forEach { v ->
+                    val id = v.optString("id")
+                    val selected = id == (if (g == "male") selM else selF)
+                    val inUse = id == (if (g == "male") activeM else activeF)
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                        .background(ArinaColors.Glow.copy(alpha = if (selected) 0.24f else 0.08f))
+                        .clickable { if (g == "male") selM = id else selF = id; msg = "" }.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(v.optString("name") + (if (inUse) "  (in use)" else if (selected) "  (selected)" else ""), color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text(v.optString("desc"), color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, maxLines = 3)
+                        Text(id.take(8) + "…", color = ArinaColors.Muted, fontSize = 11.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Listen", color = ArinaColors.Text, fontSize = 12.sp,
+                                modifier = Modifier.clip(RoundedCornerShape(50)).background(ArinaColors.Glow.copy(alpha = 0.14f)).clickable {
+                                    msg = "Loading the sample..."
+                                    com.arina.assistant.ai.VoiceSample.play(id, com.arina.assistant.cloud.Cloud.cfg(ctx, "cartesia_model", "sonic-3"), true) { r -> msg = if (r.isEmpty()) "Playing the voice " + v.optString("name") + "." else "Could not play it: $r" }
+                                }.padding(horizontal = 14.dp, vertical = 6.dp))
+                            Text("Remove", color = ArinaColors.Text, fontSize = 12.sp,
+                                modifier = Modifier.clip(RoundedCornerShape(50)).background(ArinaColors.Glow.copy(alpha = 0.14f)).clickable {
+                                    save(voices.filter { it.optString("id") != id || it.optString("gender") != g })
+                                    if (inUse) { clearActive(g); msg = "Removed. Entrion is back on its own voice." }
+                                    if (selected) { if (g == "male") selM = "" else selF = "" }
+                                }.padding(horizontal = 14.dp, vertical = 6.dp))
+                        }
+                    }
+                }
+                if (adding == g) {
+                    KeyField("Name", nName, false) { nName = it }
+                    KeyField("Cartesia voice ID", nId, false) { nId = it }
+                    LongField("Description: who is this voice? (name, age, mood, how it talks)", nDesc) { nDesc = it }
+                    if (err.isNotBlank()) Text(err, color = Warn, fontSize = 12.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        PillButton("Save voice") {
+                            val id = nId.trim()
+                            if (nName.isBlank() || id.length < 8 || nDesc.isBlank()) err = "Name, voice ID and description are all required."
+                            else if (mine.size >= 20) err = "You can keep up to 20 voices here. Remove one first."
+                            else {
+                                save(voices.filter { it.optString("id") != id || it.optString("gender") != g } + org.json.JSONObject().put("name", nName.trim()).put("id", id).put("gender", g).put("desc", nDesc.trim()))
+                                nName = ""; nId = ""; nDesc = ""; err = ""; adding = null
+                            }
+                        }
+                        Text("Cancel", color = ArinaColors.Muted, fontSize = 14.sp, modifier = Modifier.clickable { adding = null; err = "" }.padding(12.dp))
+                    }
+                } else PillButton("Add voice") { adding = g; err = ""; nName = ""; nId = ""; nDesc = "" }
+            }
+        }
+        Column(Modifier.fillMaxWidth().glass(strong = true).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (!pickUse) PillButton("Use voice") { pickUse = true; msg = "" }
+            else {
+                Text("Which kind of voice?", color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    listOf("male" to "Male", "female" to "Female").forEach { (g, label) ->
+                        Text(label, color = ArinaColors.Background, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f).clip(RoundedCornerShape(50)).background(ArinaColors.Glow).clickable { use(g) }.padding(vertical = 12.dp),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    }
+                }
+            }
+            if (activeF.isNotBlank() || activeM.isNotBlank()) Text("Stop using My voice (back to Entrion's own voice)", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clickable { clearActive("male"); clearActive("female"); msg = "Stopped. Entrion is back on its own voice."; pickUse = false }.padding(vertical = 4.dp))
+            if (msg.isNotBlank()) Text(msg, color = Warn, fontSize = 12.sp, lineHeight = 17.sp)
         }
     }
 }

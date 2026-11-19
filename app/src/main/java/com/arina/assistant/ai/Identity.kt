@@ -15,6 +15,8 @@ object Identity {
     /** What the user asked to be called, and the personality they chose. Set by the app. */
     @Volatile var callName: String = ""
     @Volatile var personality: String = ""
+    /** True while a "My voice" character is active: the agent only chats and tells stories, no phone work. */
+    @Volatile var storyMode = false
 
     /** The language this person uses most (learned from what they say; set by the app), or empty while unknown. */
     @Volatile var mainLanguage: String = ""

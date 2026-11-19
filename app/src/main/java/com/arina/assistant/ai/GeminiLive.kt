@@ -243,7 +243,7 @@ class GeminiLive(
             .put("model", "models/$MODEL")
             .put("generationConfig", gen)
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system()))))
-            .put("tools", JSONArray().put(JSONObject().put("functionDeclarations", tools.declarations())))
+            .put("tools", JSONArray().put(JSONObject().put("functionDeclarations", tools.declarations().let { all -> if (!Identity.storyMode) all else JSONArray().also { out -> for (i in 0 until all.length()) if (all.getJSONObject(i).optString("name") == "research") out.put(all.get(i)) } })))
             .put("realtimeInputConfig", JSONObject().put("automaticActivityDetection", vad))
             .put("inputAudioTranscription", JSONObject())
             // Without compression an audio session is cut after about 15 minutes.
