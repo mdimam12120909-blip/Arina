@@ -2175,74 +2175,105 @@ private fun MyVoicePage(vm: ArinaEngine) {
         pickUse = false
     }
 
+    val usingName = voices.firstOrNull { it.optString("id") == activeM || it.optString("id") == activeF }?.optString("name").orEmpty()
     PageColumn {
-        Text("Your own voices, only for chatting and stories. Add a Cartesia voice with its name and a description of who it is (a character such as Naruto works well). Tap a voice to select it, then press Use voice at the bottom.", color = ArinaColors.Muted, fontSize = 13.sp, lineHeight = 18.sp)
+        Column(Modifier.fillMaxWidth().glass(strong = true).padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("MY VOICES", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.6.sp)
+            Text(if (usingName.isNotBlank()) usingName else "Entrion's own voice", color = ArinaColors.Text, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+            Text(if (usingName.isNotBlank()) "Speaking right now. Chats and stories only." else "Nothing from here is active. Pick a voice below and press Use voice.",
+                color = ArinaColors.Muted, fontSize = 13.sp, lineHeight = 18.sp)
+        }
         listOf("male" to "Male voices", "female" to "Female voices").forEach { (g, title) ->
-            Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                val mine = voices.filter { it.optString("gender") == g }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(title, color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                    Text("${mine.size} / 20", color = ArinaColors.Muted, fontSize = 12.sp)
+            val mine = voices.filter { it.optString("gender") == g }
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(8.dp).clip(CircleShape).background(ArinaColors.Glow))
+                    Spacer(Modifier.width(8.dp))
+                    Text(title.uppercase(), color = ArinaColors.Text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.4.sp, modifier = Modifier.weight(1f))
+                    Text("${mine.size} of 20", color = ArinaColors.Muted, fontSize = 12.sp)
                 }
-                if (mine.isEmpty()) Text("None yet.", color = ArinaColors.Muted, fontSize = 12.sp)
+                if (mine.isEmpty()) Text("No voices yet. Add one below.", color = ArinaColors.Muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 4.dp))
                 mine.forEach { v ->
                     val id = v.optString("id")
                     val selected = id == (if (g == "male") selM else selF)
                     val inUse = id == (if (g == "male") activeM else activeF)
-                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-                        .background(ArinaColors.Glow.copy(alpha = if (selected) 0.24f else 0.08f))
-                        .clickable { if (g == "male") selM = id else selF = id; msg = "" }.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(v.optString("name") + (if (inUse) "  (in use)" else if (selected) "  (selected)" else ""), color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                        Text(v.optString("desc"), color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, maxLines = 3)
-                        Text(id.take(8) + "…", color = ArinaColors.Muted, fontSize = 11.sp)
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
+                        .background(ArinaColors.Glow.copy(alpha = if (selected || inUse) 0.20f else 0.07f))
+                        .border(1.dp, if (selected || inUse) ArinaColors.Glow.copy(alpha = 0.7f) else ArinaColors.Glow.copy(alpha = 0.15f), RoundedCornerShape(20.dp))
+                        .clickable { if (g == "male") selM = id else selF = id; msg = "" }.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(44.dp).clip(CircleShape).background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(ArinaColors.Glow, ArinaColors.Glow.copy(alpha = 0.35f)))), contentAlignment = Alignment.Center) {
+                                Text(v.optString("name").take(1).uppercase(), color = ArinaColors.Background, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(v.optString("name"), color = ArinaColors.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                Text(id.take(8) + "…", color = ArinaColors.Muted, fontSize = 11.sp)
+                            }
+                            if (inUse) Text("IN USE", color = ArinaColors.Background, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp,
+                                modifier = Modifier.clip(RoundedCornerShape(50)).background(ArinaColors.Glow).padding(horizontal = 10.dp, vertical = 4.dp))
+                            else if (selected) Text("SELECTED", color = ArinaColors.Glow, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp,
+                                modifier = Modifier.clip(RoundedCornerShape(50)).border(1.dp, ArinaColors.Glow, RoundedCornerShape(50)).padding(horizontal = 10.dp, vertical = 4.dp))
+                        }
+                        Text(v.optString("desc"), color = ArinaColors.Text.copy(alpha = 0.85f), fontSize = 13.sp, lineHeight = 19.sp, maxLines = 3)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Listen", color = ArinaColors.Text, fontSize = 12.sp,
-                                modifier = Modifier.clip(RoundedCornerShape(50)).background(ArinaColors.Glow.copy(alpha = 0.14f)).clickable {
+                            Text("Listen", color = ArinaColors.Text, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                                modifier = Modifier.clip(RoundedCornerShape(50)).background(ArinaColors.Glow.copy(alpha = 0.16f)).clickable {
                                     msg = "Loading the sample..."
                                     com.arina.assistant.ai.VoiceSample.play(id, com.arina.assistant.cloud.Cloud.cfg(ctx, "cartesia_model", "sonic-3"), true) { r -> msg = if (r.isEmpty()) "Playing the voice " + v.optString("name") + "." else "Could not play it: $r" }
-                                }.padding(horizontal = 14.dp, vertical = 6.dp))
-                            Text("Remove", color = ArinaColors.Text, fontSize = 12.sp,
-                                modifier = Modifier.clip(RoundedCornerShape(50)).background(ArinaColors.Glow.copy(alpha = 0.14f)).clickable {
+                                }.padding(horizontal = 16.dp, vertical = 8.dp))
+                            Text("Remove", color = ArinaColors.Muted, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                                modifier = Modifier.clip(RoundedCornerShape(50)).border(1.dp, ArinaColors.Glow.copy(alpha = 0.25f), RoundedCornerShape(50)).clickable {
                                     save(voices.filter { it.optString("id") != id || it.optString("gender") != g })
                                     if (inUse) { clearActive(g); msg = "Removed. Entrion is back on its own voice." }
                                     if (selected) { if (g == "male") selM = "" else selF = "" }
-                                }.padding(horizontal = 14.dp, vertical = 6.dp))
+                                }.padding(horizontal = 16.dp, vertical = 8.dp))
                         }
                     }
                 }
                 if (adding == g) {
-                    KeyField("Name", nName, false) { nName = it }
-                    KeyField("Cartesia voice ID", nId, false) { nId = it }
-                    LongField("Description: who is this voice? (name, age, mood, how it talks)", nDesc) { nDesc = it }
-                    if (err.isNotBlank()) Text(err, color = Warn, fontSize = 12.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        PillButton("Save voice") {
-                            val id = nId.trim()
-                            if (nName.isBlank() || id.length < 8 || nDesc.isBlank()) err = "Name, voice ID and description are all required."
-                            else if (mine.size >= 20) err = "You can keep up to 20 voices here. Remove one first."
-                            else {
-                                save(voices.filter { it.optString("id") != id || it.optString("gender") != g } + org.json.JSONObject().put("name", nName.trim()).put("id", id).put("gender", g).put("desc", nDesc.trim()))
-                                nName = ""; nId = ""; nDesc = ""; err = ""; adding = null
+                    Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("New " + g + " voice", color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        KeyField("Name", nName, false) { nName = it }
+                        KeyField("Cartesia voice ID", nId, false) { nId = it }
+                        LongField("Description: who is this voice? (name, age, mood, how it talks)", nDesc) { nDesc = it }
+                        if (err.isNotBlank()) Text(err, color = Warn, fontSize = 12.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            PillButton("Save voice") {
+                                val id = nId.trim()
+                                if (nName.isBlank() || id.length < 8 || nDesc.isBlank()) err = "Name, voice ID and description are all required."
+                                else if (mine.size >= 20) err = "You can keep up to 20 voices here. Remove one first."
+                                else {
+                                    save(voices.filter { it.optString("id") != id || it.optString("gender") != g } + org.json.JSONObject().put("name", nName.trim()).put("id", id).put("gender", g).put("desc", nDesc.trim()))
+                                    nName = ""; nId = ""; nDesc = ""; err = ""; adding = null
+                                }
                             }
+                            Text("Cancel", color = ArinaColors.Muted, fontSize = 14.sp, modifier = Modifier.clickable { adding = null; err = "" }.padding(12.dp))
                         }
-                        Text("Cancel", color = ArinaColors.Muted, fontSize = 14.sp, modifier = Modifier.clickable { adding = null; err = "" }.padding(12.dp))
                     }
-                } else PillButton("Add voice") { adding = g; err = ""; nName = ""; nId = ""; nDesc = "" }
+                } else Text("+  Add " + g + " voice", color = ArinaColors.Glow, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(50)).border(1.dp, ArinaColors.Glow.copy(alpha = 0.45f), RoundedCornerShape(50))
+                        .clickable { adding = g; err = ""; nName = ""; nId = ""; nDesc = "" }.padding(vertical = 13.dp))
             }
         }
-        Column(Modifier.fillMaxWidth().glass(strong = true).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (!pickUse) PillButton("Use voice") { pickUse = true; msg = "" }
+        Column(Modifier.fillMaxWidth().glass(strong = true).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            val nm = voices.firstOrNull { it.optString("id") == selM }?.optString("name") ?: "none"
+            val nf = voices.firstOrNull { it.optString("id") == selF }?.optString("name") ?: "none"
+            Text("Selected: male $nm, female $nf", color = ArinaColors.Muted, fontSize = 12.sp)
+            if (!pickUse) Text("Use voice", color = ArinaColors.Background, fontSize = 16.sp, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(50)).background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(ArinaColors.Glow, ArinaColors.Glow.copy(alpha = 0.7f))))
+                    .clickable { pickUse = true; msg = "" }.padding(vertical = 15.dp))
             else {
-                Text("Which kind of voice?", color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("Which one should speak?", color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     listOf("male" to "Male", "female" to "Female").forEach { (g, label) ->
-                        Text(label, color = ArinaColors.Background, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.weight(1f).clip(RoundedCornerShape(50)).background(ArinaColors.Glow).clickable { use(g) }.padding(vertical = 12.dp),
+                        Text(label, color = ArinaColors.Background, fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f).clip(RoundedCornerShape(50)).background(ArinaColors.Glow).clickable { use(g) }.padding(vertical = 14.dp),
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     }
                 }
             }
-            if (activeF.isNotBlank() || activeM.isNotBlank()) Text("Stop using My voice (back to Entrion's own voice)", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+            if (activeF.isNotBlank() || activeM.isNotBlank()) Text("Stop using My voice", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.clickable { clearActive("male"); clearActive("female"); msg = "Stopped. Entrion is back on its own voice."; pickUse = false }.padding(vertical = 4.dp))
             if (msg.isNotBlank()) Text(msg, color = Warn, fontSize = 12.sp, lineHeight = 17.sp)
         }
