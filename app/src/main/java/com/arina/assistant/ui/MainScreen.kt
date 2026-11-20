@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.MoreVert
@@ -282,9 +283,9 @@ fun MainScreen(
         }
         androidx.compose.animation.AnimatedVisibility(
             visible = panelOpen,
-            modifier = Modifier.align(Alignment.CenterEnd),
-            enter = androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.spring(dampingRatio = 0.86f, stiffness = 380f)) { it },
-            exit = androidx.compose.animation.slideOutHorizontally(tween(200)) { it }
+            modifier = Modifier.align(Alignment.CenterStart),
+            enter = androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.spring(dampingRatio = 0.86f, stiffness = 380f)) { -it },
+            exit = androidx.compose.animation.slideOutHorizontally(tween(200)) { -it }
         ) {
             ProfilePanel(vm, onOpen = ::open, onPower = onPower, onClose = { panelOpen = false })
         }
@@ -314,16 +315,18 @@ private fun Header(vm: ArinaEngine, page: Page, onAvatar: () -> Unit, onBack: ()
         modifier.fillMaxWidth().padding(start = 10.dp, end = 18.dp, top = 10.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        val onTab = tabIdx(page) >= 0 || page == Page.Home
+        if (onTab) { Avatar(vm, 40.dp, Modifier.clickable(onClick = onAvatar)); Spacer(Modifier.width(12.dp)) }
         if (tabIdx(page) >= 0 && page != Page.Home) {
-            Text(page.title, color = ArinaColors.Text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 10.dp))
+            Text(page.title, color = ArinaColors.Text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
         } else if (page != Page.Home) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = ArinaColors.Text) }
             Text(page.title, color = ArinaColors.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
         } else {
-            Text(Brand.APP, color = ArinaColors.Text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 10.dp))
+            Text(Brand.APP, color = ArinaColors.Text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
         }
         Spacer(Modifier.weight(1f))
-        Avatar(vm, 40.dp, Modifier.clickable(onClick = onAvatar))
+        if (!onTab) Avatar(vm, 40.dp, Modifier.clickable(onClick = onAvatar))
     }
 }
 
@@ -1066,41 +1069,43 @@ private fun SettingsHome(vm: ArinaEngine, go: (Page) -> Unit) {
             }
             Text("\u203A", color = ArinaColors.Muted, fontSize = 24.sp)
         }
-        SectionTitle("ASSISTANT")
-        Group(
-            { NavRow("Assistant", "Companion, skills and speed report", Icons.Filled.Build, flat = true) { go(Page.Assistant) } },
-            { NavRow("Connectors", "Apps, services and websites Entrion can use", Icons.Filled.Link, flat = true) { go(Page.Connectors) } },
-            { NavRow("Tasks", "Big jobs Entrion did: steps, results, run again", Icons.Filled.Build, flat = true) { go(Page.Jobs) } }
-        )
-        SectionTitle("APP")
         val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
         val ctxC = androidx.compose.ui.platform.LocalContext.current
+        SectionTitle("YOU")
         Group(
-            { NavRow("Inbox", if (vm.inboxUnread.intValue > 0) "${vm.inboxUnread.intValue} new" else "Messages and gifts for you", Icons.Filled.Info, flat = true) { go(Page.Inbox) } },
-            { NavRow("Language", if (vm.language.value == "auto") "Auto: the language you speak" else vm.language.value, Icons.Filled.Info, flat = true) { go(Page.Language) } },
             { NavRow("Account", if (vm.signedIn.value) vm.accountEmail.value else "Sign in to keep your data", Icons.Filled.Person, flat = true) { go(Page.Account) } },
+            { NavRow("Inbox", if (vm.inboxUnread.intValue > 0) "${vm.inboxUnread.intValue} new" else "Messages and gifts for you", Icons.Filled.Notifications, flat = true) { go(Page.Inbox) } },
+            { NavRow("Language", if (vm.language.value == "auto") "Auto: the language you speak" else vm.language.value, Icons.Outlined.Language, flat = true) { go(Page.Language) } }
+        )
+        SectionTitle("ENTRION")
+        if (vm.hasExtras) Group(
+            { NavRow("My voices", "Your own Cartesia voices and characters", Icons.Outlined.Mic, flat = true) { go(Page.Creator) } },
+            { NavRow("Assistant", "Companion, skills and speed report", Icons.Outlined.Face, flat = true) { go(Page.Assistant) } }
+        ) else Group(
+            { NavRow("Assistant", "Companion, skills and speed report", Icons.Outlined.Face, flat = true) { go(Page.Assistant) } }
+        )
+        SectionTitle("ABILITIES")
+        Group(
+            { NavRow("Tasks", "Big jobs Entrion did: steps, results, run again", Icons.Outlined.Check, flat = true) { go(Page.Jobs) } },
+            { NavRow("Connectors", "Apps, services and websites Entrion can use", Icons.Filled.Link, flat = true) { go(Page.Connectors) } },
             { NavRow("Permissions", "Choose what the agent may do on this phone", Icons.Filled.Lock, flat = true) { go(Page.Permissions) } },
-            { HealthCheckCard(vm) },
+            { HealthCheckCard(vm) }
+        )
+        SectionTitle("HELP AND ABOUT")
+        Group(
             {
                 val ctx = androidx.compose.ui.platform.LocalContext.current
                 NavRow("Report a problem", "Send what just happened so it can be fixed", Icons.Filled.BugReport, flat = true) {
                     com.arina.assistant.ai.Diag.share(ctx, "build " + runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).longVersionCode }.getOrDefault(0L), vm.messages.map { (if (it.fromUser) "You: " else "Entrion: ") + it.text })
                 }
-            }
-        )
-        SectionTitle("HELP AND ABOUT")
-        Group(
+            },
             { NavRow("Help group on WhatsApp", "Ask for help and talk to other users", Icons.Filled.Link, flat = true) { runCatching { uriHandler.openUri(cfgText(ctxC, "help_group_url", HELP_GROUP_DEFAULT)) } } },
             { NavRow("Itoshi Kashikoi channel", "Updates and news", Icons.Filled.Link, flat = true) { runCatching { uriHandler.openUri(cfgText(ctxC, "help_channel_url", HELP_CHANNEL_DEFAULT)) } } },
             { NavRow("About Entrion", "What it is, who made it, version", Icons.Filled.Info, flat = true) { go(Page.About) } }
         )
-        if (vm.hasExtras) {
-            SectionTitle("PRO")
-            Group({ NavRow("My voices", "Add Cartesia voices for yourself", Icons.Filled.Info, flat = true) { go(Page.Creator) } })
-        }
         if (vm.isAdmin.value && com.arina.assistant.BuildConfig.ADMIN_APP) {
             SectionTitle("ADMIN")
-            Group({ NavRow("Admin", "Settings published to every user", Icons.Filled.Info, flat = true) { go(Page.Admin) } })
+            Group({ NavRow("Admin", "Settings published to every user", Icons.Outlined.Settings, flat = true) { go(Page.Admin) } })
         }
     }
 }
@@ -1794,13 +1799,13 @@ private fun PanelHead(text: String) {
 
 @Composable
 private fun ProfilePanel(vm: ArinaEngine, onOpen: (Page) -> Unit, onPower: () -> Unit, onClose: () -> Unit) {
-    val shape = RoundedCornerShape(topStart = 32.dp, bottomStart = 32.dp)
+    val shape = RoundedCornerShape(topEnd = 32.dp, bottomEnd = 32.dp)
     Column(
         Modifier.width(330.dp).fillMaxHeight().clip(shape)
             .background(Brush.verticalGradient(listOf(ArinaColors.Surface.mix(ArinaColors.Glow, 0.16f), ArinaColors.Surface, ArinaColors.Surface.mix(ArinaColors.Pink, 0.12f))))
             .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.35f), Color.White.copy(alpha = 0.05f))), shape)
             .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {}
-            .verticalScroll(rememberScrollState()).statusBarsPadding().padding(start = 24.dp, end = 22.dp, top = 24.dp, bottom = 14.dp)
+            .verticalScroll(rememberScrollState()).statusBarsPadding().padding(start = 22.dp, end = 24.dp, top = 24.dp, bottom = 14.dp)
     ) {
         Row(Modifier.fillMaxWidth().glass(RoundedCornerShape(24.dp)).clickable { onOpen(Page.Profile) }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Avatar(vm, 56.dp)
