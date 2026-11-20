@@ -679,12 +679,12 @@ class ArinaEngine private constructor(private val app: Application) {
         val lessonLine = if (lessons.isNotEmpty()) "\nLESSONS FROM YOUR CREATOR (always follow them; they come right after safety):\n$lessons" else ""
         val vdesc = voiceCfg("cartesia_voice_desc_" + (if (male) "male" else "female"), "").trim()
         val voiceLine = if ((hasExtras || Cloud.cfg(app, "voice_engine", "gemini") == "cartesia") && vdesc.isNotEmpty()) "\nYOUR VOICE AND CHARACTER (your words must fit it): $vdesc" else ""
-        val storyOn = hasExtras && vdesc.isNotEmpty() && creatorPrefs.getString(if (male) "cartesia_voice_male" else "cartesia_voice_female", "").orEmpty().isNotBlank()
+        val storyOn = hasExtras && vdesc.isNotEmpty() && creatorPrefs.getString(if (male) "cartesia_voice_male" else "cartesia_voice_female", "").orEmpty().isNotBlank() && creatorPrefs.getString("cartesia_user_key", "").orEmpty().isNotBlank()
         Identity.storyMode = storyOn
-        val storyLine = if (storyOn) "\nSTORY MODE (his own voice character): you are now playing the character described in YOUR VOICE AND CHARACTER above. Be that character: use their name, their way of speaking, their favourite words and their view of the world, in first person, the whole time. If the description does not say enough about the character, use what you know about them or use the research tool to learn more, then stay in character. This mode is only for chatting, stories and fun. You cannot do phone tasks, calls, messages or help work here: if he asks for one, say so in character, in one short line, and tell him he can switch back to Entrion by removing or stopping My voice. Never say you are an AI model unless he sincerely asks, and keep it kind and safe." else ""
+        if (storyOn) return vdesc
         val pers = Identity.personality
         val persLine = if (pers.isNotBlank()) "\nPERSONALITY (chosen by the user): $pers" else ""
-        return base + extra + lessonLine + voiceLine + storyLine + persLine + if (n.isEmpty()) " You have no personal name; if the user wants, they can give you one." else " The user has named you \"$n\"; that is your name."
+        return base + extra + lessonLine + voiceLine + persLine + if (n.isEmpty()) " You have no personal name; if the user wants, they can give you one." else " The user has named you \"$n\"; that is your name."
     }
 
     /** Called with Google's ID token after the account chooser. */
@@ -1125,13 +1125,14 @@ class ArinaEngine private constructor(private val app: Application) {
             },
             {
                 // Admin chose the second voice: Cartesia. It needs its own voice id for the chosen agent.
-                val own = hasExtras && creatorPrefs.getString(if (persona.value == Persona.Aurion) "cartesia_voice_male" else "cartesia_voice_female", "").orEmpty().isNotBlank()
-                if (!own && Cloud.cfg(app, "voice_engine", "gemini") != "cartesia") null
-                else {
-                    val v = voiceCfg(if (persona.value == Persona.Aurion) "cartesia_voice_male" else "cartesia_voice_female", "")
-                    if (v.isBlank()) null
-                    else GeminiLive.TtsCfg(v, Cloud.cfg(app, "cartesia_model", "sonic-3").trim().let { if (Regex("^[a-z0-9.\\-]{3,40}$").matches(it)) it else "sonic-3" }, Cloud.cfg(app, "live_text_model", "gemini-live-2.5-flash").trim().let { if (Regex("^(models/)?gemini[a-z0-9.\\-]*$").matches(it)) it.removePrefix("models/") else "gemini-live-2.5-flash" })
-                }
+                val gk = if (persona.value == Persona.Aurion) "cartesia_voice_male" else "cartesia_voice_female"
+                val own = hasExtras && creatorPrefs.getString(gk, "").orEmpty().isNotBlank()
+                val userKey = if (own) creatorPrefs.getString("cartesia_user_key", "").orEmpty().trim() else ""
+                val model = Cloud.cfg(app, "cartesia_model", "sonic-3").trim().let { if (Regex("^[a-z0-9.\\-]{3,40}$").matches(it)) it else "sonic-3" }
+                val textModel = Cloud.cfg(app, "live_text_model", "gemini-live-2.5-flash").trim().let { if (Regex("^(models/)?gemini[a-z0-9.\\-]*$").matches(it)) it.removePrefix("models/") else "gemini-live-2.5-flash" }
+                if (own) { if (userKey.isEmpty()) null else GeminiLive.TtsCfg(creatorPrefs.getString(gk, "").orEmpty(), model, textModel, userKey) }
+                else if (Cloud.cfg(app, "voice_engine", "gemini") != "cartesia") null
+                else Cloud.cfg(app, gk, "").trim().let { v -> if (v.isBlank()) null else GeminiLive.TtsCfg(v, model, textModel) }
             }
         )
     }

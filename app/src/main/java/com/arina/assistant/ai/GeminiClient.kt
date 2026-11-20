@@ -326,7 +326,9 @@ class GeminiClient(
     @Synchronized
     /** The full instructions for a live voice conversation, with the persona, memory and skills at this moment. */
     fun liveSystemPrompt(): String =
-        LIVE_PROMPT.replace("{INTRO}", personaIntro()).replace("{USER}", Identity.userLine()) + memoryBlock() + skillsBlock()
+        personaIntro().let { intro ->
+        if (Identity.storyMode) Identity.storyPrompt(intro) + "\n" + Identity.userLine() + memoryBlock()
+        else LIVE_PROMPT.replace("{INTRO}", intro).replace("{USER}", Identity.userLine()) + memoryBlock() + skillsBlock() }
 
     fun chat(userText: String): Reply =
         converse(JSONArray().put(JSONObject().put("text", userText)), audio = false)
@@ -366,7 +368,7 @@ class GeminiClient(
 
     private fun runTurns(shrink: (String) -> Unit): Reply {
         repeat(6) {
-            val resp = callApi(SYSTEM_PROMPT.replace("{INTRO}", personaIntro()).replace("{USER}", Identity.userLine()) + memoryBlock() + skillsBlock() + (if (busy) BUSY_NOTE else ""), JSONArray(history), withTools = true, o = Opts(stream = speakSink != null))
+            val resp = callApi((personaIntro().let { intro -> if (Identity.storyMode) Identity.storyPrompt(intro) + "\n" + Identity.userLine() + memoryBlock() else SYSTEM_PROMPT.replace("{INTRO}", personaIntro()).replace("{USER}", Identity.userLine()) + memoryBlock() + skillsBlock() + (if (busy) BUSY_NOTE else "") }), JSONArray(history), withTools = true, o = Opts(stream = speakSink != null))
             val content = resp.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")
                 ?: throw IOException("Gemini returned an empty answer. Try rephrasing.")
             val parts = content.optJSONArray("parts") ?: JSONArray()

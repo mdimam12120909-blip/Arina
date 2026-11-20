@@ -42,7 +42,7 @@ class GeminiLive(
     private val tts: () -> TtsCfg? = { null }
 ) {
     /** Cartesia mode: the model answers in text (still hearing, thinking and using tools live) and each sentence is spoken by the voice service. */
-    data class TtsCfg(val voice: String, val model: String, val textModel: String)
+    data class TtsCfg(val voice: String, val model: String, val textModel: String, val userKey: String = "")
 
     interface Callbacks {
         fun onLevel(level: Float)
@@ -92,6 +92,7 @@ class GeminiLive(
     private object CartesiaState { @Volatile var textTry = 0; @Volatile var skipNext = false; @Volatile var gaveUp = false }
     private val textFallbacks = listOf("gemini-2.0-flash-live-001", "gemini-2.5-flash-live-preview", "gemini-live-2.5-flash-preview")
     private fun textCandidate(cfg: TtsCfg): String = (listOf(cfg.textModel) + textFallbacks).distinct().let { it[CartesiaState.textTry.coerceIn(0, it.size - 1)] }
+    @Volatile private var ttsReported = false
     @Volatile private var cartesiaBroken = false   // the text-mode session failed to open: use the Gemini voice for now
     private val sentences = LinkedBlockingQueue<Pair<Int, String>>()
     private val ttsPending = java.util.concurrent.atomic.AtomicInteger(0)
@@ -109,8 +110,18 @@ class GeminiLive(
         val c = ttsCfg ?: return
         val lang = if (text.any { it in '\u0980'..'\u09FF' }) "bn" else "en"
         val t0 = System.currentTimeMillis()
-        Gateway.client.newCall(Gateway.tts(text, c.voice, c.model, lang)).execute().use { r ->
-            if (!r.isSuccessful) { Diag.log("voice: HTTP ${r.code} ${r.body?.string().orEmpty().take(120)}"); return }
+        val req = if (c.userKey.isNotEmpty()) CartesiaDirect.request(c.userKey, text, c.voice, c.model, lang) else Gateway.tts(text, c.voice, c.model, lang)
+        Gateway.client.newCall(req).execute().use { r ->
+            if (!r.isSuccessful) {
+                val body = r.body?.string().orEmpty().take(160)
+                Diag.log("voice: HTTP ${r.code} $body")
+                if (!ttsReported && g == ttsGen) {
+                    ttsReported = true
+                    if (c.userKey.isEmpty()) { CartesiaState.gaveUp = true; cartesiaBroken = true }
+                    cb.onError(CartesiaDirect.explain(r.code, body, c.userKey.isNotEmpty()))
+                }
+                return
+            }
             val ins = r.body?.byteStream() ?: return
             val buf = ByteArray(4800); var carry = -1; var first = true
             while (g == ttsGen) {
@@ -155,7 +166,8 @@ class GeminiLive(
             return
         }
         val mine = ++generation
-        ttsCfg = if (cartesiaBroken || CartesiaState.skipNext || CartesiaState.gaveUp) null else tts()
+        ttsCfg = tts().let { c -> if (c == null || cartesiaBroken) null else if (c.userKey.isNotEmpty()) c else if (CartesiaState.skipNext || CartesiaState.gaveUp) null else c }
+        ttsReported = false
         CartesiaState.skipNext = false
         Diag.log("voice: ${ttsCfg?.let { "Cartesia, voice ${it.voice.take(8)}, model ${it.model}, text model ${textCandidate(it)}" } ?: "Gemini"}")
         ready = false

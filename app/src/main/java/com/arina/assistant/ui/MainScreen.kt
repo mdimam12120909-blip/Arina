@@ -2158,6 +2158,8 @@ private fun MyVoicePage(vm: ArinaEngine) {
     var err by remember { mutableStateOf("") }
     var pickUse by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf("") }
+    var savedKey by remember { mutableStateOf(prefs.getString("cartesia_user_key", "").orEmpty()) }
+    var keyIn by remember { mutableStateOf("") }
     fun save(list: List<org.json.JSONObject>) { voices = list; prefs.edit().putString("voice_library", org.json.JSONArray(list).toString()).apply() }
     fun clearActive(g: String) {
         prefs.edit().putString("cartesia_voice_$g", "").putString("cartesia_voice_desc_$g", "").apply()
@@ -2166,12 +2168,13 @@ private fun MyVoicePage(vm: ArinaEngine) {
     fun use(g: String) {
         val sel = if (g == "male") selM else selF
         val v = voices.firstOrNull { it.optString("id") == sel && it.optString("gender") == g }
+        if (savedKey.isBlank()) { msg = "Save your Cartesia key first (the Cartesia key card above)."; return }
         if (v == null) { msg = "Tap a ${g} voice in the list first, then press Use voice."; return }
         clearActive(if (g == "male") "female" else "male")
         prefs.edit().putString("cartesia_voice_$g", sel).putString("cartesia_voice_desc_$g", v.optString("desc")).apply()
         if (g == "male") activeM = sel else activeF = sel
         vm.switchPersona(if (g == "male") Persona.Aurion else Persona.Arina)
-        msg = "Entrion now speaks as " + v.optString("name") + ". Just start talking. This is for chatting and stories only."
+        msg = "Now you are talking with " + v.optString("name") + ". Just start talking. This is for chatting and stories only."
         pickUse = false
     }
 
@@ -2183,6 +2186,22 @@ private fun MyVoicePage(vm: ArinaEngine) {
             Text(if (usingName.isNotBlank()) "Speaking right now. Chats and stories only." else "Nothing from here is active. Pick a voice below and press Use voice.",
                 color = ArinaColors.Muted, fontSize = 13.sp, lineHeight = 18.sp)
         }
+        Column(Modifier.fillMaxWidth().glass().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("YOUR CARTESIA KEY", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.6.sp)
+            if (savedKey.isNotBlank()) {
+                Text("Key saved: ••••" + savedKey.takeLast(4), color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text("Remove key", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clickable { prefs.edit().remove("cartesia_user_key").apply(); savedKey = ""; clearActive("male"); clearActive("female"); msg = "Key removed. Entrion is back on its own voice." }.padding(vertical = 4.dp))
+            } else {
+                Text("My voice speaks with your own Cartesia account. Paste your key; it stays on this phone and is used only for your voices.", color = ArinaColors.Muted, fontSize = 13.sp, lineHeight = 18.sp)
+                KeyField("Cartesia API key", keyIn, true) { keyIn = it }
+                PillButton("Save key") {
+                    val k = keyIn.trim()
+                    if (k.length < 12) msg = "That does not look like a Cartesia key."
+                    else { prefs.edit().putString("cartesia_user_key", k).apply(); savedKey = k; keyIn = ""; msg = "Key saved. Now press Listen on a voice to check it." }
+                }
+            }
+        }
         listOf("male" to "Male voices", "female" to "Female voices").forEach { (g, title) ->
             val mine = voices.filter { it.optString("gender") == g }
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -2190,7 +2209,7 @@ private fun MyVoicePage(vm: ArinaEngine) {
                     Box(Modifier.size(8.dp).clip(CircleShape).background(ArinaColors.Glow))
                     Spacer(Modifier.width(8.dp))
                     Text(title.uppercase(), color = ArinaColors.Text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.4.sp, modifier = Modifier.weight(1f))
-                    Text("${mine.size} of 20", color = ArinaColors.Muted, fontSize = 12.sp)
+                    Text("${mine.size} of 10", color = ArinaColors.Muted, fontSize = 12.sp)
                 }
                 if (mine.isEmpty()) Text("No voices yet. Add one below.", color = ArinaColors.Muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 4.dp))
                 mine.forEach { v ->
@@ -2220,7 +2239,7 @@ private fun MyVoicePage(vm: ArinaEngine) {
                             Text("Listen", color = ArinaColors.Text, fontSize = 12.sp, fontWeight = FontWeight.Medium,
                                 modifier = Modifier.clip(RoundedCornerShape(50)).background(ArinaColors.Glow.copy(alpha = 0.16f)).clickable {
                                     msg = "Loading the sample..."
-                                    com.arina.assistant.ai.VoiceSample.play(id, com.arina.assistant.cloud.Cloud.cfg(ctx, "cartesia_model", "sonic-3"), true) { r -> msg = if (r.isEmpty()) "Playing the voice " + v.optString("name") + "." else "Could not play it: $r" }
+                                    if (savedKey.isBlank()) { msg = "Save your Cartesia key first." } else com.arina.assistant.ai.VoiceSample.play(id, com.arina.assistant.cloud.Cloud.cfg(ctx, "cartesia_model", "sonic-3"), true, savedKey) { r -> msg = if (r.isEmpty()) "Playing the voice " + v.optString("name") + "." else "Could not play it: $r" }
                                 }.padding(horizontal = 16.dp, vertical = 8.dp))
                             Text("Remove", color = ArinaColors.Muted, fontSize = 12.sp, fontWeight = FontWeight.Medium,
                                 modifier = Modifier.clip(RoundedCornerShape(50)).border(1.dp, ArinaColors.Glow.copy(alpha = 0.25f), RoundedCornerShape(50)).clickable {
@@ -2242,7 +2261,7 @@ private fun MyVoicePage(vm: ArinaEngine) {
                             PillButton("Save voice") {
                                 val id = nId.trim()
                                 if (nName.isBlank() || id.length < 8 || nDesc.isBlank()) err = "Name, voice ID and description are all required."
-                                else if (mine.size >= 20) err = "You can keep up to 20 voices here. Remove one first."
+                                else if (mine.size >= 10) err = "You can keep up to 10 voices here. Remove one first."
                                 else {
                                     save(voices.filter { it.optString("id") != id || it.optString("gender") != g } + org.json.JSONObject().put("name", nName.trim()).put("id", id).put("gender", g).put("desc", nDesc.trim()))
                                     nName = ""; nId = ""; nDesc = ""; err = ""; adding = null

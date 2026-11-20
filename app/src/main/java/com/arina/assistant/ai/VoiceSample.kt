@@ -9,12 +9,12 @@ object VoiceSample {
     @Volatile private var playing: AudioTrack? = null
 
     /** Runs on a background thread; [done] gets "" on success or a short problem text. */
-    fun play(voice: String, model: String, bengali: Boolean, done: (String) -> Unit) {
+    fun play(voice: String, model: String, bengali: Boolean, userKey: String = "", done: (String) -> Unit) {
         Thread {
             val msg = try {
                 runCatching { playing?.stop(); playing?.release() }
                 val text = if (bengali) "হ্যালো, আমি এই কণ্ঠে কথা বলব। শুনতে কেমন লাগছে?" else "Hello, this is how I will sound. How does it feel?"
-                val bytes = Gateway.client.newCall(Gateway.tts(text, voice.trim(), model.ifBlank { "sonic-3" }, if (bengali) "bn" else "en")).execute().use { r ->
+                val bytes = Gateway.client.newCall(if (userKey.isNotBlank()) CartesiaDirect.request(userKey, text, voice, model, if (bengali) "bn" else "en") else Gateway.tts(text, voice.trim(), model.ifBlank { "sonic-3" }, if (bengali) "bn" else "en")).execute().use { r ->
                     if (!r.isSuccessful) return@use "HTTP ${r.code}: ${r.body?.string().orEmpty().take(140)}"
                     r.body?.bytes() ?: ByteArray(0)
                 }
