@@ -21,7 +21,7 @@ android {
         targetSdk = 34
         // Each CI build has a higher number than the last, so Android always accepts it as an update.
         versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 4).coerceAtLeast(5)
-        versionName = "7.0"
+        versionName = "8 Elite"
 
         buildConfigField("String", "GEMINI_API_KEY", "\"${localProps.getProperty("GEMINI_API_KEY", "").trim()}\"")
         buildConfigField("String", "CARTESIA_API_KEY", "\"${localProps.getProperty("CARTESIA_API_KEY", "").trim()}\"")

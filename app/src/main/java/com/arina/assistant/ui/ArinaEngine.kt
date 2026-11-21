@@ -129,6 +129,7 @@ class ArinaEngine private constructor(private val app: Application) {
     val replyLength = mutableStateOf(com.arina.assistant.cloud.Local.prefs(app, "arina_ui").getString("reply_len", "normal") ?: "normal")
     val replyTone = mutableStateOf(com.arina.assistant.cloud.Local.prefs(app, "arina_ui").getString("reply_tone", "friendly") ?: "friendly")
     val language = mutableStateOf(com.arina.assistant.cloud.Local.prefs(app, "arina_ui").getString("reply_language", "auto") ?: "auto")
+    init { com.arina.assistant.ai.Studio.ensureFolders(app) }
     init { Identity.replyLength = replyLength.value; Identity.replyTone = replyTone.value; Identity.replyLanguage = language.value }
     fun setLanguage(v: String) { language.value = v; Identity.replyLanguage = v; com.arina.assistant.cloud.Local.prefs(app, "arina_ui").edit().putString("reply_language", v).apply() }
     fun setReplyLength(v: String) { replyLength.value = v; Identity.replyLength = v; com.arina.assistant.cloud.Local.prefs(app, "arina_ui").edit().putString("reply_len", v).apply() }
@@ -1568,7 +1569,7 @@ class ArinaEngine private constructor(private val app: Application) {
         val r = imageGen.make(prompt, changeLast)
         val f = r.file ?: return "ERROR: the picture could not be made (${r.error}). Tell him briefly; do not pretend it worked."
         scope.launch { openCard(Card(CardKind.Images, "Image", listOf(f.path), seconds = 120)) }
-        return "OK: the picture was made, saved in his gallery (Pictures/Entrion) and is on screen. Say so in one short sentence."
+        return "OK: the picture was made, saved in his gallery (Pictures/Entrion) and is on screen. Say so in one short sentence, and that it is also in the sidebar, Generate Studio."
     }
 
     private fun doDiagram(title: String, outline: String, mode: String, remove: String): String {

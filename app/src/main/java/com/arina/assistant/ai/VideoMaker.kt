@@ -145,7 +145,7 @@ object VideoMaker {
             val uri = ctx.contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, v) ?: return "ERROR: could not save the video to the gallery."
             ctx.contentResolver.openOutputStream(uri)?.use { o -> tmp.inputStream().use { it.copyTo(o) } }
             tmp.delete()
-            "CONFIRMED: made a ${frames.size * hold / FPS} second silent slideshow video from ${frames.size} pictures, saved in Movies/Entrion."
+            "CONFIRMED: made a ${frames.size * hold / FPS} second silent slideshow video from ${frames.size} pictures, saved in Movies/Entrion. Tell him it is in the sidebar, Generate Studio."
         } catch (e: Exception) { "ERROR: the video was made but could not be saved (${e.message})." }
     }
 }

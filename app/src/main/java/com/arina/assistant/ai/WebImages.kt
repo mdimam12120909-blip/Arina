@@ -41,6 +41,6 @@ object WebImages {
             } catch (e: Exception) { failed += u.take(60) }
         }
         return if (saved == 0) "ERROR: found ${urls.size} links but none could be downloaded (blocked or not pictures)."
-        else "CONFIRMED: saved $saved picture(s) in Pictures/Entrion/$folder." + if (saved < want) " Only $saved of the $want asked could be downloaded." else ""
+        else "CONFIRMED: saved $saved picture(s) in Pictures/Entrion/$folder. Tell him they are in the sidebar, Generate Studio." + if (saved < want) " Only $saved of the $want asked could be downloaded." else ""
     }
 }

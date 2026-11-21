@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Face
 import androidx.compose.material.icons.outlined.HealthAndSafety
@@ -119,6 +120,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -150,7 +154,7 @@ private enum class Page(val title: String) {
     Home("Home"), Chat("Chat"), Memory("Memory"), Routine("Routine"), Health("Phone health"), Soul("Soul"),
     Settings("Settings"), Account("Account"), Permissions("Permissions"), 
     Assistant("Assistant"), Admin("Admin"), Creator("My voices"), Today("Today"), Profile("Edit profile"), Connectors("Connectors"), Jobs("Tasks"),
-    Inbox("Inbox"), About("About"), Language("Language")
+    Inbox("Inbox"), About("About"), Language("Language"), Studio("Generate Studio")
 }
 
 /** The five bottom tabs, left to right. */
@@ -250,6 +254,7 @@ fun MainScreen(
                         Page.Permissions -> PermissionsPage(vm, onPermission, onGrantAll, onAppInfo)
                         Page.Connectors -> ConnectorsPage(vm)
                         Page.Jobs -> JobsPage(vm)
+                        Page.Studio -> StudioPage()
                         Page.Inbox -> InboxPage(vm)
                         Page.About -> AboutPage()
                         Page.Language -> LanguagePage(vm)
@@ -2105,6 +2110,7 @@ private fun ProfilePanel(vm: ArinaEngine, onOpen: (Page) -> Unit, onPower: () ->
             Text("›", color = Color.White, fontSize = 18.sp)
         }
         PanelHead("TOOLS")
+        PanelRow(Icons.Outlined.PhotoLibrary, "Generate Studio", { onOpen(Page.Studio) })
         PanelRow(Icons.Outlined.Check, "Tasks", { onOpen(Page.Jobs) })
         PanelRow(Icons.Filled.Link, "Connectors", { onOpen(Page.Connectors) })
         PanelRow(Icons.Outlined.HealthAndSafety, "Phone health", { onOpen(Page.Health) })
@@ -2577,5 +2583,62 @@ private fun MyVoicePage(vm: ArinaEngine) {
             }
             if (msg.isNotBlank()) Text(msg, color = Warn, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 4.dp))
         }
+    }
+}
+
+@Composable
+private fun StudioPage() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var kind by remember { mutableStateOf(com.arina.assistant.ai.Studio.Kind.Photos) }
+    var tick by remember { mutableIntStateOf(0) }
+    val perms = remember {
+        if (android.os.Build.VERSION.SDK_INT >= 33) arrayOf(android.Manifest.permission.READ_MEDIA_IMAGES, android.Manifest.permission.READ_MEDIA_VIDEO, android.Manifest.permission.READ_MEDIA_AUDIO)
+        else arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+    }
+    fun granted() = perms.all { androidx.core.content.ContextCompat.checkSelfPermission(ctx, it) == android.content.pm.PackageManager.PERMISSION_GRANTED }
+    var allowed by remember { mutableStateOf(granted()) }
+    val ask = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()) { allowed = granted(); tick++ }
+    val items by produceState(emptyList<com.arina.assistant.ai.Studio.Item>(), kind, tick) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.arina.assistant.ai.Studio.list(ctx, kind) }
+    }
+    PageColumn {
+        Column(Modifier.fillMaxWidth().glass(strong = true).padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("GENERATE STUDIO", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.6.sp)
+            Text("Everything Entrion makes", color = ArinaColors.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+            Text("Saved in your phone's own Entrion folders (Pictures, Movies, Music). They stay even if you delete the app.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            com.arina.assistant.ai.Studio.Kind.values().forEach { k ->
+                Text(k.title, color = if (k == kind) ArinaColors.Background else ArinaColors.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clip(RoundedCornerShape(50)).background(if (k == kind) ArinaColors.Glow else ArinaColors.Glow.copy(alpha = 0.10f))
+                        .clickable { kind = k }.padding(horizontal = 18.dp, vertical = 9.dp))
+            }
+        }
+        if (!allowed) Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("To see what you saved before, even from an earlier install, allow access to your photos, videos and music.", color = ArinaColors.Text, fontSize = 13.sp, lineHeight = 18.sp)
+            PillButton("Allow access") { ask.launch(perms) }
+        }
+        if (items.isEmpty()) Text("Nothing here yet. Ask Entrion to find or make " + kind.title.lowercase() + " and they will appear here.", color = ArinaColors.Muted, fontSize = 13.sp, modifier = Modifier.padding(4.dp))
+        else if (kind == com.arina.assistant.ai.Studio.Kind.Music) items.forEach { it0 ->
+            Row(Modifier.fillMaxWidth().glass().clickable { com.arina.assistant.ai.Studio.open(ctx, it0) }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(it0.name, color = ArinaColors.Text, fontSize = 14.sp, modifier = Modifier.weight(1f), maxLines = 1)
+                Text("Play", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            }
+        } else items.chunked(3).forEach { rowItems ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                rowItems.forEach { it0 -> Box(Modifier.weight(1f)) { StudioThumb(it0) } }
+                repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudioThumb(item: com.arina.assistant.ai.Studio.Item) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val bmp by produceState<android.graphics.Bitmap?>(null, item.uri) { value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.arina.assistant.ai.Studio.thumb(ctx, item) } }
+    Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(14.dp)).background(ArinaColors.Glow.copy(alpha = 0.10f)).clickable { com.arina.assistant.ai.Studio.open(ctx, item) }, contentAlignment = Alignment.Center) {
+        bmp?.let { androidx.compose.foundation.Image(it.asImageBitmap(), item.name, Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop) }
+        if (item.kind == com.arina.assistant.ai.Studio.Kind.Videos) Text("▶", color = Color.White, fontSize = 22.sp)
     }
 }
