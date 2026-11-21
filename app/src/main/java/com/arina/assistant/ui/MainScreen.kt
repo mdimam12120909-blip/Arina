@@ -1635,7 +1635,7 @@ private val VaultSoft = Color(0xFFC9D2FF)
 
 /** A solid box: lit lid on a thick dark base with a drop shadow; a status lamp in the corner; a recessed tray inside. */
 @Composable
-private fun VaultBox(title: String, danger: Boolean, signal: String, signalOk: Boolean, note: String = "", content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+private fun VaultBox(title: String, danger: Boolean, signal: String, signalOk: Boolean, note: String = "", onClick: (() -> Unit)? = null, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
     val shape = RoundedCornerShape(28.dp)
     val lid = if (danger) listOf(Color(0xFFA8384A), Color(0xFF7A2236), Color(0xFF4A1426)) else listOf(Color(0xFF3A4AA8), Color(0xFF24307F), Color(0xFF1A2260))
     val base = if (danger) listOf(Color(0xFF4A1020), Color(0xFF1E060C)) else listOf(Color(0xFF141A4A), Color(0xFF070A1F))
@@ -1648,6 +1648,7 @@ private fun VaultBox(title: String, danger: Boolean, signal: String, signalOk: B
         )
         Column(
             Modifier.fillMaxWidth().clip(shape)
+                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
                 .background(Brush.linearGradient(lid))
                 .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.6f), Color(0xFFA0B4FF).copy(alpha = 0.25f), Color.Black.copy(alpha = 0.35f))), shape)
                 .drawBehind {
@@ -1736,19 +1737,42 @@ private fun KeyRow(vm: ArinaEngine, id: String, label: String, gemini: Boolean, 
     }
 }
 
-@Composable
-private fun KeyBox(vm: ArinaEngine, title: String, note: String, rows: List<Triple<String, String, Boolean>>) {
-    val bad = rows.filter { vm.keyState[it.first] == "limit" || vm.keyState[it.first] == "bad" }
-    val anyLimit = bad.any { vm.keyState[it.first] == "limit" }
-    val allOk = rows.all { vm.keyState[it.first] == "ok" }
-    val signal = when {
-        bad.isNotEmpty() -> (if (anyLimit) "Limit reached" else "Key refused")
-        allOk -> "All working"
-        rows.any { vm.keyState[it.first] == "ok" } -> "Working"
-        else -> ""
+private data class KeyGroup(val id: String, val title: String, val note: String, val rows: List<Triple<String, String, Boolean>>)
+
+private fun keySignal(vm: ArinaEngine, g: KeyGroup): Triple<String, Boolean, Boolean> {   // text, ok, danger
+    val bad = g.rows.filter { vm.keyState[it.first] == "limit" || vm.keyState[it.first] == "bad" }
+    return when {
+        bad.isNotEmpty() -> Triple(if (bad.any { vm.keyState[it.first] == "limit" }) "Limit reached" else "Key refused", false, true)
+        g.rows.all { vm.keyState[it.first] == "ok" } -> Triple("All working", true, false)
+        g.rows.any { vm.keyState[it.first] == "ok" } -> Triple("Working", true, false)
+        else -> Triple("", true, false)
     }
-    VaultBox(title, bad.isNotEmpty(), signal, bad.isEmpty(), note = if (bad.isNotEmpty()) "Check: " + bad.joinToString(", ") { it.second } + (if (note.isNotBlank()) ". $note" else "") else note) {
-        rows.forEach { (id, label, gem) -> KeyRow(vm, id, label, gem, bad.isNotEmpty()) }
+}
+
+/** The overview: one box per tool. Tap a box to open its keys. */
+@Composable
+private fun KeyHubBox(vm: ArinaEngine, g: KeyGroup, onOpen: () -> Unit) {
+    val (signal, ok, danger) = keySignal(vm, g)
+    val saved = g.rows.count { vm.keyTails[it.first] != null }
+    val bad = g.rows.filter { vm.keyState[it.first] == "limit" || vm.keyState[it.first] == "bad" }
+    VaultBox(g.title, danger, signal, ok, onClick = onOpen) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("$saved of ${g.rows.size} keys saved", color = VaultText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(if (bad.isNotEmpty()) "Check: " + bad.joinToString(", ") { it.second } else g.rows.joinToString(", ") { it.second }.take(70), color = if (bad.isNotEmpty()) Color(0xFFFFD0D6) else VaultSoft, fontSize = 12.sp, maxLines = 2)
+            }
+            Text("›", color = VaultSoft, fontSize = 24.sp)
+        }
+    }
+}
+
+/** The page of one tool: its key slots. */
+@Composable
+private fun KeyDetail(vm: ArinaEngine, g: KeyGroup) {
+    val (signal, ok, danger) = keySignal(vm, g)
+    val bad = g.rows.filter { vm.keyState[it.first] == "limit" || vm.keyState[it.first] == "bad" }
+    VaultBox(g.title, danger, signal, ok, note = if (bad.isNotEmpty()) "Check: " + bad.joinToString(", ") { it.second } + (if (g.note.isNotBlank()) ". ${g.note}" else "") else g.note) {
+        g.rows.forEach { (id, label, gem) -> KeyRow(vm, id, label, gem, danger) }
     }
 }
 
@@ -1756,27 +1780,35 @@ private fun KeyBox(vm: ArinaEngine, title: String, note: String, rows: List<Trip
 private fun AdminKeys(vm: ArinaEngine) {
     LaunchedEffect(Unit) { vm.refreshKeys() }
     var deep by remember { mutableStateOf(vm.adminValue("deep_model").removeSurrounding("\"")) }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Keys stay saved. Only the last 4 characters are shown.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.weight(1f).padding(horizontal = 4.dp))
-        Text(if (vm.keysChecking.value) "Checking..." else "Check keys", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.clickable(enabled = !vm.keysChecking.value) { vm.refreshKeys() }.padding(10.dp))
+    var open by rememberSaveable { mutableStateOf("") }
+    val groups = listOf(
+        KeyGroup("gemini", "Gemini keys", "Each job has its own key, so one running out does not stop the others. When you save a key, a pop-up shows which Gemini models it can use.", listOf(
+            Triple("gemini1", "Female agent (voice and brain)", true), Triple("gemini2", "Male agent (voice and brain)", true),
+            Triple("gemini3", "Research", true), Triple("gemini4", "Workflows and skills", true), Triple("gemini5", "Phone agent and camera", true))),
+        KeyGroup("cartesia", "Cartesia keys", "The Cartesia key makes the voice. The two Gemini keys are the brain behind the Cartesia voices, one for each agent (the same keys as in the Gemini box).", listOf(
+            Triple("cartesia", "Cartesia API key", false),
+            Triple("gemini1", "Brain, female agent (Gemini)", true), Triple("gemini2", "Brain, male agent (Gemini)", true))),
+        KeyGroup("search", "Web search", "", listOf(Triple("tavily", "Search key", false))),
+        KeyGroup("other", "Other brains", "Optional. Used when another model is better for a job.", listOf(
+            Triple("openai", "OpenAI", false), Triple("anthropic", "Anthropic", false), Triple("groq", "Groq", false), Triple("deepseek", "DeepSeek", false)))
+    )
+    BackHandler(enabled = open.isNotEmpty()) { open = "" }
+    val cur = groups.firstOrNull { it.id == open }
+    if (cur == null) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Tap a box to open its keys. Keys stay saved; only the last 4 characters are shown.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.weight(1f).padding(horizontal = 4.dp))
+            Text(if (vm.keysChecking.value) "Checking..." else "Check keys", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clickable(enabled = !vm.keysChecking.value) { vm.refreshKeys() }.padding(10.dp))
+        }
+        groups.forEach { g -> KeyHubBox(vm, g) { open = g.id } }
+    } else {
+        Text("< All keys", color = ArinaColors.Glow, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { open = "" }.padding(vertical = 6.dp, horizontal = 4.dp))
+        KeyDetail(vm, cur)
+        if (cur.id == "gemini") VaultBox("Deep thinking", false, "", true, note = "The strongest model, tried first for hard work: phone tasks, research, workflows. Write a name from the pop-up, such as gemini-3.8-flash or gemini-4-hydrogen. Empty = automatic.") {
+            KeyField("Model name", deep, false) { deep = it }
+            Row(Modifier.padding(start = 4.dp, bottom = 4.dp)) { PillButton("Save model") { vm.adminSave("deep_model", deep.trim()) } }
+        }
     }
-    KeyBox(vm, "Gemini keys", "Each job has its own key, so one running out does not stop the others. When you save a key, a pop-up shows which Gemini models it can use.", listOf(
-        Triple("gemini1", "Female agent (voice and brain)", true), Triple("gemini2", "Male agent (voice and brain)", true),
-        Triple("gemini3", "Research", true), Triple("gemini4", "Workflows and skills", true), Triple("gemini5", "Phone agent and camera", true)
-    ))
-    VaultBox("Deep thinking", false, "", true, note = "The strongest model, tried first for hard work: phone tasks, research, workflows. Write a name from the pop-up, such as gemini-3.8-flash or gemini-4-hydrogen. Empty = automatic.") {
-        KeyField("Model name", deep, false) { deep = it }
-        Row(Modifier.padding(start = 4.dp, bottom = 4.dp)) { PillButton("Save model") { vm.adminSave("deep_model", deep.trim()) } }
-    }
-    KeyBox(vm, "Cartesia keys", "The Cartesia key makes the voice. The two Gemini keys below are the brain behind the Cartesia voices, one for each agent (the same keys as in the Gemini box).", listOf(
-        Triple("cartesia", "Cartesia API key", false),
-        Triple("gemini1", "Brain, female agent (Gemini)", true), Triple("gemini2", "Brain, male agent (Gemini)", true)
-    ))
-    KeyBox(vm, "Web search", "", listOf(Triple("tavily", "Search key", false)))
-    KeyBox(vm, "Other brains", "Optional. Used when another model is better for a job.", listOf(
-        Triple("openai", "OpenAI", false), Triple("anthropic", "Anthropic", false), Triple("groq", "Groq", false), Triple("deepseek", "DeepSeek", false)
-    ))
     vm.modelsDialog.value?.let { (title, lines) ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { vm.modelsDialog.value = null },
