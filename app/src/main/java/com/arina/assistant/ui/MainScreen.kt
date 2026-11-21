@@ -1684,6 +1684,23 @@ private fun VaultBox(title: String, danger: Boolean, signal: String, signalOk: B
     }
 }
 
+/** A text field that stays readable on the dark box in both light and dark themes. */
+@Composable
+private fun VaultField(label: String, value: String, secret: Boolean, onChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value, onValueChange = onChange, modifier = Modifier.fillMaxWidth(), singleLine = true,
+        label = { Text(label, fontSize = 12.sp) },
+        visualTransformation = if (secret) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+        shape = RoundedCornerShape(14.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = VaultText, unfocusedTextColor = VaultText, cursorColor = VaultText,
+            focusedBorderColor = Color(0xFF9FB4FF), unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
+            focusedLabelColor = VaultSoft, unfocusedLabelColor = VaultSoft,
+            focusedContainerColor = Color.Black.copy(alpha = 0.25f), unfocusedContainerColor = Color.Black.copy(alpha = 0.25f)
+        )
+    )
+}
+
 /** A small glowing status lamp. */
 @Composable
 private fun Lamp(c: Color) {
@@ -1726,7 +1743,7 @@ private fun KeyRow(vm: ArinaEngine, id: String, label: String, gemini: Boolean, 
         if (open) Column(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val word = when (state) { "ok" -> "Working"; "limit" -> "Limit reached"; "bad" -> "Key refused"; "stored" -> "Saved"; "unknown" -> "Could not check"; else -> "No key saved yet" }
             Text(word, color = lamp, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            KeyField(if (tail != null) "Replace the key" else "Paste the key", typed, true) { typed = it }
+            VaultField(if (tail != null) "Replace the key" else "Paste the key", typed, true) { typed = it }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 PillButton("Save") {
                     if (typed.isNotBlank()) { val k = typed.trim(); vm.saveKey(id, k); if (gemini) vm.showModels(label, k); typed = ""; open = false }
@@ -1805,7 +1822,7 @@ private fun AdminKeys(vm: ArinaEngine) {
         Text("< All keys", color = ArinaColors.Glow, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { open = "" }.padding(vertical = 6.dp, horizontal = 4.dp))
         KeyDetail(vm, cur)
         if (cur.id == "gemini") VaultBox("Deep thinking", false, "", true, note = "The strongest model, tried first for hard work: phone tasks, research, workflows. Write a name from the pop-up, such as gemini-3.8-flash or gemini-4-hydrogen. Empty = automatic.") {
-            KeyField("Model name", deep, false) { deep = it }
+            VaultField("Model name", deep, false) { deep = it }
             Row(Modifier.padding(start = 4.dp, bottom = 4.dp)) { PillButton("Save model") { vm.adminSave("deep_model", deep.trim()) } }
         }
     }
