@@ -17,6 +17,8 @@ object Identity {
     @Volatile var personality: String = ""
     /** True while a "My voice" character is active: the agent only chats and tells stories, no phone work. */
     @Volatile var storyMode = false
+    /** The strongest model for deep thinking, chosen by the admin (empty = automatic). */
+    @Volatile var deepModel = ""
 
     /** The language this person uses most (learned from what they say; set by the app), or empty while unknown. */
     @Volatile var mainLanguage: String = ""

@@ -1122,7 +1122,7 @@ private fun AdminPage(vm: ArinaEngine) {
     var section by rememberSaveable { mutableStateOf("Agent") }
     PageColumn {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Agent", "Train", "Voices", "Facts", "Users", "Inbox", "Content", "Keys", "Updates", "Secrets", "Log").forEach { name ->
+            listOf("Agent", "Train", "Voices", "Facts", "Users", "Inbox", "Content", "Keys", "Updates", "Log").forEach { name ->
                 val on = section == name
                 Text(
                     name,
@@ -1135,11 +1135,10 @@ private fun AdminPage(vm: ArinaEngine) {
                 )
             }
         }
-        if (section == "Agent" || section == "Voices") VoiceSwitch(vm)
         when (section) {
             "Agent" -> AdminAgent(vm)
             "Train" -> AdminTrain(vm)
-            "Voices" -> AdminVoices(vm)
+            "Voices" -> AdminVoicePick(vm)
             "Facts" -> AdminFacts(vm)
             "Users" -> AdminUsers(vm)
             "Inbox" -> AdminInbox(vm)
@@ -1154,47 +1153,117 @@ private fun AdminPage(vm: ArinaEngine) {
 }
 
 @Composable
+private fun Box3D(danger: Boolean, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    val tint = if (danger) Color(0xFFFF6B7A) else ArinaColors.Glow
+    val shape = RoundedCornerShape(26.dp)
+    Column(
+        Modifier.fillMaxWidth()
+            .shadow(14.dp, shape, ambientColor = tint, spotColor = tint)
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(tint.copy(alpha = 0.28f), ArinaColors.Surface, tint.copy(alpha = 0.10f))))
+            .border(1.5.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.75f), tint.copy(alpha = 0.35f), Color.Black.copy(alpha = 0.18f))), shape)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp), content = content
+    )
+}
+
+/** A long text that shows three lines and opens fully with "more...". */
+@Composable
+private fun ExpandField(label: String, value: String, onChange: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(label, color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        if (open) {
+            LongField("Paste or write the personality", value, onChange)
+            Text("Less", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { open = false }.padding(vertical = 4.dp))
+        } else {
+            Text(value.ifBlank { "Nothing yet. Tap to write." }, color = if (value.isBlank()) ArinaColors.Muted else ArinaColors.Text, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 3,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(ArinaColors.Glow.copy(alpha = 0.08f)).clickable { open = true }.padding(12.dp))
+            Text(if (value.length > 140) "more..." else "Edit", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { open = true }.padding(vertical = 4.dp))
+        }
+    }
+}
+
+@Composable
 private fun AdminAgent(vm: ArinaEngine) {
     var liveFemale by remember { mutableStateOf(vm.adminValue("live_voice_female")) }
     var liveMale by remember { mutableStateOf(vm.adminValue("live_voice_male")) }
     var instrFemale by remember { mutableStateOf(vm.adminValue("instructions_female")) }
     var instrMale by remember { mutableStateOf(vm.adminValue("instructions_male")) }
     var style by remember { mutableStateOf(vm.adminValue("speaking_style").removeSurrounding("\"")) }
-    var engine by remember { mutableStateOf(vm.adminValue("voice_engine").ifBlank { "gemini" }.removeSurrounding("\"")) }
     var cFemale by remember { mutableStateOf(vm.adminValue("cartesia_voice_female")) }
     var cMale by remember { mutableStateOf(vm.adminValue("cartesia_voice_male")) }
     var cModel by remember { mutableStateOf(vm.adminValue("cartesia_model")) }
-    var tModel by remember { mutableStateOf(vm.adminValue("live_text_model")) }
     var initial by remember { mutableStateOf(listOf(liveFemale, liveMale, instrFemale, instrMale, style)) }
-    var cInit by remember { mutableStateOf(listOf(engine, cFemale, cMale, cModel, tModel)) }
-    Column(Modifier.fillMaxWidth().glass().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Published to every user of Entrion. It applies the next time someone starts talking.", color = ArinaColors.Muted, fontSize = 12.sp)
-        Text("Which voice is used is switched in the card at the top of this page. These are the details for each voice.", color = ArinaColors.Muted, fontSize = 12.sp)
-        Text("Cartesia voice", color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-        run {
-            Text("Cartesia speaks each sentence as it is written. Needs the Cartesia key (Keys tab) and a voice id for each agent; without one, that agent falls back to the Gemini voice.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
-            KeyField("Cartesia voice id, female agent", cFemale, false) { cFemale = it }
-            KeyField("Cartesia voice id, male agent", cMale, false) { cMale = it }
-            KeyField("Cartesia model (empty = sonic-3)", cModel, false) { cModel = it }
-            KeyField("Text model for Cartesia mode (empty = gemini-live-2.5-flash)", tModel, false) { tModel = it }
-        }
-        KeyField("Gemini female voice name", liveFemale, false) { liveFemale = it }
-        KeyField("Gemini male voice name", liveMale, false) { liveMale = it }
-        LongField("Female agent: character and instructions", instrFemale) { instrFemale = it }
-        LongField("Male agent: character and instructions", instrMale) { instrMale = it }
-        LongField("How to speak (tone, length, manners, languages), for both agents", style) { style = it }
-        PillButton("Publish") {
-            // Only what you changed is published, so a field that had not loaded yet can never wipe a saved value.
-            fun put(key: String, now: String, was: String) { if (now.trim() != was.trim()) vm.adminSave(key, now.trim()) }
-            put("live_voice_female", liveFemale, initial[0]); put("live_voice_male", liveMale, initial[1])
-            put("instructions_female", instrFemale, initial[2]); put("instructions_male", instrMale, initial[3])
-            put("speaking_style", style, initial[4])
-            initial = listOf(liveFemale, liveMale, instrFemale, instrMale, style)
-            put("voice_engine", engine, cInit[0]); put("cartesia_voice_female", cFemale, cInit[1]); put("cartesia_voice_male", cMale, cInit[2])
-            put("cartesia_model", cModel, cInit[3]); put("live_text_model", tModel, cInit[4])
-            cInit = listOf(engine, cFemale, cMale, cModel, tModel)
+    var cInit by remember { mutableStateOf(listOf(cFemale, cMale, cModel)) }
+    Text("Published to every user. It applies the next time someone starts talking. Which voice is used is chosen in the Voices tab.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 4.dp))
+    Box3D(false) {
+        Text("GEMINI VOICE", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.4.sp)
+        KeyField("Female voice name", liveFemale, false) { liveFemale = it }
+        KeyField("Male voice name", liveMale, false) { liveMale = it }
+    }
+    Box3D(false) {
+        Text("CARTESIA VOICE", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.4.sp)
+        KeyField("Female voice ID", cFemale, false) { cFemale = it }
+        KeyField("Male voice ID", cMale, false) { cMale = it }
+        KeyField("Cartesia model (empty = sonic-3)", cModel, false) { cModel = it }
+        Text("A voice ID must belong to the same Cartesia account as the key in the Keys tab. An agent without an ID uses the Gemini voice.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
+    }
+    Box3D(false) {
+        Text("PERSONALITY", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.4.sp)
+        ExpandField("Female agent", instrFemale) { instrFemale = it }
+        ExpandField("Male agent", instrMale) { instrMale = it }
+        ExpandField("How both speak (tone, length, languages)", style) { style = it }
+    }
+    PillButton("Publish") {
+        // Only what you changed is published, so a field that had not loaded yet can never wipe a saved value.
+        fun put(key: String, now: String, was: String) { if (now.trim() != was.trim()) vm.adminSave(key, now.trim()) }
+        put("live_voice_female", liveFemale, initial[0]); put("live_voice_male", liveMale, initial[1])
+        put("instructions_female", instrFemale, initial[2]); put("instructions_male", instrMale, initial[3])
+        put("speaking_style", style, initial[4])
+        initial = listOf(liveFemale, liveMale, instrFemale, instrMale, style)
+        put("cartesia_voice_female", cFemale, cInit[0]); put("cartesia_voice_male", cMale, cInit[1]); put("cartesia_model", cModel, cInit[2])
+        cInit = listOf(cFemale, cMale, cModel)
+    }
+}
+
+/** The Voices tab: only the two voice options. Tap one, then Use, and it applies to everyone. */
+@Composable
+private fun AdminVoicePick(vm: ArinaEngine) {
+    var current by remember { mutableStateOf(vm.adminValue("voice_engine").removeSurrounding("\"").ifBlank { "gemini" }) }
+    var sel by remember { mutableStateOf("") }
+    val options = listOf(
+        Triple("gemini", "Gemini Voice", "Gemini's own voice. Fast, one connection."),
+        Triple("cartesia", "Cartesia Voice", "Your Cartesia voices. If it cannot start, Entrion uses the Gemini voice so it never goes silent.")
+    )
+    val canUse = sel.isNotBlank() && sel != current
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Use", color = if (canUse) ArinaColors.Background else ArinaColors.Muted, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.clip(RoundedCornerShape(50)).background(if (canUse) ArinaColors.Glow else ArinaColors.Glow.copy(alpha = 0.10f))
+                .clickable(enabled = canUse) { vm.adminSave("voice_engine", sel); current = sel; sel = "" }.padding(horizontal = 24.dp, vertical = 10.dp))
+        Spacer(Modifier.weight(1f))
+        Text("In use: " + (options.firstOrNull { it.first == current }?.second ?: ""), color = ArinaColors.Muted, fontSize = 12.sp)
+    }
+    options.forEach { (id, title, desc) ->
+        val picked = sel == id; val inUse = current == id
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
+            .background(ArinaColors.Glow.copy(alpha = if (picked) 0.22f else 0.08f))
+            .border(1.dp, if (picked || inUse) ArinaColors.Glow.copy(alpha = 0.7f) else ArinaColors.Glow.copy(alpha = 0.15f), RoundedCornerShape(20.dp))
+            .clickable { sel = if (picked) "" else id }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(46.dp).clip(CircleShape).background(Brush.linearGradient(listOf(ArinaColors.Glow, ArinaColors.Glow.copy(alpha = 0.35f)))), contentAlignment = Alignment.Center) {
+                Text(title.take(1), color = ArinaColors.Background, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, color = ArinaColors.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text(desc, color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 16.sp)
+            }
+            if (inUse) Text("IN USE", color = ArinaColors.Background, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp,
+                modifier = Modifier.clip(RoundedCornerShape(50)).background(ArinaColors.Glow).padding(horizontal = 10.dp, vertical = 4.dp))
         }
     }
+    Text("Voice IDs and names are set in the Agent tab. One Use applies to every user the next time they start talking.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 4.dp))
 }
 
 @Composable
@@ -1563,21 +1632,88 @@ private fun ToggleCard(title: String, detail: String, checked: Boolean, onChange
 }
 
 @Composable
+private fun KeyRow(vm: ArinaEngine, id: String, label: String, gemini: Boolean = false) {
+    var typed by remember { mutableStateOf("") }
+    val state = vm.keyState[id] ?: "none"
+    val tail = vm.keyTails[id]
+    val (dot, word) = when (state) {
+        "ok" -> Color(0xFF34D399) to "Working"
+        "limit" -> Color(0xFFFF6B7A) to "Limit reached"
+        "bad" -> Color(0xFFFF6B7A) to "Key refused"
+        "stored" -> ArinaColors.Glow to "Saved"
+        "unknown" -> Color(0xFFF5B454) to "Could not check"
+        else -> ArinaColors.Muted to "Not set"
+    }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color.Black.copy(alpha = 0.06f)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(9.dp).clip(CircleShape).background(dot))
+            Spacer(Modifier.width(8.dp))
+            Text(label, color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text(word, color = dot, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        }
+        Text(if (tail != null) "Saved   ••••$tail" else "No key saved yet", color = ArinaColors.Muted, fontSize = 12.sp)
+        KeyField(if (tail != null) "Replace the key" else "Paste the key", typed, true) { typed = it }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PillButton("Save") {
+                if (typed.isNotBlank()) { val k = typed.trim(); vm.saveKey(id, k); if (gemini) vm.showModels(label, k); typed = "" }
+            }
+            if (gemini) PillButton("Check models") { if (typed.isNotBlank()) { vm.showModels(label, typed.trim()) } else { vm.notice.value = "Paste a key first to see its models." } }
+        }
+    }
+}
+
+@Composable
+private fun KeyBox(vm: ArinaEngine, title: String, note: String, rows: List<Triple<String, String, Boolean>>) {
+    val bad = rows.filter { vm.keyState[it.first] == "limit" || vm.keyState[it.first] == "bad" }
+    Box3D(bad.isNotEmpty()) {
+        Text(title.uppercase(), color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.4.sp)
+        if (bad.isNotEmpty()) Text(
+            (if (bad.any { vm.keyState[it.first] == "limit" }) "Limit reached: " else "Key refused: ") + bad.joinToString(", ") { it.second },
+            color = Color(0xFFFF6B7A), fontSize = 13.sp, fontWeight = FontWeight.Bold, lineHeight = 18.sp
+        )
+        if (note.isNotBlank()) Text(note, color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
+        rows.forEach { (id, label, gem) -> KeyRow(vm, id, label, gem) }
+    }
+}
+
+@Composable
 private fun AdminKeys(vm: ArinaEngine) {
-    val names = listOf(
-        "gemini1" to "Gemini key 1 (female voice, and the fallback for empty ones)", "gemini2" to "Gemini key 2 (male voice)", "gemini3" to "Gemini key 3 (research)",
-        "gemini4" to "Gemini key 4 (workflows and skills)", "gemini5" to "Gemini key 5 (phone agent, camera)",
-        "openai" to "OpenAI (ChatGPT)", "anthropic" to "Anthropic (Claude)", "groq" to "Groq (fast, has a free tier)", "deepseek" to "DeepSeek (cheap)", "cartesia" to "Cartesia (voice, for a later update)"
-    )
-    val typed = remember { mutableStateMapOf<String, String>() }
-    Text("Stored on the server, never shown again. Leave a field empty to keep the current key.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 4.dp))
-    Group(*names.map { (id, label) ->
-        val row: @Composable () -> Unit = { Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) { KeyField(label, typed[id].orEmpty(), true) { typed[id] = it } } }
-        row
-    }.toTypedArray())
-    PillButton("Save keys") {
-        typed.filterValues { it.isNotBlank() }.forEach { (k, v) -> vm.adminSave(k, v.trim(), true) }
-        typed.clear()
+    LaunchedEffect(Unit) { vm.refreshKeys() }
+    var deep by remember { mutableStateOf(vm.adminValue("deep_model").removeSurrounding("\"")) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Keys stay saved. Only the last 4 characters are shown.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.weight(1f).padding(horizontal = 4.dp))
+        Text(if (vm.keysChecking.value) "Checking..." else "Check keys", color = ArinaColors.Glow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.clickable(enabled = !vm.keysChecking.value) { vm.refreshKeys() }.padding(10.dp))
+    }
+    KeyBox(vm, "Gemini keys", "Each job has its own key, so one running out does not stop the others. When you save a key, a pop-up shows which Gemini models it can use.", listOf(
+        Triple("gemini1", "Female agent (voice and brain)", true), Triple("gemini2", "Male agent (voice and brain)", true),
+        Triple("gemini3", "Research", true), Triple("gemini4", "Workflows and skills", true), Triple("gemini5", "Phone agent and camera", true)
+    ))
+    Box3D(false) {
+        Text("DEEP THINKING MODEL", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.4.sp)
+        Text("The strongest model, tried first for hard work: phone tasks, research, workflows. Write a name from the pop-up, such as gemini-3.8-flash or gemini-4-hydrogen. Empty = automatic.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
+        KeyField("Model name", deep, false) { deep = it }
+        PillButton("Save model") { vm.adminSave("deep_model", deep.trim()) }
+    }
+    KeyBox(vm, "Cartesia keys", "The Cartesia key makes the voice. The two Gemini keys below are the brain behind the Cartesia voices, one for each agent (the same keys as in the Gemini box).", listOf(
+        Triple("cartesia", "Cartesia API key", false),
+        Triple("gemini1", "Brain, female agent (Gemini)", true), Triple("gemini2", "Brain, male agent (Gemini)", true)
+    ))
+    KeyBox(vm, "Web search", "", listOf(Triple("tavily", "Search key", false)))
+    KeyBox(vm, "Other brains", "Optional. Used when another model is better for a job.", listOf(
+        Triple("openai", "OpenAI", false), Triple("anthropic", "Anthropic", false), Triple("groq", "Groq", false), Triple("deepseek", "DeepSeek", false)
+    ))
+    vm.modelsDialog.value?.let { (title, lines) ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { vm.modelsDialog.value = null },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { vm.modelsDialog.value = null }) { Text("Close") } },
+            title = { Text("Models for: $title", fontSize = 16.sp) },
+            text = {
+                Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
+                    lines.forEach { l -> Text(l, fontSize = 13.sp, fontWeight = if (l.isNotEmpty() && l == l.uppercase() && l.any { it.isLetter() }) FontWeight.Bold else FontWeight.Normal, lineHeight = 19.sp) }
+                }
+            }
+        )
     }
 }
 

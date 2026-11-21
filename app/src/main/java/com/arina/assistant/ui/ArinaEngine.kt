@@ -668,6 +668,7 @@ class ArinaEngine private constructor(private val app: Application) {
 
     /** The agent's character: the admin's published text if there is one, plus the name the user gave it. */
     private fun currentIntro(): String {
+        Identity.deepModel = Cloud.cfg(app, "deep_model", "").trim().removeSurrounding("\"").removePrefix("models/")
         val male = persona.value == Persona.Aurion
         val base = Cloud.cfg(app, if (male) "instructions_male" else "instructions_female", persona.value.intro)
         val n = agentName.value.trim()
@@ -882,6 +883,111 @@ class ArinaEngine private constructor(private val app: Application) {
     }
 
     fun adminValue(key: String, fallback: String = ""): String = Cloud.cfg(app, key, fallback)
+
+    // ---- Admin: key health ---------------------------------------------------------------------------
+    /** Last four characters of each stored key, and how it is doing: ok, limit, bad, stored, none, unknown. */
+    val keyTails = mutableStateMapOf<String, String>()
+    val keyState = mutableStateMapOf<String, String>()
+    val keysChecking = mutableStateOf(false)
+    /** Title and lines of the "which models can this key use" pop-up; null = closed. */
+    val modelsDialog = mutableStateOf<Pair<String, List<String>>?>(null)
+
+    private fun classify(code: Int, body: String): String = when {
+        code in 200..299 -> "ok"
+        code == 404 -> "ok"
+        code == 429 || code == 402 || body.contains("quota", true) || body.contains("RESOURCE_EXHAUSTED", true) -> "limit"
+        code == 400 && body.contains("API key", true) -> "bad"
+        code == 401 || code == 403 -> "bad"
+        else -> "unknown"
+    }
+
+    private fun testGemini(slot: Int): String = try {
+        val body = JSONObject().put("contents", JSONArray().put(JSONObject().put("parts", JSONArray().put(JSONObject().put("text", "hi")))))
+            .put("generationConfig", JSONObject().put("maxOutputTokens", 1))
+        com.arina.assistant.ai.Gateway.client.newCall(com.arina.assistant.ai.Gateway.gen("proxy:$slot", "gemini-flash-latest", false, body)).execute().use { r -> classify(r.code, r.body?.string().orEmpty().take(400)) }
+    } catch (e: Exception) { "unknown" }
+
+    private fun testCartesia(): String = try {
+        val voice = listOf("cartesia_voice_female", "cartesia_voice_male").map { Cloud.cfg(app, it, "").trim() }.firstOrNull { it.length >= 8 }
+        if (voice == null) "stored"
+        else com.arina.assistant.ai.Gateway.client.newCall(com.arina.assistant.ai.Gateway.tts("a", voice, "sonic-3", "en")).execute().use { r ->
+            val b = r.body?.string().orEmpty().take(400)
+            if (r.isSuccessful) "ok" else classify(runCatching { JSONObject(b).optInt("status", r.code) }.getOrDefault(r.code), b)
+        }
+    } catch (e: Exception) { "unknown" }
+
+    /** Admin: reads which keys are stored (last 4 characters) and tests the ones that can be tested. */
+    fun refreshKeys() {
+        if (keysChecking.value) return
+        scope.launch {
+            keysChecking.value = true
+            val names = listOf("gemini1", "gemini2", "gemini3", "gemini4", "gemini5", "cartesia", "tavily", "openai", "anthropic", "groq", "deepseek")
+            val tails = mutableMapOf<String, String>(); val states = mutableMapOf<String, String>()
+            withContext(Dispatchers.IO) {
+                val have = runCatching { cloud.secretKeys() }.getOrDefault(emptySet())
+                for (n in names) {
+                    if (n !in have) { states[n] = "none"; continue }
+                    runCatching { cloud.secretTail(n) }.getOrNull()?.let { tails[n] = it }
+                    states[n] = "stored"
+                }
+                for (i in 1..5) if (states["gemini$i"] == "stored") states["gemini$i"] = testGemini(i - 1)
+                if (states["cartesia"] == "stored") states["cartesia"] = testCartesia()
+                if (states["tavily"] == "stored") states["tavily"] = runCatching { TavilySearch.search("today", 1); "ok" }.getOrElse {
+                    val m = it.message.orEmpty(); if (Regex("429|432|433|limit|quota|credit|usage", RegexOption.IGNORE_CASE).containsMatchIn(m)) "limit" else "bad"
+                }
+            }
+            keyTails.clear(); keyTails.putAll(tails); keyState.clear(); keyState.putAll(states)
+            keysChecking.value = false
+        }
+    }
+
+    /** Admin: stores one key on the server and re-reads the list, so the saved key stays visible (last 4 characters). */
+    fun saveKey(id: String, value: String) {
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { cloud.saveSecret(id, value.trim()) }
+                gemini.reset()
+                notice.value = "Saved."
+                keysChecking.value = false
+                refreshKeys()
+            } catch (e: CancellationException) { throw e } catch (e: Exception) { notice.value = (e.message ?: "Could not save.").take(200) }
+        }
+    }
+
+    /** Admin: asks Google which models this exact key can use and shows them in a pop-up. */
+    fun showModels(label: String, key: String) {
+        scope.launch {
+            modelsDialog.value = label to listOf("Checking…")
+            val lines = withContext(Dispatchers.IO) {
+                try {
+                    val live = sortedSetOf<String>(); val chat = sortedSetOf<String>()
+                    var token = ""
+                    for (page in 0 until 5) {
+                        val url = "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200" + if (token.isNotEmpty()) "&pageToken=$token" else ""
+                        val req = okhttp3.Request.Builder().url(url).header("x-goog-api-key", key.trim()).build()
+                        val t = com.arina.assistant.ai.Gateway.client.newCall(req).execute().use { r ->
+                            val b = r.body?.string().orEmpty()
+                            if (!r.isSuccessful) return@withContext listOf("Google refused this key (HTTP ${r.code}).", "Check that it is a Gemini API key from Google AI Studio.")
+                            b
+                        }
+                        val o = JSONObject(t)
+                        val arr = o.optJSONArray("models") ?: JSONArray()
+                        for (i in 0 until arr.length()) {
+                            val m = arr.getJSONObject(i); val name = m.optString("name").removePrefix("models/")
+                            val methods = m.optJSONArray("supportedGenerationMethods")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty()
+                            if ("bidiGenerateContent" in methods) live.add(name)
+                            else if ("generateContent" in methods && name.startsWith("gemini")) chat.add(name)
+                        }
+                        token = o.optString("nextPageToken"); if (token.isEmpty()) break
+                    }
+                    val deep = Cloud.cfg(app, "deep_model", "").trim()
+                    listOf("This key can use ${live.size + chat.size} Gemini models.", "", "LIVE VOICE (the conversation)") + live.ifEmpty { listOf("none") } +
+                        listOf("", "THINKING AND CHAT (the brain)") + chat.map { if (it == deep) "$it   (deep thinking now)" else it }.ifEmpty { listOf("none") }
+                } catch (e: Exception) { listOf("Could not ask Google: ${(e.message ?: "unknown").take(120)}") }
+            }
+            modelsDialog.value = label to lines
+        }
+    }
 
     // ---- Admin tools (the database refuses all of these for anyone but the admin) -------------------
     val adminFacts = mutableStateListOf<Cloud.Fact>()
