@@ -1158,7 +1158,6 @@ private fun Box3D(danger: Boolean, content: @Composable androidx.compose.foundat
     val shape = RoundedCornerShape(26.dp)
     Column(
         Modifier.fillMaxWidth()
-            .shadow(14.dp, shape, ambientColor = tint, spotColor = tint)
             .clip(shape)
             .background(Brush.verticalGradient(listOf(tint.copy(alpha = 0.28f), ArinaColors.Surface, tint.copy(alpha = 0.10f))))
             .border(1.5.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.75f), tint.copy(alpha = 0.35f), Color.Black.copy(alpha = 0.18f))), shape)
@@ -1631,33 +1630,108 @@ private fun ToggleCard(title: String, detail: String, checked: Boolean, onChange
     }
 }
 
+private val VaultText = Color(0xFFF1F3FF)
+private val VaultSoft = Color(0xFFC9D2FF)
+
+/** A solid box: lit lid on a thick dark base with a drop shadow; a status lamp in the corner; a recessed tray inside. */
 @Composable
-private fun KeyRow(vm: ArinaEngine, id: String, label: String, gemini: Boolean = false) {
+private fun VaultBox(title: String, danger: Boolean, signal: String, signalOk: Boolean, note: String = "", content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    val shape = RoundedCornerShape(28.dp)
+    val lid = if (danger) listOf(Color(0xFFA8384A), Color(0xFF7A2236), Color(0xFF4A1426)) else listOf(Color(0xFF3A4AA8), Color(0xFF24307F), Color(0xFF1A2260))
+    val base = if (danger) listOf(Color(0xFF4A1020), Color(0xFF1E060C)) else listOf(Color(0xFF141A4A), Color(0xFF070A1F))
+    val lamp = if (danger) Color(0xFFFF6B7A) else Color(0xFF34D399)
+    Box(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+        Box(
+            Modifier.matchParentSize().offset(y = 12.dp).padding(horizontal = 3.dp)
+                .shadow(18.dp, shape, ambientColor = Color.Black, spotColor = if (danger) Color(0xFFFF3C5A) else Color.Black)
+                .background(Brush.verticalGradient(base))
+        )
+        Column(
+            Modifier.fillMaxWidth().clip(shape)
+                .background(Brush.linearGradient(lid))
+                .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.6f), Color(0xFFA0B4FF).copy(alpha = 0.25f), Color.Black.copy(alpha = 0.35f))), shape)
+                .drawBehind {
+                    val inset = 14.dp.toPx()
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.22f), Color.Transparent), endY = size.height * 0.36f),
+                        topLeft = androidx.compose.ui.geometry.Offset(inset, 3.dp.toPx()),
+                        size = androidx.compose.ui.geometry.Size(size.width - 2 * inset, size.height * 0.36f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(22.dp.toPx())
+                    )
+                }
+                .padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title.uppercase(), color = VaultText, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.8.sp,
+                    modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0xFF000014).copy(alpha = 0.4f)).padding(horizontal = 12.dp, vertical = 5.dp))
+                Spacer(Modifier.weight(1f))
+                if (signal.isNotBlank()) {
+                    Lamp(lamp)
+                    Spacer(Modifier.width(6.dp))
+                    Text(signal, color = if (signalOk) Color(0xFF9FF0CD) else Color(0xFFFFD0D6), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            if (note.isNotBlank()) Text(note, color = VaultSoft, fontSize = 12.sp, lineHeight = 17.sp)
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Color(0xFF03061C).copy(alpha = 0.55f))
+                    .border(1.dp, Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.6f), Color.White.copy(alpha = 0.18f))), RoundedCornerShape(20.dp))
+                    .padding(6.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp), content = content
+            )
+        }
+    }
+}
+
+/** A small glowing status lamp. */
+@Composable
+private fun Lamp(c: Color) {
+    Box(
+        Modifier.size(11.dp).shadow(7.dp, CircleShape, ambientColor = c, spotColor = c)
+            .background(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.85f), c, c.copy(alpha = 0.8f)), center = androidx.compose.ui.geometry.Offset(10f, 8f), radius = 26f), CircleShape)
+    )
+}
+
+/** One key slot: lamp, name, last four characters. Tap to open the paste field. */
+@Composable
+private fun KeyRow(vm: ArinaEngine, id: String, label: String, gemini: Boolean, danger: Boolean) {
     var typed by remember { mutableStateOf("") }
+    var open by remember { mutableStateOf(false) }
     val state = vm.keyState[id] ?: "none"
     val tail = vm.keyTails[id]
-    val (dot, word) = when (state) {
-        "ok" -> Color(0xFF34D399) to "Working"
-        "limit" -> Color(0xFFFF6B7A) to "Limit reached"
-        "bad" -> Color(0xFFFF6B7A) to "Key refused"
-        "stored" -> ArinaColors.Glow to "Saved"
-        "unknown" -> Color(0xFFF5B454) to "Could not check"
-        else -> ArinaColors.Muted to "Not set"
+    val lamp = when (state) {
+        "ok" -> Color(0xFF34D399)
+        "limit", "bad" -> Color(0xFFFF6B7A)
+        "stored" -> Color(0xFF6C8CFF)
+        "unknown" -> Color(0xFFF5B454)
+        else -> Color(0xFF7C84B4)
     }
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color.Black.copy(alpha = 0.06f)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(9.dp).clip(CircleShape).background(dot))
+    val turn by androidx.compose.animation.core.animateFloatAsState(if (open) 90f else 0f, label = "chev")
+    val shape = RoundedCornerShape(15.dp)
+    val face = if (danger) listOf(Color(0xFF8A2C3F), Color(0xFF5C1A2A)) else listOf(Color(0xFF2A3590), Color(0xFF1B246C))
+    Column(
+        Modifier.fillMaxWidth().shadow(5.dp, shape, ambientColor = Color.Black, spotColor = Color.Black).clip(shape)
+            .background(Brush.verticalGradient(face))
+            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.32f), Color.Transparent)), shape)
+    ) {
+        Row(Modifier.fillMaxWidth().clickable { open = !open }.padding(horizontal = 12.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Lamp(lamp)
+            Spacer(Modifier.width(10.dp))
+            Text(label, color = VaultText, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text(if (tail != null) "••••$tail" else "Not set", color = VaultSoft, fontSize = 12.sp)
             Spacer(Modifier.width(8.dp))
-            Text(label, color = ArinaColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            Text(word, color = dot, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Text("›", color = VaultSoft, fontSize = 18.sp, modifier = Modifier.graphicsLayer { rotationZ = turn })
         }
-        Text(if (tail != null) "Saved   ••••$tail" else "No key saved yet", color = ArinaColors.Muted, fontSize = 12.sp)
-        KeyField(if (tail != null) "Replace the key" else "Paste the key", typed, true) { typed = it }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            PillButton("Save") {
-                if (typed.isNotBlank()) { val k = typed.trim(); vm.saveKey(id, k); if (gemini) vm.showModels(label, k); typed = "" }
+        if (open) Column(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            val word = when (state) { "ok" -> "Working"; "limit" -> "Limit reached"; "bad" -> "Key refused"; "stored" -> "Saved"; "unknown" -> "Could not check"; else -> "No key saved yet" }
+            Text(word, color = lamp, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            KeyField(if (tail != null) "Replace the key" else "Paste the key", typed, true) { typed = it }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PillButton("Save") {
+                    if (typed.isNotBlank()) { val k = typed.trim(); vm.saveKey(id, k); if (gemini) vm.showModels(label, k); typed = ""; open = false }
+                }
+                if (gemini) PillButton("Check models") { if (typed.isNotBlank()) { vm.showModels(label, typed.trim()) } else { vm.notice.value = "Paste a key first to see its models." } }
             }
-            if (gemini) PillButton("Check models") { if (typed.isNotBlank()) { vm.showModels(label, typed.trim()) } else { vm.notice.value = "Paste a key first to see its models." } }
         }
     }
 }
@@ -1665,14 +1739,16 @@ private fun KeyRow(vm: ArinaEngine, id: String, label: String, gemini: Boolean =
 @Composable
 private fun KeyBox(vm: ArinaEngine, title: String, note: String, rows: List<Triple<String, String, Boolean>>) {
     val bad = rows.filter { vm.keyState[it.first] == "limit" || vm.keyState[it.first] == "bad" }
-    Box3D(bad.isNotEmpty()) {
-        Text(title.uppercase(), color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.4.sp)
-        if (bad.isNotEmpty()) Text(
-            (if (bad.any { vm.keyState[it.first] == "limit" }) "Limit reached: " else "Key refused: ") + bad.joinToString(", ") { it.second },
-            color = Color(0xFFFF6B7A), fontSize = 13.sp, fontWeight = FontWeight.Bold, lineHeight = 18.sp
-        )
-        if (note.isNotBlank()) Text(note, color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
-        rows.forEach { (id, label, gem) -> KeyRow(vm, id, label, gem) }
+    val anyLimit = bad.any { vm.keyState[it.first] == "limit" }
+    val allOk = rows.all { vm.keyState[it.first] == "ok" }
+    val signal = when {
+        bad.isNotEmpty() -> (if (anyLimit) "Limit reached" else "Key refused")
+        allOk -> "All working"
+        rows.any { vm.keyState[it.first] == "ok" } -> "Working"
+        else -> ""
+    }
+    VaultBox(title, bad.isNotEmpty(), signal, bad.isEmpty(), note = if (bad.isNotEmpty()) "Check: " + bad.joinToString(", ") { it.second } + (if (note.isNotBlank()) ". $note" else "") else note) {
+        rows.forEach { (id, label, gem) -> KeyRow(vm, id, label, gem, bad.isNotEmpty()) }
     }
 }
 
@@ -1689,11 +1765,9 @@ private fun AdminKeys(vm: ArinaEngine) {
         Triple("gemini1", "Female agent (voice and brain)", true), Triple("gemini2", "Male agent (voice and brain)", true),
         Triple("gemini3", "Research", true), Triple("gemini4", "Workflows and skills", true), Triple("gemini5", "Phone agent and camera", true)
     ))
-    Box3D(false) {
-        Text("DEEP THINKING MODEL", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.4.sp)
-        Text("The strongest model, tried first for hard work: phone tasks, research, workflows. Write a name from the pop-up, such as gemini-3.8-flash or gemini-4-hydrogen. Empty = automatic.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
+    VaultBox("Deep thinking", false, "", true, note = "The strongest model, tried first for hard work: phone tasks, research, workflows. Write a name from the pop-up, such as gemini-3.8-flash or gemini-4-hydrogen. Empty = automatic.") {
         KeyField("Model name", deep, false) { deep = it }
-        PillButton("Save model") { vm.adminSave("deep_model", deep.trim()) }
+        Row(Modifier.padding(start = 4.dp, bottom = 4.dp)) { PillButton("Save model") { vm.adminSave("deep_model", deep.trim()) } }
     }
     KeyBox(vm, "Cartesia keys", "The Cartesia key makes the voice. The two Gemini keys below are the brain behind the Cartesia voices, one for each agent (the same keys as in the Gemini box).", listOf(
         Triple("cartesia", "Cartesia API key", false),
