@@ -164,16 +164,38 @@ class ArinaEngine private constructor(private val app: Application) {
     init { Keys.authToken = { cloud.accessToken() } }
 
     private var lastMsgNote = 0L
-    /** A chat message arrived while Entrion is listening: it tells him who wrote and what, in its own words. */
+    private var lastBusy = 0L
+    private val pendingMsgs = mutableListOf<Triple<String, String, String>>()
+    private var flushJob: kotlinx.coroutines.Job? = null
+    init {
+        scope.launch { snapshotFlow { status.value }.collect { if (it != Status.Idle && it != Status.Listening) lastBusy = System.currentTimeMillis() } }
+    }
+    /** Messages never interrupt a conversation: they wait until it is quiet, then come as ONE short note (at most one note per 3 minutes). */
+    private fun flushMsgs() {
+        flushJob?.cancel()
+        flushJob = scope.launch {
+            while (pendingMsgs.isNotEmpty()) {
+                val now = System.currentTimeMillis()
+                val calm = status.value == Status.Idle || status.value == Status.Listening
+                val quietFor = now - lastBusy
+                val gap = now - lastMsgNote
+                if (!(micOn.value && liveSession.active)) { pendingMsgs.clear(); return@launch }
+                if (calm && quietFor > 20_000 && gap > 180_000) break
+                kotlinx.coroutines.delay(5_000)
+            }
+            if (pendingMsgs.isEmpty()) return@launch
+            val list = pendingMsgs.toList(); pendingMsgs.clear()
+            lastMsgNote = System.currentTimeMillis()
+            val body = list.takeLast(5).joinToString("; ") { "${it.second}: \"${it.third.take(160)}\"" }
+            val extra = if (list.size > 5) " (and ${list.size - 5} more)" else ""
+            liveSession.sendText("(system note) New message(s) arrived while you two were talking: $body$extra. Say it ONCE, in a single short natural sentence or two in his language (who wrote, the gist). If there are several, group them: \"a few messages came, mostly from X\". Do not read app names. Do not ask more than a quick \"want to reply?\" and only if it is one person. Then go back to the topic. Never repeat this later.")
+        }
+    }
+    /** A chat message arrived while Entrion is listening. */
     init {
         com.arina.assistant.device.ArinaNotificationListener.onMessage = { appName, from, text ->
             scope.launch {
-                val now = System.currentTimeMillis()
-                val calm = status.value == Status.Idle || status.value == Status.Listening
-                if (micOn.value && liveSession.active && calm && now - lastMsgNote > 4000) {
-                    lastMsgNote = now
-                    liveSession.sendText("(system note) A new $appName message just arrived. From: $from. Text: \"$text\". Tell him now, naturally and briefly in the language he speaks, who wrote to him and what it says (like a friend leaning over: \"$from just wrote to you, he says ...\"). Do not read out app names or technical words. Then ask in a few words whether he wants to reply, and wait for his answer; send nothing yourself.")
-                }
+                if (micOn.value && liveSession.active) { pendingMsgs.add(Triple(appName, from, text)); flushMsgs() }
             }
         }
     }
