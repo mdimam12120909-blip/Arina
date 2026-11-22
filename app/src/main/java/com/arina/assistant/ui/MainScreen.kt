@@ -329,6 +329,7 @@ private fun Header(vm: ArinaEngine, page: Page, onAvatar: () -> Unit, onBack: ()
             Text(page.title, color = ArinaColors.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
         } else {
             Text(Brand.APP, color = ArinaColors.Text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.width(8.dp)); EliteTag()
         }
         Spacer(Modifier.weight(1f))
         if (!onTab) Avatar(vm, 40.dp, Modifier.clickable(onClick = onAvatar))
@@ -2320,7 +2321,7 @@ private fun AboutPage() {
     val ver = runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).let { it.versionName + " (build " + it.longVersionCode + ")" } }.getOrDefault("")
     PageColumn {
         Column(Modifier.fillMaxWidth().glass().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Entrion", color = ArinaColors.Text, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+            Row(verticalAlignment = Alignment.CenterVertically) { Text("Entrion", color = ArinaColors.Text, fontSize = 24.sp, fontWeight = FontWeight.SemiBold); Spacer(Modifier.width(10.dp)); EliteTag() }
             Text(cfgText(ctx, "about_text", "Entrion is a voice assistant that listens, understands what you mean and gets things done on your phone: calls, messages, search, photos, reminders and more, in your own language."), color = ArinaColors.Text, fontSize = 14.sp, lineHeight = 21.sp)
             Text("CREATOR", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.4.sp)
             Text(cfgText(ctx, "about_creator", "Itoshi Kashikoi"), color = ArinaColors.Text, fontSize = 16.sp, fontWeight = FontWeight.Medium)
@@ -2641,4 +2642,14 @@ private fun StudioThumb(item: com.arina.assistant.ai.Studio.Item) {
         bmp?.let { androidx.compose.foundation.Image(it.asImageBitmap(), item.name, Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop) }
         if (item.kind == com.arina.assistant.ai.Studio.Kind.Videos) Text("▶", color = Color.White, fontSize = 22.sp)
     }
+}
+
+/** A small brushed-gold "ELITE" plate next to the Entrion name. */
+@Composable
+private fun EliteTag() {
+    Text("ELITE", color = Color(0xFF2B2108), fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.6.sp,
+        modifier = Modifier.clip(RoundedCornerShape(50))
+            .background(Brush.linearGradient(listOf(Color(0xFFF6E7A8), Color(0xFFD9B44A), Color(0xFFF3DE8C), Color(0xFFB98B2A))))
+            .border(0.8.dp, Color.White.copy(alpha = 0.6f), RoundedCornerShape(50))
+            .padding(horizontal = 9.dp, vertical = 3.dp))
 }
