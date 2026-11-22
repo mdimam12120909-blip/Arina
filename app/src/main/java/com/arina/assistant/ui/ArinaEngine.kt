@@ -1567,7 +1567,7 @@ class ArinaEngine private constructor(private val app: Application) {
     private fun doGenerateImage(prompt: String, changeLast: Boolean): String {
         if (prompt.isBlank()) return "ERROR: I need a description of the picture."
         val r = imageGen.make(prompt, changeLast)
-        val f = r.file ?: return "ERROR: the picture could not be made (${r.error}). Tell him briefly; do not pretend it worked."
+        val f = r.file ?: return (if (r.error.startsWith("QUOTA")) "ERROR: ${r.error} Tell him exactly this in one short sentence in his language: the picture limit of the key is finished, the admin must add a Gemini key with billing for pictures. Do not say it is a technical fault and do not retry." else "ERROR: the picture could not be made (${r.error}). Tell him briefly; do not pretend it worked.")
         scope.launch { openCard(Card(CardKind.Images, "Image", listOf(f.path), seconds = 120)) }
         return "OK: the picture was made, saved in his gallery (Pictures/Entrion) and is on screen. Say so in one short sentence, and that it is also in the sidebar, Generate Studio."
     }

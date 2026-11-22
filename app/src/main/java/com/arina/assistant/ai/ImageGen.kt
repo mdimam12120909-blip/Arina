@@ -34,28 +34,35 @@ class ImageGen(private val ctx: Context, private val key: () -> String) {
             .toString()
         val body = bodyJson.toRequestBody("application/json".toMediaType())
         var err = "no image model answered"
-        for (m in MODELS) {
-            try {
-                val req = if (Gateway.isProxy(k)) Gateway.gen(k, m, false, org.json.JSONObject(bodyJson)) else Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent").header("x-goog-api-key", k).post(body).build()
-                http.newCall(req).execute().use { r ->
-                    val txt = r.body?.string().orEmpty()
-                    if (!r.isSuccessful) { err = "$m: HTTP ${r.code} ${runCatching { JSONObject(txt).getJSONObject("error").optString("message") }.getOrDefault("").take(120)}"; Diag.log("image: $err"); return@use }
-                    val ps = JSONObject(txt).optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts") ?: return@use
-                    for (i in 0 until ps.length()) {
-                        val d = ps.getJSONObject(i).let { it.optJSONObject("inlineData") ?: it.optJSONObject("inline_data") }?.optString("data").orEmpty()
-                        if (d.isNotEmpty()) {
-                            val bytes = Base64.decode(d, Base64.DEFAULT)
-                            dir.listFiles()?.filter { it.name.startsWith("gen_") }?.forEach { it.delete() }
-                            val f = File(dir, "gen_${System.currentTimeMillis()}.png").also { it.writeBytes(bytes) }
-                            last = f
-                            saveToGallery(bytes)
-                            return Result(f, "")
+        var quotaHit = false
+        val keys = if (Gateway.isProxy(k)) listOf(k) + (0..4).map { "${Gateway.PREFIX}$it" }.filter { it != k }.take(3) else listOf(k)
+        for (kk in keys) {
+            quotaHit = false
+            for (m in MODELS) {
+                try {
+                    val req = if (Gateway.isProxy(kk)) Gateway.gen(kk, m, false, org.json.JSONObject(bodyJson)) else Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent").header("x-goog-api-key", k).post(body).build()
+                    http.newCall(req).execute().use { r ->
+                        val txt = r.body?.string().orEmpty()
+                        if (!r.isSuccessful) { if (r.code == 429) quotaHit = true; err = "$m: HTTP ${r.code} ${runCatching { JSONObject(txt).getJSONObject("error").optString("message") }.getOrDefault("").take(120)}"; Diag.log("image: $err"); return@use }
+                        val ps = JSONObject(txt).optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts") ?: return@use
+                        for (i in 0 until ps.length()) {
+                            val d = ps.getJSONObject(i).let { it.optJSONObject("inlineData") ?: it.optJSONObject("inline_data") }?.optString("data").orEmpty()
+                            if (d.isNotEmpty()) {
+                                val bytes = Base64.decode(d, Base64.DEFAULT)
+                                dir.listFiles()?.filter { it.name.startsWith("gen_") }?.forEach { it.delete() }
+                                val f = File(dir, "gen_${System.currentTimeMillis()}.png").also { it.writeBytes(bytes) }
+                                last = f
+                                saveToGallery(bytes)
+                                return Result(f, "")
+                            }
                         }
+                        err = "$m answered without a picture (it may have refused the request)"
                     }
-                    err = "$m answered without a picture (it may have refused the request)"
-                }
-            } catch (e: Exception) { err = "$m: ${e.message}" }
+                } catch (e: Exception) { err = "$m: ${e.message}" }
+            }
+            if (!quotaHit) break
         }
+        if (quotaHit) return Result(null, "QUOTA: the daily limit of the Gemini key for pictures is finished (HTTP 429). Image making needs a Gemini key with billing turned on.")
         return Result(null, err)
     }
 
