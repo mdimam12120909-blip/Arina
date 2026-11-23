@@ -16,6 +16,7 @@ interface ToolHooks {
     fun listSkills(): String
     fun showImage(query: String): String
     fun generateImage(prompt: String, changeLast: Boolean): String
+    fun stopListening(): String
     fun diagram(title: String, outline: String, mode: String, remove: String): String
     fun showGallery(album: String, count: Int): String
     fun showFile(name: String): String
@@ -102,6 +103,7 @@ class ToolRunner(
         put(decl("list_skills", "List the saved skills."))
         put(decl("show_image", "Find pictures on the web and show them on screen for one minute. Use when the user asks to see a photo or picture of someone or something.", listOf(Triple("query", "STRING", "Web image search query in English, e.g. 'Lionel Messi photo'."))))
         put(decl("play_song", "Play a song or video in YouTube in ONE step: it searches, taps the first real result and checks that it is really playing. Use this for 'play X', 'গান চালাও'. Result says CONFIRMED only when proven playing.", listOf(Triple("query", "STRING", "Song and artist, e.g. 'Sunflower Post Malone'."))))
+        put(decl("stop_listening", "Switch yourself off (stop listening) after a short goodbye. Use when he says stop, bye, sleep, or agrees to switch off while the phone charges."))
         put(decl("generate_image", "MAKE a brand-new picture from a description (art, logo idea, poster, scene), or change the last picture you made. It is saved to his gallery and shown on screen. Not for finding existing photos of real people or things: use show_image for that. Write 'prompt' in English, rich and specific. Set change_last true to edit the previous picture (e.g. 'make it darker').", listOf(
             Triple("prompt", "STRING", "What to draw, in detail, in English."),
             Triple("change_last", "BOOLEAN", "true to modify the last generated picture instead of making a new one.")
@@ -235,6 +237,7 @@ class ToolRunner(
             "play_song" -> song.play(args.optString("query"))
             "save_web_images" -> WebImages.save(device.context, args.optString("query"), args.optInt("count", 5))
             "make_video" -> VideoMaker.make(device.context, args.optString("topic"), args.optInt("seconds_each", 3))
+            "stop_listening" -> hooks.stopListening()
             "generate_image" -> hooks.generateImage(args.optString("prompt"), args.optBoolean("change_last", false))
             "diagram" -> hooks.diagram(args.optString("title"), args.optString("outline"), args.optString("mode", "new"), args.optString("remove"))
             "show_gallery" -> hooks.showGallery(args.optString("album"), args.optInt("count", 4))

@@ -465,6 +465,17 @@ class GeminiClient(
         return parse(text)
     }
 
+    /** Turns a finished conversation into a short private diary note (plain text, may be empty). */
+    fun diary(transcript: String): String {
+        if (keyFor(KeyRole.Research).isBlank()) return ""
+        val contents = JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", transcript.take(6000)))))
+        val sys = "You keep a private diary about one person for his voice assistant. Read the conversation and write at most 3 short English lines, nothing else: (1) what they talked about and what he plans, worries about or wants; (2) his mood and energy; (3) a new habit, preference, pattern or important fact about him, only if clearly shown. Skip small talk. If nothing is worth keeping, answer exactly NONE. Never include passwords or secrets."
+        val resp = callApi(sys, contents, withTools = false, o = Opts(role = KeyRole.Research))
+        val parts = resp.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts") ?: return ""
+        val t = (0 until parts.length()).map { parts.getJSONObject(it) }.filter { !it.optBoolean("thought") }.joinToString("\n") { it.optString("text") }.trim()
+        return if (t.equals("NONE", true)) "" else t.take(500)
+    }
+
     /** Lets the normal conversation know a background research finished, so follow-up questions work. */
     @Synchronized
     fun noteResearch(question: String, reply: Reply) {

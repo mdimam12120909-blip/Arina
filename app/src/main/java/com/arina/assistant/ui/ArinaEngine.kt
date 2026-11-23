@@ -169,7 +169,31 @@ class ArinaEngine private constructor(private val app: Application) {
     private var flushJob: kotlinx.coroutines.Job? = null
     init {
         scope.launch { snapshotFlow { status.value }.collect { if (it != Status.Idle && it != Status.Listening) lastBusy = System.currentTimeMillis() } }
+        scope.launch { snapshotFlow { messages.size }.collect { lastBusy = System.currentTimeMillis() } }
+        scope.launch { snapshotFlow { level.floatValue > 0.08f }.collect { if (it) lastBusy = System.currentTimeMillis() } }
+        // Nobody spoke for 3 minutes and nothing is being worked on: switch itself off (saves battery and mic).
+        scope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(15_000)
+                if (micOn.value && System.currentTimeMillis() - lastBusy > 180_000 && status.value != Status.Thinking && status.value != Status.Speaking) {
+                    turnOff(); notice.value = "Entrion switched itself off after 3 quiet minutes."
+                }
+            }
+        }
     }
+    private var sessionStart = 0
+    private var lastChargeNote = 0L
+    /** Charger plugged in while Entrion is on: say it once and offer to switch off. */
+    private val powerOn = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: android.content.Context?, i: android.content.Intent?) {
+            if (!micOn.value || !liveSession.active) return
+            val now = System.currentTimeMillis()
+            if (now - lastChargeNote < 30 * 60_000L) return
+            lastChargeNote = now
+            liveSession.sendText("(system note) The charger was just plugged in while you are still listening. Say it once, in one short friendly sentence in his language, that it is better to switch you off while charging (the phone heats up), and ask if he wants you to stop. If he is in the middle of something important, wait for a pause. If he says yes, call stop_listening if you have it, otherwise tell him to tap the mic.")
+        }
+    }
+    init { runCatching { androidx.core.content.ContextCompat.registerReceiver(app, powerOn, android.content.IntentFilter(android.content.Intent.ACTION_POWER_CONNECTED), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED) } }
     /** Messages never interrupt a conversation: they wait until it is quiet, then come as ONE short note (at most one note per 3 minutes). */
     private fun flushMsgs() {
         flushJob?.cancel()
@@ -512,6 +536,7 @@ class ArinaEngine private constructor(private val app: Application) {
         override fun listSkills(): String = skillStore.all().joinToString("\n") { "- ${it.name}: ${it.when_}" }
         override fun showImage(query: String) = doShowImage(query)
         override fun generateImage(prompt: String, changeLast: Boolean) = doGenerateImage(prompt, changeLast)
+        override fun stopListening(): String { scope.launch { kotlinx.coroutines.delay(4000); turnOff() }; return "OK: you will switch off in a few seconds. Say a very short warm goodbye now." }
         override fun diagram(title: String, outline: String, mode: String, remove: String) = doDiagram(title, outline, mode, remove)
         override fun showGallery(album: String, count: Int) = doShowGallery(album, count)
         override fun showFile(name: String) = doShowFile(name)
@@ -590,11 +615,15 @@ class ArinaEngine private constructor(private val app: Application) {
     internal val mcp = com.arina.assistant.ai.McpHub(com.arina.assistant.ai.McpStore(uiPrefs)).also { hub -> Thread { runCatching { hub.refresh() } }.start() }
     /** Set by the activity: asks Google for permission to upload to YouTube and returns an access token (null = refused). */
     var ytAuthorizer: (((String?, String) -> Unit) -> Unit)? = null
+    private var lastLowNote = 0L
     private val batteryLow = object : android.content.BroadcastReceiver() {
         override fun onReceive(c: android.content.Context?, i: android.content.Intent?) {
             if (!micOn.value) return
             val line = runCatching { device.nowLine() }.getOrDefault("")
             if (line.contains("charging")) return
+            val nowT = System.currentTimeMillis()
+            if (nowT - lastLowNote < 3 * 3600_000L) return   // not again for 3 hours
+            lastLowNote = nowT
             liveSession.sendText("(system note) The phone battery just dropped low. $line Tell him kindly in one short sentence that it needs charging, and ask him to take care of himself. Say it once.")
         }
     }
@@ -1368,12 +1397,15 @@ class ArinaEngine private constructor(private val app: Application) {
     private fun turnOn() {
         glow.intValue++
         micOn.value = true
+        lastBusy = System.currentTimeMillis()
+        sessionStart = messages.size
         notice.value = null
         failStreak = 0
         startListening()
     }
 
     fun turnOff() {
+        if (micOn.value) writeDiary()
         micOn.value = false
         micMuteOn.value = false; liveSession.userMuted = false
         job?.cancel()
@@ -1381,6 +1413,16 @@ class ArinaEngine private constructor(private val app: Application) {
         liveSession.stop()
         level.floatValue = 0f
         status.value = Status.Idle
+    }
+
+    /** The talk is over: a short private diary note is written so he is remembered next time. */
+    private fun writeDiary() {
+        val from = sessionStart.coerceIn(0, messages.size)
+        val part = messages.toList().drop(from)
+        if (part.count { it.fromUser } < 2) return
+        val text = part.takeLast(40).joinToString("\n") { (if (it.fromUser) "HE: " else "YOU: ") + it.text.take(300) }
+        Thread { runCatching { val d = gemini.diary(text); if (d.isNotBlank()) { memory.addEpisode(d) } } }.start()
+        sessionStart = messages.size
     }
 
     /** Ends everything this engine started; it is not used again afterwards. */
