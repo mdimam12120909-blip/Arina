@@ -432,7 +432,7 @@ class ArinaEngine private constructor(private val app: Application) {
         scope.launch {
             reloadRoutines()
             val r2 = withContext(Dispatchers.IO) {
-                runCatching { proactiveLine("Routine time has come: '${r.title}'. ${r.note} Remind him now, briefly.") }.getOrNull()
+                runCatching { proactiveLine("Routine time has come: '${r.title}'. ${r.note} Remind him now, briefly, in Bengali (his language, casual \"তুমি\"), never in English.") }.getOrNull()
             } ?: Reply("", "সময় হয়েছে: ${r.title}।", "Time for: ${r.title}.")
             announce(r2)
         }

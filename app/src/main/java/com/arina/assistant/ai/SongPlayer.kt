@@ -20,6 +20,16 @@ class SongPlayer(private val ctx: android.content.Context, private val device: D
         return s.app.contains("youtube") && s.nodes.any { val l = label(it).lowercase(); l == "pause video" || l.startsWith("pause") || l.contains("minimize") || l.contains("miniplayer") }
     }
 
+    /** True only when a player is up AND something on screen carries a word of the requested song, so an old song still playing is not mistaken for the new one. */
+    private fun playingThis(words: List<String>): Boolean {
+        val s = ArinaAccessibilityService.instance?.snapshot(textMax = 160, maxNodes = 160) ?: return false
+        if (!s.app.contains("youtube")) return false
+        val has = s.nodes.any { val l = label(it).lowercase(); l == "pause video" || l.startsWith("pause") || l.contains("minimize") || l.contains("miniplayer") }
+        if (!has) return false
+        val all = s.nodes.joinToString(" ") { label(it).lowercase() }
+        return words.isEmpty() || words.any { all.contains(it) }
+    }
+
     fun play(query: String): String {
         val q = query.trim()
         if (q.isEmpty()) return "ERROR: which song?"
@@ -35,11 +45,19 @@ class SongPlayer(private val ctx: android.content.Context, private val device: D
         if (!opened) opened = runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(q))).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
         if (!opened) { ExecTrace.set(ExecState.FAILED, "could not open YouTube"); return "ERROR: could not open YouTube." }
         val svc = ArinaAccessibilityService.instance
+        val words = q.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length >= 3 }
+        var fallbackDone = false
         var tapped = false
         val end = System.currentTimeMillis() + 9000
         while (System.currentTimeMillis() < end) {
             Thread.sleep(250)
-            if (playing()) { Diag.log("metric song ms=${System.currentTimeMillis() - t0} tapped=$tapped"); ExecTrace.set(ExecState.COMPLETED, q); return "OK: CONFIRMED. '$q' is playing in YouTube (a player with a Pause control is on screen)." }
+            if (!fallbackDone && !tapped && System.currentTimeMillis() - t0 > 4000 && !playingThis(words)) {
+                // The direct "play" request only opened YouTube's home: search the normal way instead.
+                fallbackDone = true
+                runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(q))).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                Thread.sleep(1500)
+            }
+            if (playingThis(words)) { Diag.log("metric song ms=${System.currentTimeMillis() - t0} tapped=$tapped"); ExecTrace.set(ExecState.COMPLETED, q); return "OK: CONFIRMED. '$q' is playing in YouTube (a player with a Pause control is on screen)." }
             if (svc != null && !tapped) {
                 val s = svc.snapshot(textMax = 120, maxNodes = 160) ?: continue
                 if (!s.app.contains("youtube")) continue
@@ -47,6 +65,7 @@ class SongPlayer(private val ctx: android.content.Context, private val device: D
                 if (first != null && svc.click(first)) { tapped = true; ExecTrace.set(ExecState.VERIFYING, "result tapped") }
             }
         }
+        if (playing()) { Diag.log("metric song ms=${System.currentTimeMillis() - t0} unsure"); ExecTrace.set(ExecState.COMPLETED, q); return "UNSURE: a YouTube player is on screen but I cannot see the name of '$q' in it, so it may be a different song. Say that honestly in one short sentence and offer to check with look_screen." }
         Diag.log("metric song ms=${System.currentTimeMillis() - t0} ok=false")
         ExecTrace.set(ExecState.FAILED, "no player seen")
         return "NOT CONFIRMED: YouTube was opened for '$q' but I could not see it playing. Do not say it is playing; say what the screen shows (look_screen) or ask him."
