@@ -703,7 +703,8 @@ class ArinaEngine private constructor(private val app: Application) {
     /** Counts which language the person speaks (by writing system) and keeps the most used one as their main language. */
     fun trackLanguage(text: String) {
         val sc = Identity.scriptOf(text) ?: return
-        if (text.count { it.isLetter() } < 3) return
+        // Noise like "Mhm" or "¿Qué?" must not change his main language (that made routines come in English).
+        if (text.count { it.isLetter() } < 8 || text.trim().split(Regex("\\s+")).size < 2 || text.contains('¿') || text.contains('¡')) return
         val key = "lang_$sc"
         uiPrefs.edit().putInt(key, uiPrefs.getInt(key, 0) + 1).apply()
         refreshMainLanguage()
@@ -1260,7 +1261,7 @@ class ArinaEngine private constructor(private val app: Application) {
                 override fun onToolRunning(name: String) { scope.launch { status.value = Status.Thinking } }
                 override fun onTurn(user: String, model: String) {
                     scope.launch {
-                        if (user.isNotBlank()) { messages += ChatMessage(true, user); trackLanguage(user) }
+                        if (user.isNotBlank()) { messages += ChatMessage(true, user); trackLanguage(user) }   // noise is filtered inside trackLanguage
                         if (model.isNotBlank()) { messages += ChatMessage(false, model); caption.value = model }
                         lastTiming.value = Timing.report()
                         com.arina.assistant.ai.Diag.log("metric turn firstAudioMs=${Timing.since("live first audio")} connectMs=${Timing.liveReadyMs}")
