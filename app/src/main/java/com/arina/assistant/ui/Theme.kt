@@ -52,7 +52,7 @@ private fun scheme(dark: Boolean) =
 @Composable
 fun ArinaTheme(content: @Composable () -> Unit) {
     val system = isSystemInDarkTheme()
-    val dark = when (ThemeChoice.mode) { 1 -> false; 2 -> true; else -> system }
+    val dark = if (com.arina.assistant.BuildConfig.ADMIN_APP) false else when (ThemeChoice.mode) { 1 -> false; 2 -> true; else -> system }
     ArinaColors.dark = dark
     // Everything is rebuilt when the phone switches between light and dark.
     key(dark) { MaterialTheme(colorScheme = scheme(dark), content = content) }

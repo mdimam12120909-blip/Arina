@@ -1125,34 +1125,54 @@ private fun AccountPage(vm: ArinaEngine) {
 
 @Composable
 private fun AdminPage(vm: ArinaEngine) {
-    var section by rememberSaveable { mutableStateOf("Agent") }
+    var section by rememberSaveable { mutableStateOf("") }
+    val groups = listOf(
+        Triple("ASSISTANT", "How Entrion talks and behaves", listOf("Agent" to "Voice names, personality", "Voices" to "Gemini or Cartesia voice", "Train" to "Teach it rules", "Facts" to "Shared facts it knows")),
+        Triple("PEOPLE", "Users and what they see", listOf("Users" to "Accounts, Pro, access", "Inbox" to "Write to users", "Content" to "Announcements, texts")),
+        Triple("SYSTEM", "Keys, releases and health", listOf("Keys" to "API keys and limits", "Updates" to "Publish a new version", "Log" to "What went wrong"))
+    )
+    androidx.activity.compose.BackHandler(enabled = section.isNotEmpty()) { section = "" }
     PageColumn {
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Agent", "Train", "Voices", "Facts", "Users", "Inbox", "Content", "Keys", "Updates", "Log").forEach { name ->
-                val on = section == name
-                Text(
-                    name,
-                    color = if (on) ArinaColors.Background else ArinaColors.Text,
-                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.clip(RoundedCornerShape(50))
-                        .background(if (on) ArinaColors.Glow else ArinaColors.Glow.copy(alpha = 0.12f))
-                        .clickable { section = name }
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                )
+        if (section.isEmpty()) {
+            groups.forEach { (title, sub, items) ->
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column {
+                        Text(title, color = ArinaColors.Glow, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                        Text(sub, color = ArinaColors.Muted, fontSize = 12.sp)
+                    }
+                    Column(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(ArinaColors.Surface).border(1.dp, ArinaColors.Deep, RoundedCornerShape(20.dp))
+                    ) {
+                        items.forEachIndexed { i, (name, hint) ->
+                            Row(Modifier.fillMaxWidth().clickable { section = name }.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(name, color = ArinaColors.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                    Text(hint, color = ArinaColors.Muted, fontSize = 12.sp)
+                                }
+                                Text("›", color = ArinaColors.Muted, fontSize = 20.sp)
+                            }
+                            if (i < items.lastIndex) Box(Modifier.fillMaxWidth().padding(start = 16.dp).height(1.dp).background(ArinaColors.Deep))
+                        }
+                    }
+                }
             }
-        }
-        when (section) {
-            "Agent" -> AdminAgent(vm)
-            "Train" -> AdminTrain(vm)
-            "Voices" -> AdminVoicePick(vm)
-            "Facts" -> AdminFacts(vm)
-            "Users" -> AdminUsers(vm)
-            "Inbox" -> AdminInbox(vm)
-            "Content" -> AdminContent(vm)
-            "Keys" -> AdminKeys(vm)
-            "Updates" -> AdminUpdates(vm)
-            "Log" -> AdminLog(vm)
-            else -> AdminSecrets(vm)
+        } else {
+            Text("‹ Admin", color = ArinaColors.Glow, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clip(RoundedCornerShape(50)).clickable { section = "" }.padding(vertical = 6.dp, horizontal = 4.dp))
+            Text(section, color = ArinaColors.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            when (section) {
+                "Agent" -> AdminAgent(vm)
+                "Train" -> AdminTrain(vm)
+                "Voices" -> AdminVoicePick(vm)
+                "Facts" -> AdminFacts(vm)
+                "Users" -> AdminUsers(vm)
+                "Inbox" -> AdminInbox(vm)
+                "Content" -> AdminContent(vm)
+                "Keys" -> AdminKeys(vm)
+                "Updates" -> AdminUpdates(vm)
+                "Log" -> AdminLog(vm)
+                else -> AdminSecrets(vm)
+            }
         }
         vm.notice.value?.let { Text(it, color = Warn, fontSize = 12.sp, lineHeight = 17.sp) }
     }
