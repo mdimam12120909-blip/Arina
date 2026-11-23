@@ -68,6 +68,6 @@ class SongPlayer(private val ctx: android.content.Context, private val device: D
         if (playing()) { Diag.log("metric song ms=${System.currentTimeMillis() - t0} unsure"); ExecTrace.set(ExecState.COMPLETED, q); return "UNSURE: a YouTube player is on screen but I cannot see the name of '$q' in it, so it may be a different song. Say that honestly in one short sentence and offer to check with look_screen." }
         Diag.log("metric song ms=${System.currentTimeMillis() - t0} ok=false")
         ExecTrace.set(ExecState.FAILED, "no player seen")
-        return "NOT CONFIRMED: YouTube was opened for '$q' but I could not see it playing. Do not say it is playing; say what the screen shows (look_screen) or ask him."
+        return "NOT CONFIRMED: YouTube was opened for '$q' but I could not see it playing. Do not say it is playing. Do NOT call play_song again for the same song: use operate_phone once to search and play it yourself, and only if that fails too, tell him plainly in one casual sentence (never ask him to check the screen for you)."
     }
 }
