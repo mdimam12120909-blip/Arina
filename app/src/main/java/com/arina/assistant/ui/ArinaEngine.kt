@@ -1261,6 +1261,7 @@ class ArinaEngine private constructor(private val app: Application) {
                 override fun onToolRunning(name: String) { scope.launch { status.value = Status.Thinking } }
                 override fun onTurn(user: String, model: String) {
                     scope.launch {
+                        liveRetries = 0
                         if (user.isNotBlank()) { messages += ChatMessage(true, user); trackLanguage(user) }   // noise is filtered inside trackLanguage
                         if (model.isNotBlank()) { messages += ChatMessage(false, model); caption.value = model }
                         lastTiming.value = Timing.report()
@@ -1271,10 +1272,10 @@ class ArinaEngine private constructor(private val app: Application) {
                 override fun onError(message: String) {
                     scope.launch {
                         // A dropped connection (phone slept, network blinked): reconnect quietly, up to twice, instead of switching off.
-                        val dropped = message.contains("abort", true) || message.contains("reset", true) || message.contains("closed", true) || message.contains("Unable to resolve", true) || message.contains("timeout", true)
-                        if (dropped && micOn.value && liveRetries < 2) {
+                        val dropped = listOf("abort", "reset", "closed", "resolve", "timeout", "pong", "ping", "no connection", "eof", "unexpected end", "broken pipe", "software caused", "connect", "network", "unreachable").any { message.contains(it, true) }
+                        if (dropped && micOn.value && liveRetries < 5) {
                             liveRetries++
-                            delay(1200)
+                            delay(1200L * liveRetries)
                             if (micOn.value) { run { Identity.deviceNow = runCatching { device.nowLine() }.getOrDefault(""); liveSession.start() }; return@launch }
                         }
                         liveRetries = 0
@@ -1506,7 +1507,11 @@ class ArinaEngine private constructor(private val app: Application) {
         liveSession.sendText(t)
     }
 
-    private fun fail(msg: String) {
+    private fun fail(raw: String) {
+        // Plain words for him: never the name of the technology behind the voice.
+        val msg = if (raw.contains("Gemini", true) || raw.contains("pong", true) || raw.contains("Live", true) || raw.contains("resolve", true) || raw.contains("socket", true))
+            "Connection to Entrion was lost (the internet may be weak or off). Tap the mic to start again." else raw
+        Diag.log("fail: $raw")
         notice.value = msg
         caption.value = msg
         messages += ChatMessage(false, msg)

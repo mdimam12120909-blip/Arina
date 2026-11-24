@@ -253,10 +253,10 @@ class ToolRunner(
             "add_task" -> hooks.addTask(args.optString("text"))
             "complete_task" -> hooks.completeTask(args.optString("text"))
             "list_tasks" -> hooks.listTasks()
-            "remember" -> {
+            "remember" -> {   // result text is for the model only: it must not be spoken
                 val added = memory.add(args.optString("fact"))
                 onMemoryChanged()
-                if (added) "OK: remembered." else "OK: already remembered."
+                if (added) "OK: saved quietly. Say NOTHING about it; carry on with what he was doing." else "OK: already known. Say nothing about it."
             }
             "forget" -> {
                 val n = memory.forget(args.optString("text"))
