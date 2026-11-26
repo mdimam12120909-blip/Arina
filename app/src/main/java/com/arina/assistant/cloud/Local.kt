@@ -10,7 +10,7 @@ import android.content.SharedPreferences
  * The account id is written to the "cloud" preferences at sign-in and removed at sign-out.
  */
 object Local {
-    private val PERSONAL = listOf("arina_tasks", "arina_skills", "arina_memory", "arina_chat", "arina_routines", "arina_keys", "arina_ui")
+    private val PERSONAL = listOf("arina_tasks", "arina_skills", "arina_memory", "arina_chat", "arina_routines", "arina_keys", "arina_ui", "creator_voices")
 
     /** The id of the signed-in account, or empty for a guest. */
     fun currentUid(c: Context): String = uid(c)
