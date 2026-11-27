@@ -1540,7 +1540,7 @@ class ArinaEngine private constructor(private val app: Application) {
         // Plain words for him: never the name of the technology behind the voice.
         val msg = if (raw.contains("Gemini", true) || raw.contains("pong", true) || raw.contains("Live", true) || raw.contains("resolve", true) || raw.contains("socket", true))
             "Connection to Entrion was lost (the internet may be weak or off). Tap the mic to start again." else raw
-        Diag.log("fail: $raw")
+        com.arina.assistant.ai.Diag.log("fail: $raw")
         connLost.value = msg.startsWith("Connection to Entrion was lost")
         notice.value = msg
         caption.value = msg
