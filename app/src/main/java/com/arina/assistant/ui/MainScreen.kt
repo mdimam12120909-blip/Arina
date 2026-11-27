@@ -373,6 +373,13 @@ private fun HomePanel(vm: ArinaEngine, onMicClick: () -> Unit, onPermission: (Pe
         } }
         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
             OrbView(persona = persona, mood = mood, level = vm.level.floatValue, modifier = Modifier.size(orbSize))
+            // Lumen signal: a slow rose ring while the connection is lost, so the orb never looks fine when it is not.
+            if (vm.connLost.value) {
+                val pulse by rememberInfiniteTransition(label = "lost").animateFloat(0.35f, 0.9f, infiniteRepeatable(tween(1400, easing = LinearEasing), RepeatMode.Reverse), label = "lostA")
+                Canvas(Modifier.size(orbSize + 24.dp)) {
+                    drawCircle(Color(0xFFFF7A8A).copy(alpha = pulse), radius = size.minDimension / 2f - 2f, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4.dp.toPx()))
+                }
+            }
         }
         if (vm.micOn.value) {
             Box(Modifier.fillMaxWidth().padding(bottom = 10.dp), contentAlignment = Alignment.Center) {
@@ -2664,10 +2671,10 @@ private fun StudioThumb(item: com.arina.assistant.ai.Studio.Item) {
     }
 }
 
-/** A small brushed-gold "ELITE" plate next to the Entrion name. */
+/** A small brushed-gold "LUMEN" plate next to the Entrion name. */
 @Composable
 private fun EliteTag() {
-    Text("ELITE", color = Color(0xFF2B2108), fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.6.sp,
+    Text("LUMEN", color = Color(0xFF2B2108), fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.6.sp,
         modifier = Modifier.clip(RoundedCornerShape(50))
             .background(Brush.linearGradient(listOf(Color(0xFFF6E7A8), Color(0xFFD9B44A), Color(0xFFF3DE8C), Color(0xFFB98B2A))))
             .border(0.8.dp, Color.White.copy(alpha = 0.6f), RoundedCornerShape(50))
