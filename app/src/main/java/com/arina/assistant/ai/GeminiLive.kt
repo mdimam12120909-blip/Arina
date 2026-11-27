@@ -42,7 +42,7 @@ class GeminiLive(
     private val tts: () -> TtsCfg? = { null }
 ) {
     /** Cartesia mode: the model answers in text (still hearing, thinking and using tools live) and each sentence is spoken by the voice service. */
-    data class TtsCfg(val voice: String, val model: String, val textModel: String, val userKey: String = "")
+    data class TtsCfg(val voice: String, val model: String, val textModel: String, val userKey: String = "", val provider: String = "cartesia")
 
     interface Callbacks {
         fun onLevel(level: Float)
@@ -110,7 +110,7 @@ class GeminiLive(
         val c = ttsCfg ?: return
         val lang = if (text.any { it in '\u0980'..'\u09FF' }) "bn" else "en"
         val t0 = System.currentTimeMillis()
-        val req = if (c.userKey.isNotEmpty()) CartesiaDirect.request(c.userKey, text, c.voice, c.model, lang) else Gateway.tts(text, c.voice, c.model, lang)
+        val req = if (c.userKey.isNotEmpty()) CartesiaDirect.request(c.userKey, text, c.voice, c.model, lang) else Gateway.tts(text, c.voice, c.model, lang, c.provider)
         Gateway.client.newCall(req).execute().use { r ->
             if (!r.isSuccessful) {
                 val body = r.body?.string().orEmpty().take(160)

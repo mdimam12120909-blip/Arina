@@ -732,7 +732,7 @@ class ArinaEngine private constructor(private val app: Application) {
         val lessons = Cloud.cfg(app, "lessons", "").trim()
         val lessonLine = if (lessons.isNotEmpty()) "\nLESSONS FROM YOUR CREATOR (always follow them; they come right after safety):\n$lessons" else ""
         val vdesc = voiceCfg("cartesia_voice_desc_" + (if (male) "male" else "female"), "").trim()
-        val voiceLine = if ((hasExtras || Cloud.cfg(app, "voice_engine", "gemini") == "cartesia") && vdesc.isNotEmpty()) "\nYOUR VOICE AND CHARACTER (your words must fit it): $vdesc" else ""
+        val voiceLine = if ((hasExtras || Cloud.cfg(app, "voice_engine", "gemini") in setOf("cartesia", "fish")) && vdesc.isNotEmpty()) "\nYOUR VOICE AND CHARACTER (your words must fit it): $vdesc" else ""
         val storyOn = hasExtras && vdesc.isNotEmpty() && creatorPrefs.getString(if (male) "cartesia_voice_male" else "cartesia_voice_female", "").orEmpty().isNotBlank() && creatorPrefs.getString("cartesia_user_key", "").orEmpty().isNotBlank()
         Identity.storyMode = storyOn
         if (storyOn) return vdesc
@@ -980,12 +980,21 @@ class ArinaEngine private constructor(private val app: Application) {
         }
     } catch (e: Exception) { "unknown" }
 
+    private fun testFish(): String = try {
+        val voice = listOf("fish_voice_female", "fish_voice_male").map { Cloud.cfg(app, it, "").trim() }.firstOrNull { it.length >= 8 }
+        if (voice == null) "stored"
+        else com.arina.assistant.ai.Gateway.client.newCall(com.arina.assistant.ai.Gateway.tts("a", voice, "s2.1-pro", "en", "fish")).execute().use { r ->
+            val b = r.body?.string().orEmpty().take(400)
+            if (r.isSuccessful) "ok" else classify(runCatching { JSONObject(b).optInt("status", r.code) }.getOrDefault(r.code), b)
+        }
+    } catch (e: Exception) { "unknown" }
+
     /** Admin: reads which keys are stored (last 4 characters) and tests the ones that can be tested. */
     fun refreshKeys() {
         if (keysChecking.value) return
         scope.launch {
             keysChecking.value = true
-            val names = listOf("gemini1", "gemini2", "gemini3", "gemini4", "gemini5", "cartesia", "tavily", "openai", "anthropic", "groq", "deepseek")
+            val names = listOf("gemini1", "gemini2", "gemini3", "gemini4", "gemini5", "cartesia", "fish", "tavily", "openai", "anthropic", "groq", "deepseek")
             val tails = mutableMapOf<String, String>(); val states = mutableMapOf<String, String>()
             withContext(Dispatchers.IO) {
                 val have = runCatching { cloud.secretKeys() }.getOrDefault(emptySet())
@@ -996,6 +1005,7 @@ class ArinaEngine private constructor(private val app: Application) {
                 }
                 for (i in 1..5) if (states["gemini$i"] == "stored") states["gemini$i"] = testGemini(i - 1)
                 if (states["cartesia"] == "stored") states["cartesia"] = testCartesia()
+                if (states["fish"] == "stored") states["fish"] = testFish()
                 if (states["tavily"] == "stored") states["tavily"] = runCatching { TavilySearch.search("today", 1); "ok" }.getOrElse {
                     val m = it.message.orEmpty(); if (Regex("429|432|433|limit|quota|credit|usage", RegexOption.IGNORE_CASE).containsMatchIn(m)) "limit" else "bad"
                 }
@@ -1302,6 +1312,11 @@ class ArinaEngine private constructor(private val app: Application) {
                 val model = Cloud.cfg(app, "cartesia_model", "sonic-3").trim().let { if (Regex("^[a-z0-9.\\-]{3,40}$").matches(it)) it else "sonic-3" }
                 val textModel = Cloud.cfg(app, "live_text_model", "gemini-live-2.5-flash").trim().let { if (Regex("^(models/)?gemini[a-z0-9.\\-]*$").matches(it)) it.removePrefix("models/") else "gemini-live-2.5-flash" }
                 if (own) { if (userKey.isEmpty()) null else GeminiLive.TtsCfg(creatorPrefs.getString(gk, "").orEmpty(), model, textModel, userKey) }
+                else if (Cloud.cfg(app, "voice_engine", "gemini") == "fish") {
+                    val fk = if (persona.value == Persona.Aurion) "fish_voice_male" else "fish_voice_female"
+                    val fm = Cloud.cfg(app, "fish_model", "s2.1-pro").trim().let { if (Regex("^[a-z0-9.\\-]{2,40}$").matches(it)) it else "s2.1-pro" }
+                    Cloud.cfg(app, fk, "").trim().let { v -> if (v.isBlank()) null else GeminiLive.TtsCfg(v, fm, textModel, provider = "fish") }
+                }
                 else if (Cloud.cfg(app, "voice_engine", "gemini") != "cartesia") null
                 else Cloud.cfg(app, gk, "").trim().let { v -> if (v.isBlank()) null else GeminiLive.TtsCfg(v, model, textModel) }
             }

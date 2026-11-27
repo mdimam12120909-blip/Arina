@@ -1227,6 +1227,10 @@ private fun AdminAgent(vm: ArinaEngine) {
     var cFemale by remember { mutableStateOf(vm.adminValue("cartesia_voice_female")) }
     var cMale by remember { mutableStateOf(vm.adminValue("cartesia_voice_male")) }
     var cModel by remember { mutableStateOf(vm.adminValue("cartesia_model")) }
+    var fFemale by remember { mutableStateOf(vm.adminValue("fish_voice_female")) }
+    var fMale by remember { mutableStateOf(vm.adminValue("fish_voice_male")) }
+    var fModel by remember { mutableStateOf(vm.adminValue("fish_model")) }
+    var fInit by remember { mutableStateOf(listOf(fFemale, fMale, fModel)) }
     var initial by remember { mutableStateOf(listOf(liveFemale, liveMale, instrFemale, instrMale, style)) }
     var cInit by remember { mutableStateOf(listOf(cFemale, cMale, cModel)) }
     Text("Published to every user. It applies the next time someone starts talking. Which voice is used is chosen in the Voices tab.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 4.dp))
@@ -1243,6 +1247,13 @@ private fun AdminAgent(vm: ArinaEngine) {
         Text("A voice ID must belong to the same Cartesia account as the key in the Keys tab. An agent without an ID uses the Gemini voice.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
     }
     Box3D(false) {
+        Text("FISH VOICE", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.4.sp)
+        KeyField("Female voice ID (Fish model ID)", fFemale, false) { fFemale = it }
+        KeyField("Male voice ID (Fish model ID)", fMale, false) { fMale = it }
+        KeyField("Fish model (empty = s2.1-pro)", fModel, false) { fModel = it }
+        Text("The voice ID is the long ID in the Fish voice page address. It must be usable by the key in the Keys tab. An agent without an ID uses the Gemini voice.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
+    }
+    Box3D(false) {
         Text("PERSONALITY", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.4.sp)
         ExpandField("Female agent", instrFemale) { instrFemale = it }
         ExpandField("Male agent", instrMale) { instrMale = it }
@@ -1257,6 +1268,8 @@ private fun AdminAgent(vm: ArinaEngine) {
         initial = listOf(liveFemale, liveMale, instrFemale, instrMale, style)
         put("cartesia_voice_female", cFemale, cInit[0]); put("cartesia_voice_male", cMale, cInit[1]); put("cartesia_model", cModel, cInit[2])
         cInit = listOf(cFemale, cMale, cModel)
+        put("fish_voice_female", fFemale, fInit[0]); put("fish_voice_male", fMale, fInit[1]); put("fish_model", fModel, fInit[2])
+        fInit = listOf(fFemale, fMale, fModel)
     }
 }
 
@@ -1267,7 +1280,8 @@ private fun AdminVoicePick(vm: ArinaEngine) {
     var sel by remember { mutableStateOf("") }
     val options = listOf(
         Triple("gemini", "Gemini Voice", "Gemini's own voice. Fast, one connection."),
-        Triple("cartesia", "Cartesia Voice", "Your Cartesia voices. If it cannot start, Entrion uses the Gemini voice so it never goes silent.")
+        Triple("cartesia", "Cartesia Voice", "Your Cartesia voices. If it cannot start, Entrion uses the Gemini voice so it never goes silent."),
+        Triple("fish", "Fish Voice", "Your Fish Audio voices. If it cannot start, Entrion uses the Gemini voice so it never goes silent.")
     )
     val canUse = sel.isNotBlank() && sel != current
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1837,6 +1851,9 @@ private fun AdminKeys(vm: ArinaEngine) {
             Triple("gemini3", "Research", true), Triple("gemini4", "Workflows and skills", true), Triple("gemini5", "Phone agent and camera", true))),
         KeyGroup("cartesia", "Cartesia keys", "The Cartesia key makes the voice. The two Gemini keys are the brain behind the Cartesia voices, one for each agent (the same keys as in the Gemini box).", listOf(
             Triple("cartesia", "Cartesia API key", false),
+            Triple("gemini1", "Brain, female agent (Gemini)", true), Triple("gemini2", "Brain, male agent (Gemini)", true))),
+        KeyGroup("fish", "Fish keys", "The Fish Audio key makes the Fish voices. The two Gemini keys are the brain behind them, one for each agent (the same keys as in the Gemini box).", listOf(
+            Triple("fish", "Fish API key", false),
             Triple("gemini1", "Brain, female agent (Gemini)", true), Triple("gemini2", "Brain, male agent (Gemini)", true))),
         KeyGroup("search", "Web search", "", listOf(Triple("tavily", "Search key", false))),
         KeyGroup("other", "Other brains", "Optional. Used when another model is better for a job.", listOf(

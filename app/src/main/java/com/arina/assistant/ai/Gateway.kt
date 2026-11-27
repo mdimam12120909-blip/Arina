@@ -49,8 +49,8 @@ object Gateway {
         "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.${if (alpha) "v1alpha" else "v1beta"}.GenerativeService.BidiGenerateContentConstrained?access_token=$token"
 
     /** One sentence of speech from the voice service, as a raw 24 kHz 16-bit mono stream. */
-    fun tts(text: String, voice: String, model: String, lang: String): Request =
-        call(JSONObject().put("action", "tts").put("text", text).put("voice", voice).put("model", model).put("lang", lang))
+    fun tts(text: String, voice: String, model: String, lang: String, provider: String = "cartesia"): Request =
+        call(JSONObject().put("action", "tts").put("text", text).put("voice", voice).put("model", model).put("lang", lang).put("provider", provider))
 
     /** Another brain (openai, groq, deepseek, anthropic) through the server. Returns the raw answer body. */
     fun brain(provider: String, body: JSONObject): String {
