@@ -991,8 +991,10 @@ class ArinaEngine private constructor(private val app: Application) {
     } catch (e: Exception) { "unknown" }
 
     /** Admin: reads which keys are stored (last 4 characters) and tests the ones that can be tested. */
-    fun refreshKeys() {
-        if (keysChecking.value) return
+    private var refreshGen = 0
+    fun refreshKeys(force: Boolean = false) {
+        if (keysChecking.value && !force) return
+        val myGen = ++refreshGen
         scope.launch {
             keysChecking.value = true
             val names = listOf("gemini1", "gemini2", "gemini3", "gemini4", "gemini5", "cartesia", "fish", "tavily", "openai", "anthropic", "groq", "deepseek")
@@ -1011,6 +1013,9 @@ class ArinaEngine private constructor(private val app: Application) {
                     val m = it.message.orEmpty(); if (Regex("429|432|433|limit|quota|credit|usage", RegexOption.IGNORE_CASE).containsMatchIn(m)) "limit" else "bad"
                 }
             }
+            // An older check that finishes late, or a check that could not read the list, must never wipe what is shown.
+            if (myGen != refreshGen) return@launch
+            if (states.values.all { it == "none" } && keyTails.isNotEmpty()) { keysChecking.value = false; return@launch }
             keyTails.clear(); keyTails.putAll(tails); keyState.clear(); keyState.putAll(states)
             keysChecking.value = false
         }
@@ -1023,8 +1028,9 @@ class ArinaEngine private constructor(private val app: Application) {
                 withContext(Dispatchers.IO) { cloud.saveSecret(id, value.trim()) }
                 gemini.reset()
                 notice.value = "Saved."
+                if (value.isNotBlank()) { keyTails[id] = value.trim().takeLast(4); keyState[id] = "stored" }   // show it at once
                 keysChecking.value = false
-                refreshKeys()
+                refreshKeys(force = true)
             } catch (e: CancellationException) { throw e } catch (e: Exception) { notice.value = (e.message ?: "Could not save.").take(200) }
         }
     }
