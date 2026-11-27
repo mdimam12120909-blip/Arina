@@ -423,6 +423,10 @@ class GeminiClient(
 
     /** One plain model call without tools or conversation history. [json] asks for a JSON answer. */
     fun generate(system: String, user: String, json: Boolean = false, slow: Boolean = false, role: KeyRole = KeyRole.Talk): String {
+        // Background text jobs can go to DeepSeek first (admin choice), so the Gemini keys keep their quota for talking.
+        if (ExternalBrain.first.isNotEmpty() && (role == KeyRole.Research || role == KeyRole.Workflow) && ExternalBrain.hasKey(ExternalBrain.first)) {
+            ExternalBrain.complete(system, user, json, ExternalBrain.first, deep = slow)?.let { return it }
+        }
         if (keyFor(role).isBlank()) {
             ExternalBrain.complete(system, user, json)?.let { return it }
             throw IOException("No Gemini key for ${role.label}. Add one in Settings, Connections.")
@@ -467,12 +471,8 @@ class GeminiClient(
 
     /** Turns a finished conversation into a short private diary note (plain text, may be empty). */
     fun diary(transcript: String): String {
-        if (keyFor(KeyRole.Research).isBlank()) return ""
-        val contents = JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", transcript.take(6000)))))
         val sys = "You keep a private diary about one person for his voice assistant. Read the conversation and write at most 3 short English lines, nothing else: (1) what they talked about and what he plans, worries about or wants; (2) his mood and energy; (3) a new habit, preference, pattern or important fact about him, only if clearly shown. Skip small talk. If nothing is worth keeping, answer exactly NONE. Never include passwords or secrets."
-        val resp = callApi(sys, contents, withTools = false, o = Opts(role = KeyRole.Research))
-        val parts = resp.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts") ?: return ""
-        val t = (0 until parts.length()).map { parts.getJSONObject(it) }.filter { !it.optBoolean("thought") }.joinToString("\n") { it.optString("text") }.trim()
+        val t = runCatching { generate(sys, transcript.take(6000), role = KeyRole.Research) }.getOrDefault("").trim()
         return if (t.equals("NONE", true)) "" else t.take(500)
     }
 

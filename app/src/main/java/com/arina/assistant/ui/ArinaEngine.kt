@@ -721,6 +721,7 @@ class ArinaEngine private constructor(private val app: Application) {
 
     /** The agent's character: the admin's published text if there is one, plus the name the user gave it. */
     private fun currentIntro(): String {
+        com.arina.assistant.ai.ExternalBrain.first = if (Cloud.cfg(app, "deepseek_first", "off").removeSurrounding("\"") == "on") "deepseek" else ""
         Identity.deepModel = Cloud.cfg(app, "deep_model", "").trim().removeSurrounding("\"").removePrefix("models/")
         val male = persona.value == Persona.Aurion
         val base = Cloud.cfg(app, if (male) "instructions_male" else "instructions_female", persona.value.intro)

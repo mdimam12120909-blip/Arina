@@ -30,8 +30,16 @@ object ExternalBrain {
     fun available(): Boolean = (compat.map { it.name } + "anthropic").any { keyOf(it).isNotBlank() }
 
     /** Returns the first answer any configured brain gives, or null. */
-    fun complete(system: String, user: String, json: Boolean): String? {
-        for (c in compat) {
+    /** Admin choice: this provider answers background text jobs first, which spares the Gemini keys. Empty = Gemini first. */
+    @Volatile var first: String = ""
+
+    fun hasKey(name: String): Boolean = keyOf(name).isNotBlank()
+
+    fun complete(system: String, user: String, json: Boolean, preferred: String? = null, deep: Boolean = false): String? {
+        val order = if (preferred == null) compat else compat.sortedBy { if (it.name == preferred) 0 else 1 }
+        for (c0 in order) {
+            // Hard jobs on DeepSeek use its reasoning model (it does not force JSON, so only for plain text).
+            val c = if (deep && !json && c0.name == "deepseek") Spec("deepseek", c0.url, "deepseek-reasoner") else c0
             val k = keyOf(c.name); if (k.isBlank()) continue
             val t0 = System.currentTimeMillis()
             val r = runCatching { openAiStyle(c, k, system, user, json) }.onFailure { Diag.log("brain ${c.name} failed: ${it.message?.take(100)}") }.getOrNull()

@@ -1871,6 +1871,16 @@ private fun AdminKeys(vm: ArinaEngine) {
     } else {
         Text("< All keys", color = ArinaColors.Glow, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { open = "" }.padding(vertical = 6.dp, horizontal = 4.dp))
         KeyDetail(vm, cur)
+        if (cur.id == "other") {
+            var dsFirst by remember { mutableStateOf(vm.adminValue("deepseek_first").removeSurrounding("\"") == "on") }
+            VaultBox("DeepSeek first", false, "", true, note = "When on, research, reports, workflows and the diary are written by DeepSeek first (the reasoning model for hard jobs). The Gemini keys then keep their limit for talking. If DeepSeek fails, Gemini takes over. Talking itself always uses Gemini.") {
+                Row(Modifier.padding(start = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Switch(checked = dsFirst, onCheckedChange = { dsFirst = it; vm.adminSave("deepseek_first", if (it) "on" else "off") },
+                        colors = SwitchDefaults.colors(checkedTrackColor = ArinaColors.Glow, checkedThumbColor = Color.White))
+                    Spacer(Modifier.width(10.dp)); Text(if (dsFirst) "On" else "Off", color = Color.White, fontSize = 14.sp)
+                }
+            }
+        }
         if (cur.id == "gemini") VaultBox("Deep thinking", false, "", true, note = "The strongest model, tried first for hard work: phone tasks, research, workflows. Write a name from the pop-up, such as gemini-3.8-flash or gemini-4-hydrogen. Empty = automatic.") {
             VaultField("Model name", deep, false) { deep = it }
             Row(Modifier.padding(start = 4.dp, bottom = 4.dp)) { PillButton("Save model") { vm.adminSave("deep_model", deep.trim()) } }
