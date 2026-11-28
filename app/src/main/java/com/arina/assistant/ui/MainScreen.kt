@@ -1245,6 +1245,10 @@ private fun AdminAgent(vm: ArinaEngine) {
         KeyField("Male voice ID", cMale, false) { cMale = it }
         KeyField("Cartesia model (empty = sonic-3)", cModel, false) { cModel = it }
         Text("A voice ID must belong to the same Cartesia account as the key in the Keys tab. An agent without an ID uses the Gemini voice.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PillButton("Hear female") { val v = cFemale.trim(); if (v.length < 8) vm.notice.value = "Type the female voice ID first." else { vm.notice.value = "Loading the sample..."; com.arina.assistant.ai.VoiceSample.play(v, cModel.ifBlank { "sonic-3" }, true, provider = "cartesia") { r -> vm.notice.value = if (r.isEmpty()) "Playing the Cartesia female voice." else r } } }
+            PillButton("Hear male") { val v = cMale.trim(); if (v.length < 8) vm.notice.value = "Type the male voice ID first." else { vm.notice.value = "Loading the sample..."; com.arina.assistant.ai.VoiceSample.play(v, cModel.ifBlank { "sonic-3" }, true, provider = "cartesia") { r -> vm.notice.value = if (r.isEmpty()) "Playing the Cartesia male voice." else r } } }
+        }
     }
     Box3D(false) {
         Text("FISH VOICE", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.4.sp)
@@ -1252,6 +1256,10 @@ private fun AdminAgent(vm: ArinaEngine) {
         KeyField("Male voice ID (Fish model ID)", fMale, false) { fMale = it }
         KeyField("Fish model (empty = s2.1-pro)", fModel, false) { fModel = it }
         Text("The voice ID is the long ID in the Fish voice page address. It must be usable by the key in the Keys tab. An agent without an ID uses the Gemini voice.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PillButton("Hear female") { val v = fFemale.trim(); if (v.length < 8) vm.notice.value = "Type the female voice ID first." else { vm.notice.value = "Loading the sample..."; com.arina.assistant.ai.VoiceSample.play(v, fModel.ifBlank { "s2.1-pro" }, true, provider = "fish") { r -> vm.notice.value = if (r.isEmpty()) "Playing the Fish female voice." else r } } }
+            PillButton("Hear male") { val v = fMale.trim(); if (v.length < 8) vm.notice.value = "Type the male voice ID first." else { vm.notice.value = "Loading the sample..."; com.arina.assistant.ai.VoiceSample.play(v, fModel.ifBlank { "s2.1-pro" }, true, provider = "fish") { r -> vm.notice.value = if (r.isEmpty()) "Playing the Fish male voice." else r } } }
+        }
     }
     Box3D(false) {
         Text("PERSONALITY", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.4.sp)
