@@ -1254,11 +1254,11 @@ private fun AdminAgent(vm: ArinaEngine) {
         Text("FISH VOICE", color = ArinaColors.Muted, fontSize = 11.sp, letterSpacing = 1.4.sp)
         KeyField("Female voice ID (Fish model ID)", fFemale, false) { fFemale = it }
         KeyField("Male voice ID (Fish model ID)", fMale, false) { fMale = it }
-        KeyField("Fish model (empty = s2.1-pro)", fModel, false) { fModel = it }
+        KeyField("Fish model (empty = s2.1-pro-free)", fModel, false) { fModel = it }
         Text("The voice ID is the long ID in the Fish voice page address. It must be usable by the key in the Keys tab. An agent without an ID uses the Gemini voice.", color = ArinaColors.Muted, fontSize = 12.sp, lineHeight = 17.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PillButton("Hear female") { val v = fFemale.trim(); if (v.length < 8) vm.notice.value = "Type the female voice ID first." else { vm.notice.value = "Loading the sample..."; com.arina.assistant.ai.VoiceSample.play(v, fModel.ifBlank { "s2.1-pro" }, true, provider = "fish") { r -> vm.notice.value = if (r.isEmpty()) "Playing the Fish female voice." else r } } }
-            PillButton("Hear male") { val v = fMale.trim(); if (v.length < 8) vm.notice.value = "Type the male voice ID first." else { vm.notice.value = "Loading the sample..."; com.arina.assistant.ai.VoiceSample.play(v, fModel.ifBlank { "s2.1-pro" }, true, provider = "fish") { r -> vm.notice.value = if (r.isEmpty()) "Playing the Fish male voice." else r } } }
+            PillButton("Hear female") { val v = fFemale.trim(); if (v.length < 8) vm.notice.value = "Type the female voice ID first." else { vm.notice.value = "Loading the sample..."; com.arina.assistant.ai.VoiceSample.play(v, fModel.ifBlank { "s2.1-pro-free" }, true, provider = "fish") { r -> vm.notice.value = if (r.isEmpty()) "Playing the Fish female voice." else r } } }
+            PillButton("Hear male") { val v = fMale.trim(); if (v.length < 8) vm.notice.value = "Type the male voice ID first." else { vm.notice.value = "Loading the sample..."; com.arina.assistant.ai.VoiceSample.play(v, fModel.ifBlank { "s2.1-pro-free" }, true, provider = "fish") { r -> vm.notice.value = if (r.isEmpty()) "Playing the Fish male voice." else r } } }
         }
     }
     Box3D(false) {

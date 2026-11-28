@@ -14,7 +14,7 @@ object VoiceSample {
             val msg = try {
                 runCatching { playing?.stop(); playing?.release() }
                 val text = if (bengali) "হ্যালো, আমি এই কণ্ঠে কথা বলব। শুনতে কেমন লাগছে?" else "Hello, this is how I will sound. How does it feel?"
-                val bytes = Gateway.client.newCall(if (userKey.isNotBlank()) CartesiaDirect.request(userKey, text, voice, model, if (bengali) "bn" else "en") else Gateway.tts(text, voice.trim(), model.ifBlank { if (provider == "fish") "s2.1-pro" else "sonic-3" }, if (bengali) "bn" else "en", provider)).execute().use { r ->
+                val bytes = Gateway.client.newCall(if (userKey.isNotBlank()) CartesiaDirect.request(userKey, text, voice, model, if (bengali) "bn" else "en") else Gateway.tts(text, voice.trim(), model.ifBlank { if (provider == "fish") "s2.1-pro-free" else "sonic-3" }, if (bengali) "bn" else "en", provider)).execute().use { r ->
                     if (!r.isSuccessful) return@use "HTTP ${r.code}: ${r.body?.string().orEmpty().take(140)}"
                     r.body?.bytes() ?: ByteArray(0)
                 }

@@ -120,7 +120,13 @@ class ArinaEngine private constructor(private val app: Application) {
     val micOn = mutableStateOf(false)
     val level = mutableFloatStateOf(0f)
     val caption = mutableStateOf("")
-    val notice = mutableStateOf<String?>(null)
+    private val noticeRaw = mutableStateOf<String?>(null)
+    /** What the screen shows as a notice: technical text is replaced by a plain sentence for everybody except admins. */
+    val notice = object {
+        var value: String?
+            get() = noticeRaw.value
+            set(v) { noticeRaw.value = com.arina.assistant.ai.Friendly.clean(v, com.arina.assistant.BuildConfig.ADMIN_APP || isAdmin.value || isCreator) }
+    }
     val overlayOn = mutableStateOf(false)
     /** True while the floating orb is on screen (the small touch window grows to cover it). */
     val orbVisible = mutableStateOf(false)
@@ -985,7 +991,7 @@ class ArinaEngine private constructor(private val app: Application) {
     private fun testFish(): String = try {
         val voice = listOf("fish_voice_female", "fish_voice_male").map { Cloud.cfg(app, it, "").trim() }.firstOrNull { it.length >= 8 }
         if (voice == null) "stored"
-        else com.arina.assistant.ai.Gateway.client.newCall(com.arina.assistant.ai.Gateway.tts("a", voice, "s2.1-pro", "en", "fish")).execute().use { r ->
+        else com.arina.assistant.ai.Gateway.client.newCall(com.arina.assistant.ai.Gateway.tts("a", voice, "s2.1-pro-free", "en", "fish")).execute().use { r ->
             val b = r.body?.string().orEmpty().take(400)
             if (r.isSuccessful) "ok" else classify(runCatching { JSONObject(b).optInt("status", r.code) }.getOrDefault(r.code), b)
         }
@@ -1322,7 +1328,7 @@ class ArinaEngine private constructor(private val app: Application) {
                 if (own) { if (userKey.isEmpty()) null else GeminiLive.TtsCfg(creatorPrefs.getString(gk, "").orEmpty(), model, textModel, userKey) }
                 else if (Cloud.cfg(app, "voice_engine", "gemini") == "fish") {
                     val fk = if (persona.value == Persona.Aurion) "fish_voice_male" else "fish_voice_female"
-                    val fm = Cloud.cfg(app, "fish_model", "s2.1-pro").trim().let { if (Regex("^[a-z0-9.\\-]{2,40}$").matches(it)) it else "s2.1-pro" }
+                    val fm = Cloud.cfg(app, "fish_model", "s2.1-pro-free").trim().let { if (Regex("^[a-z0-9.\\-]{2,40}$").matches(it)) it else "s2.1-pro-free" }
                     Cloud.cfg(app, fk, "").trim().let { v -> if (v.isBlank()) null else GeminiLive.TtsCfg(v, fm, textModel, provider = "fish") }
                 }
                 else if (Cloud.cfg(app, "voice_engine", "gemini") != "cartesia") null
