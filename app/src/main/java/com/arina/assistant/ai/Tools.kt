@@ -17,6 +17,7 @@ interface ToolHooks {
     fun showImage(query: String): String
     fun generateImage(prompt: String, changeLast: Boolean): String
     fun stopListening(): String
+    fun generateMusic(prompt: String): String
     fun diagram(title: String, outline: String, mode: String, remove: String): String
     fun showGallery(album: String, count: Int): String
     fun showFile(name: String): String
@@ -107,6 +108,9 @@ class ToolRunner(
         put(decl("generate_image", "MAKE a brand-new picture from a description (art, logo idea, poster, scene), or change the last picture you made. It is saved to his gallery and shown on screen. Not for finding existing photos of real people or things: use show_image for that. Write 'prompt' in English, rich and specific. Set change_last true to edit the previous picture (e.g. 'make it darker').", listOf(
             Triple("prompt", "STRING", "What to draw, in detail, in English."),
             Triple("change_last", "BOOLEAN", "true to modify the last generated picture instead of making a new one.")
+        ), required = listOf("prompt")))
+        put(decl("generate_music", "MAKE a brand-new song or instrumental piece from a description (style, mood, instruments, language, lyrics idea). It takes up to a minute, so tell him it is being made. The finished song is saved on his phone (Music/Entrion) and is in the sidebar, Generate Studio. Not for playing an existing song: use play_song for that. Write 'prompt' in English, specific: genre, mood, tempo, instruments, voice type, and the topic or lyrics.", listOf(
+            Triple("prompt", "STRING", "What the song should be, in detail, in English.")
         ), required = listOf("prompt")))
         put(decl("diagram", "Make or change a mind-map / flowchart the user can also edit by hand on screen. 'outline': one box per line, two spaces of indent = child of the line above; 'A -> B -> C' draws arrows. mode 'new' replaces the diagram, 'add' adds boxes to the one on screen (existing boxes keep their place). 'remove' lists box names to delete, separated by commas. With an empty outline it just opens the current diagram.", listOf(
             Triple("title", "STRING", "Short title (new diagrams only)."),
@@ -238,6 +242,7 @@ class ToolRunner(
             "save_web_images" -> WebImages.save(device.context, args.optString("query"), args.optInt("count", 5))
             "make_video" -> VideoMaker.make(device.context, args.optString("topic"), args.optInt("seconds_each", 3))
             "stop_listening" -> hooks.stopListening()
+            "generate_music" -> hooks.generateMusic(args.optString("prompt"))
             "generate_image" -> hooks.generateImage(args.optString("prompt"), args.optBoolean("change_last", false))
             "diagram" -> hooks.diagram(args.optString("title"), args.optString("outline"), args.optString("mode", "new"), args.optString("remove"))
             "show_gallery" -> hooks.showGallery(args.optString("album"), args.optInt("count", 4))

@@ -536,6 +536,7 @@ class ArinaEngine private constructor(private val app: Application) {
         override fun listSkills(): String = skillStore.all().joinToString("\n") { "- ${it.name}: ${it.when_}" }
         override fun showImage(query: String) = doShowImage(query)
         override fun generateImage(prompt: String, changeLast: Boolean) = doGenerateImage(prompt, changeLast)
+        override fun generateMusic(prompt: String) = doGenerateMusic(prompt)
         override fun stopListening(): String { scope.launch { kotlinx.coroutines.delay(4000); turnOff() }; return "OK: you will switch off in a few seconds. Say a very short warm goodbye now." }
         override fun diagram(title: String, outline: String, mode: String, remove: String) = doDiagram(title, outline, mode, remove)
         override fun showGallery(album: String, count: Int) = doShowGallery(album, count)
@@ -1670,10 +1671,20 @@ class ArinaEngine private constructor(private val app: Application) {
     val diagram = mutableStateOf<com.arina.assistant.ai.DiagramData?>(null)
     private val imageGen by lazy { com.arina.assistant.ai.ImageGen(app) { keyForRole(com.arina.assistant.ai.KeyRole.Talk) } }
 
+    private val musicGen by lazy { com.arina.assistant.ai.MusicGen(app) { keyForRole(com.arina.assistant.ai.KeyRole.Talk) } }
+    private fun doGenerateMusic(prompt: String): String {
+        if (prompt.isBlank()) return "ERROR: I need a description of the song."
+        val r = musicGen.make(prompt)
+        if (r.error == "QUOTA") return if (isAdmin.value || isCreator) "ERROR: the music limit of the Gemini key is finished. Music needs a Gemini key with billing turned on in Admin, Keys. Tell him this in one short sentence in his language; do not retry."
+            else "ERROR: music cannot be made right now. Tell him in one short friendly sentence in his language to try again later. Do not retry."
+        if (r.error.isNotEmpty()) return "ERROR: the song could not be made (${r.error}). Tell him briefly; do not pretend it worked."
+        return "OK: the song was made and saved on his phone (Music/Entrion), and it is in the sidebar, Generate Studio. Say so in one short sentence." + if (r.lyrics.isNotBlank()) " Lyrics and structure: ${r.lyrics.take(600)}" else ""
+    }
+
     private fun doGenerateImage(prompt: String, changeLast: Boolean): String {
         if (prompt.isBlank()) return "ERROR: I need a description of the picture."
         val r = imageGen.make(prompt, changeLast)
-        val f = r.file ?: return (if (r.error.startsWith("QUOTA")) "ERROR: ${r.error} Tell him exactly this in one short sentence in his language: the picture limit of the key is finished, the admin must add a Gemini key with billing for pictures. Do not say it is a technical fault and do not retry." else "ERROR: the picture could not be made (${r.error}). Tell him briefly; do not pretend it worked.")
+        val f = r.file ?: return (if (r.error.startsWith("QUOTA")) "ERROR: ${r.error} " + (if (isAdmin.value || isCreator) "Tell him exactly this in one short sentence in his language: the picture limit of the key is finished, a Gemini key with billing must be added in Admin, Keys. Do not retry." else "Tell him in one short friendly sentence in his language that pictures cannot be made right now and to try again later. Do not retry.") else "ERROR: the picture could not be made (${r.error}). Tell him briefly; do not pretend it worked.")
         scope.launch { openCard(Card(CardKind.Images, "Image", listOf(f.path), seconds = 120)) }
         return "OK: the picture was made, saved in his gallery (Pictures/Entrion) and is on screen. Say so in one short sentence, and that it is also in the sidebar, Generate Studio."
     }
