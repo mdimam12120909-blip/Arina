@@ -122,11 +122,12 @@ class ArinaEngine private constructor(private val app: Application) {
     val caption = mutableStateOf("")
     private val noticeRaw = mutableStateOf<String?>(null)
     /** What the screen shows as a notice: technical text is replaced by a plain sentence for everybody except admins. */
-    val notice = object {
+    inner class Notice {
         var value: String?
             get() = noticeRaw.value
             set(v) { noticeRaw.value = com.arina.assistant.ai.Friendly.clean(v, com.arina.assistant.BuildConfig.ADMIN_APP || isAdmin.value || isCreator) }
     }
+    val notice = Notice()
     val overlayOn = mutableStateOf(false)
     /** True while the floating orb is on screen (the small touch window grows to cover it). */
     val orbVisible = mutableStateOf(false)
